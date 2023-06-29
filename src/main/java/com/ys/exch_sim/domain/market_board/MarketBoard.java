@@ -1,0 +1,247 @@
+package com.ys.exch_sim.domain.market_board;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.Map.Entry;
+
+import com.ys.exch_sim.domain.message.field.ExecStatus;
+import com.ys.exch_sim.domain.message.field.OrdType;
+import com.ys.exch_sim.domain.message.field.Px;
+import com.ys.exch_sim.domain.message.field.Qty;
+import com.ys.exch_sim.domain.message.field.Side;
+import com.ys.exch_sim.domain.message.field.Symbol;
+import com.ys.exch_sim.domain.message.field.Tif;
+import com.ys.exch_sim.domain.order_exec.Execution;
+import com.ys.exch_sim.domain.order_exec.Order;
+
+public class MarketBoard {
+
+    // Maintain orders on the board
+    Map<Long, LinkedList<Order>> askOrderBoard = new TreeMap<>();
+    Map<Long, LinkedList<Order>> bidOrderBoard = new TreeMap<>(new Comparator<Long>() {
+        @Override
+        public int compare(Long o1, Long o2) {
+            return (int) (o2 - o1);
+        }
+    });
+    // Maintain bid and ask quantity
+    Map<Long, Long> askEntryBoard = new TreeMap<>();
+    Map<Long, Long> bidEntryBoard = new TreeMap<>(new Comparator<Long>() {
+        @Override
+        public int compare(Long o1, Long o2) {
+            return (int) (o2 - o1);
+        }
+    });
+
+    Symbol symbol;
+
+    public MarketBoard(Symbol symbol) {
+        this.symbol = symbol;
+    }
+
+    void addOrderToBoard(Order order) {
+        Long orderPx = order.getOrderPx().getLongPx();
+        Long orderQty = order.getOrderQty().getLongQty();
+        if(order.getSide() == Side.BUY) {
+            LinkedList<Order> orders = bidOrderBoard.get(orderPx);
+            if(orders == null) {
+                orders = new LinkedList<Order>();
+            }
+            orders.add(order);
+            Long qty = bidEntryBoard.get(orderPx);
+            if(qty == null) {
+                qty = 0L;
+            }
+            qty += orderQty;
+        } else {
+            LinkedList<Order> orders = askOrderBoard.get(orderPx);
+            if(orders == null) {
+                orders = new LinkedList<Order>();
+            }
+            orders.add(order);
+            Long qty = askEntryBoard.get(orderPx);
+            if(qty == null) {
+                qty = 0L;
+            }
+            qty += orderQty;
+        }
+    }
+
+    List<Execution> newOrder(Order order) {
+        List<Execution> executions = new ArrayList<Execution>();
+
+        if (checkMeetingOrder(order)) {
+            return processOrderMatching(order);
+        } else {
+            if (order.getOrdType() == OrdType.MARKET) {
+                Execution e = createReject(order);
+                executions.add(e);
+                return executions;
+            } else  {
+                if(order.getTif() == Tif.FOK) {
+                    Execution e = createReject(order) ;
+                    executions.add(e);
+                    return executions;
+                } else {
+                    Execution e = createNew(order);
+                    executions.add(e);
+                    // maintain order tree
+                    addOrderToBoard(order);
+                    return executions;
+                }
+            }
+        }
+    }
+
+    List<Execution> processOrderMatching(Order order) {
+        if(order.getOrdType() == OrdType.MARKET) {
+            return processMarketOrderMatching(order);
+        } else {
+            return processLimitOrderMatching(order);
+
+        }
+        
+    }
+    List<Execution> processMarketOrderMatching(Order order) {
+        if(order.getSide() == Side.BUY) {
+            return processMarketBuyOrderMatching(order);
+        } else {
+            return processMarketSellOrderMatching(order);
+        }
+
+    }
+
+    List<Execution> processMarketBuyOrderMatching(Order order) {
+
+        List<Execution> elist = new ArrayList<Execution>();
+        long orderQty = order.getOrderQty().getLongQty();
+        for (Entry<Long, LinkedList<Order>> ent : askOrderBoard.entrySet()) {
+            Long px = ent.getKey();
+            LinkedList<Order> orders = ent.getValue();;
+            for(Order o: orders) {
+                long opposingQty = o.getOrderQty().getLongQty();
+                if(orderQty  > opposingQty ) { // Partial Fill VS Full Fill
+                    Execution e1 = new Execution(order, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    Execution e2 = new Execution(o, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    elist.add(e1);
+                    elist.add(e2);
+                    orderQty -= opposingQty;
+                } else if( orderQty == opposingQty ) { // Full Fill
+                    Execution e1 = new Execution(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    Execution e2 = new Execution(o, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    elist.add(e1);
+                    elist.add(e2);
+                    orderQty = 0;
+                } else if( orderQty < opposingQty ) { // Full Fill VS Partial Fill
+                    Execution e1 = new Execution(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    Execution e2 = new Execution(o, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    elist.add(e1);
+                    elist.add(e2);
+                    orderQty = 0;
+                }
+            }
+        }
+
+        // check IOC/FOK status,if orderQty is more than 0, IOC is ok, but if FOK , it is critical error
+
+        return elist;
+    }
+
+    List<Execution> processMarketSellOrderMatching(Order order) {
+        List<Execution> elist = new ArrayList<Execution>();
+        return elist;
+    }
+    List<Execution> processLimitOrderMatching(Order oreder) {
+        List<Execution> elist = new ArrayList<Execution>();
+
+        return elist;
+    }
+
+
+    // Dry Run for checking the matching order existing
+    boolean checkMeetingOrder(Order order) {
+        if (order.getSide() == Side.BUY) {
+            if (askEntryBoard.size() == 0) {
+                return false;
+            }
+            if (order.getTif() == Tif.IOC && order.getOrdType() == OrdType.MARKET) {
+                return true;
+            }
+            if (order.getTif() == Tif.FOK && order.getOrdType() == OrdType.MARKET) {
+                long qty = order.getOrderQty().getLongQty();
+                long sum = 0;
+                for (Entry<Long, Long> ent : bidEntryBoard.entrySet()) {
+                    sum += ent.getValue();
+                    if (sum >= qty) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            return checkMeetingAsk(order);
+        } else {
+            if (bidEntryBoard.size() == 0) {
+                return false;
+            }
+            if (order.getTif() == Tif.IOC && order.getOrdType() == OrdType.MARKET) {
+                return true;
+            }
+            if (order.getTif() == Tif.FOK && order.getOrdType() == OrdType.MARKET) {
+                long qty = order.getOrderQty().getLongQty();
+                long sum = 0;
+                for (Entry<Long, Long> ent : askEntryBoard.entrySet()) {
+                    sum += ent.getValue();
+                    if (sum >= qty) {
+                        return true;
+                    }
+                }
+            }
+            return checkMeetingBid(order);
+        }
+    }
+
+    // Here is only BUY LIMIT order
+    private boolean checkMeetingAsk(Order order) {
+        // for the performance, use native long instead of Qty class
+        long qty = order.getOrderQty().getLongQty();
+        long sum = 0;
+        for (Entry<Long, Long> ent : askEntryBoard.entrySet()) {
+            if (ent.getKey() > order.getOrderPx().getLongPx()) {
+                return false;
+            } else {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Here is only Limit SELL order
+    private boolean checkMeetingBid(Order order) {
+        // for the performance, use native long instead of Qty class
+        long qty = order.getOrderQty().getLongQty();
+        long sum = 0;
+        for (Entry<Long, Long> ent : bidEntryBoard.entrySet()) {
+            if (ent.getKey() < order.getOrderPx().getLongPx()) {
+                return false;
+            } else {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    Execution createReject(Order order) {
+        return new Execution(order, ExecStatus.REJECTED, 
+                    new Px(order.getSymbol(), 0.0), new Qty(order.getSymbol(), 0.0));
+    }
+
+    Execution createNew(Order order) {
+        return new Execution(order, ExecStatus.NEW, 
+                    new Px(order.getSymbol(), 0.0), new Qty(order.getSymbol(), 0.0));
+
+    }
+}
