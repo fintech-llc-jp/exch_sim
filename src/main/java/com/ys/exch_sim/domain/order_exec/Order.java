@@ -23,6 +23,6 @@ public class Order {
     private final Tif tif;
     private OrdStatus ordStatus;
     private Qty leavesQty;
-    private Order next;
-    private Execution execution; 
+    //private Order next;
+    //private Execution execution; 
 }
