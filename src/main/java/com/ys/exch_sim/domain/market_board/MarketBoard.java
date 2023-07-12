@@ -1,10 +1,12 @@
 package com.ys.exch_sim.domain.market_board;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.Map.Entry;
 
@@ -17,6 +19,7 @@ import com.ys.exch_sim.domain.message.field.Symbol;
 import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
+import com.ys.exch_sim.infra.Pair;
 
 public class MarketBoard {
 
@@ -37,7 +40,30 @@ public class MarketBoard {
         }
     });
 
-    Symbol symbol;
+    public Pair<Long,Long> getAsk(long index) {
+        int cnt = 0;
+        for(Map.Entry<Long,Long> ent : askEntryBoard.entrySet()) {
+            if(cnt == index) {
+                return new Pair<> ( ent.getKey(), ent.getValue());
+            }
+            cnt++;
+        }
+        return new Pair<>(0L,0L);
+    }
+
+    public Pair<Long,Long> getBid(long index) {
+        int cnt = 0;
+        for(Map.Entry<Long,Long> ent : bidEntryBoard.entrySet()) {
+            if(cnt == index) {
+                return new Pair<> ( ent.getKey(), ent.getValue());
+            }
+            cnt++;
+        }
+        return new Pair<>(0L,0L);
+    }
+
+
+    private Symbol symbol;
 
     public MarketBoard(Symbol symbol) {
         this.symbol = symbol;
@@ -112,32 +138,39 @@ public class MarketBoard {
     List<Execution> processMarketOrderMatching(Order order) {
 
         List<Execution> elist = new ArrayList<Execution>();
-        long orderQty = order.getOrderQty().getLongQty();
+        long leavesQty = order.getLeavesQty().getLongQty();
         Map<Long, LinkedList<Order>> board = order.getSide() == Side.BUY ? askOrderBoard : bidOrderBoard; 
         for (Entry<Long, LinkedList<Order>> ent : board.entrySet()) {
             Long px = ent.getKey();
             LinkedList<Order> orders = ent.getValue();
+            List<Order> removeOrders = new ArrayList<>();
             for(Order counterOrder: orders) {
                 long opposingQty = counterOrder.getOrderQty().getLongQty();
-                if(orderQty  > opposingQty ) { // Partial Fill VS Full Fill
-                    Execution e1 = new Execution(order, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,opposingQty));
-                    Execution e2 = new Execution(counterOrder, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
+                if(leavesQty  > opposingQty ) { // Partial Fill VS Full Fill
+                    Execution e1 = createExecutionAndOperateOrder(order, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,opposingQty),false);
+                    Execution e2 = createExecutionAndOperateOrder(counterOrder, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty), true);
                     elist.add(e1);
                     elist.add(e2);
-                    orderQty -= opposingQty;
-                } else if( orderQty == opposingQty ) { // Full Fill
-                    Execution e1 = new Execution(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
-                    Execution e2 = new Execution(counterOrder, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    leavesQty -= opposingQty;
+                } else if( leavesQty == opposingQty ) { // Full Fill
+                    Execution e1 = createExecutionAndOperateOrder(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty), false);
+                    Execution e2 = createExecutionAndOperateOrder(counterOrder, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty), true);
                     elist.add(e1);
                     elist.add(e2);
-                    orderQty = 0;
-                } else if( orderQty < opposingQty ) { // Full Fill VS Partial Fill
-                    Execution e1 = new Execution(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
-                    Execution e2 = new Execution(counterOrder, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    leavesQty = 0;
+                } else if( leavesQty < opposingQty ) { // Full Fill VS Partial Fill
+                    Execution e1 = createExecutionAndOperateOrder(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,leavesQty), false);
+                    Execution e2 = createExecutionAndOperateOrder(counterOrder, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,leavesQty), true);
                     elist.add(e1);
                     elist.add(e2);
-                    orderQty = 0;
+                    leavesQty = 0;
                 }
+                if(counterOrder.getLeavesQty().getLongQty() == 0L) {
+                    removeOrders.add(counterOrder);
+                }
+            }
+            for(Order o : removeOrders) {
+                orders.remove(o);
             }
         }
 
@@ -147,48 +180,70 @@ public class MarketBoard {
 
 
     List<Execution> processLimitOrderMatching(Order order) {
-
         List<Execution> elist = new ArrayList<Execution>();
-        long orderQty = order.getOrderQty().getLongQty();
+        long leavesQty = order.getLeavesQty().getLongQty();
         long orderPx = order.getOrderPx().getLongPx();
         Side side = order.getSide();
         Map<Long, LinkedList<Order>> board = (side == Side.BUY) ? askOrderBoard : bidOrderBoard; 
         for (Entry<Long, LinkedList<Order>> ent : board.entrySet()) {
             Long px = ent.getKey();
             LinkedList<Order> orders = ent.getValue();
+            List<Order> removeOrders = new ArrayList<>();
             for(Order counterOrder: orders) {
                 // TODO : need to get leavesQty instead of orderQty
-                long opposingQty = counterOrder.getOrderQty().getLongQty();
+                long opposingQty = counterOrder.getLeavesQty().getLongQty();
                 long opposingPx = counterOrder.getOrderPx().getLongPx();
-                if(orderQty  > opposingQty && 
+                if(leavesQty  > opposingQty && 
                     (side == Side.BUY ? opposingPx <= orderPx : opposingPx >= orderPx)  ) { // Partial Fill VS Full Fill
-                    Execution e1 = new Execution(order, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,opposingQty));
-                    Execution e2 = new Execution(counterOrder, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    Execution e1 = createExecutionAndOperateOrder(order, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,opposingQty), false);
+                    Execution e2 = createExecutionAndOperateOrder(counterOrder, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty), true);
                     elist.add(e1);
                     elist.add(e2);
-                    orderQty -= opposingQty;
-                } else if( orderQty == opposingQty && 
+                    leavesQty -= opposingQty;
+                } else if( leavesQty == opposingQty && 
                     (side == Side.BUY ? opposingPx <= orderPx : opposingPx >= orderPx)) { // Full Fill
-                    Execution e1 = new Execution(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
-                    Execution e2 = new Execution(counterOrder, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    Execution e1 = createExecutionAndOperateOrder(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty),false);
+                    Execution e2 = createExecutionAndOperateOrder(counterOrder, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty),true);
                     elist.add(e1);
                     elist.add(e2);
-                    orderQty = 0;
-                } else if( orderQty < opposingQty && 
+                    leavesQty = 0;
+                } else if( leavesQty < opposingQty && 
                     (side == Side.BUY ? opposingPx <= orderPx : opposingPx >= orderPx)) { // Full Fill VS Partial Fill
-                    Execution e1 = new Execution(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,opposingQty));
-                    Execution e2 = new Execution(counterOrder, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,opposingQty));
+                    Execution e1 = createExecutionAndOperateOrder(order, ExecStatus.FILLED, new Px(symbol,px), new Qty(symbol,leavesQty),false);
+                    Execution e2 = createExecutionAndOperateOrder(counterOrder, ExecStatus.PARTIAL_FILL, new Px(symbol,px), new Qty(symbol,leavesQty),true);
                     elist.add(e1);
                     elist.add(e2);
-                    orderQty = 0;
+                    leavesQty = 0;
+                }
+                if(counterOrder.getLeavesQty().getLongQty() == 0L) {
+                    removeOrders.add(counterOrder);
                 }
             }
+            for(Order o : removeOrders) {
+                orders.remove(o);
+            }
         }
-        // TODO : if order is PARTIAL_FILL , need to add order board
+        if(order.getLeavesQty().getLongQty() != 0L) {
+            addOrderToBoard(order);
+        }
 
         return elist;
     }
 
+
+    private Execution createExecutionAndOperateOrder(Order order,ExecStatus execStatus, Px lastPx, Qty lastQty, boolean counterOrder){
+        
+        long newLeavesQty = order.getLeavesQty().getLongQty() -lastQty.getLongQty();
+        order.setLeavesQty(new Qty(order.getSymbol(), newLeavesQty));
+        Execution e =  new Execution(order, execStatus,lastPx,lastQty); 
+        order.getExecutions().add(e);
+        if(counterOrder) {
+           Map<Long,Long> entryBoard = order.getSide() == Side.BUY ? bidEntryBoard : askEntryBoard; 
+           long qty = entryBoard.get(lastPx.getLongPx()) - lastQty.getLongQty();
+           entryBoard.put(lastPx.getLongPx(), qty);
+        }
+        return e; 
+    }
 
     // Dry Run for checking the matching order existing
     boolean checkMeetingOrder(Order order) {

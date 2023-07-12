@@ -19,6 +19,7 @@ import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.message.field.Timestamp;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
+import com.ys.exch_sim.infra.Pair;
 
 public class MarketBoardTest {
 
@@ -155,7 +156,7 @@ public class MarketBoardTest {
     @Test
     void testProcessLimitOrderMatching2() {
 
-        Symbol symbol = new Symbol("BTCJPY",100,1);
+        Symbol symbol = new Symbol("BTCJPY",1,100);
         MarketBoard mb = new MarketBoard(symbol);
 
         Order buy1 = new Order(symbol,new Px(symbol,1.0), new Qty(symbol,5), 
@@ -167,11 +168,15 @@ public class MarketBoardTest {
             OrdType.LIMIT, Tif.DAY);
 
         List<Execution> elist1 = mb.newOrder(buy1);
+        Pair<Long,Long> bids1 = mb.getBid(0);
         List<Execution> elist2 = mb.newOrder(sell1);
+        Pair<Long,Long> bids2 = mb.getBid(0);
+        System.out.println(bids1);
+        System.out.println(bids2);
         
         assertEquals(elist1.size(),1);
         assertEquals(elist1.get(0).getExecStatus(),ExecStatus.NEW);;
-        assertEquals(elist2.size(),1);
+        assertEquals(elist2.size(),2);
 
         Execution e1 = elist2.get(0);
         Order sell2 = new Order(symbol,new Px(symbol,1.0), new Qty(symbol,6), 
