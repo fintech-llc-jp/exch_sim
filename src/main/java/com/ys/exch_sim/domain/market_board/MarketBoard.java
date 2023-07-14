@@ -20,6 +20,7 @@ import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
 import com.ys.exch_sim.infra.Pair;
+import com.google.common.collect.Iterators;
 
 public class MarketBoard {
 
@@ -240,7 +241,11 @@ public class MarketBoard {
         if(counterOrder) {
            Map<Long,Long> entryBoard = order.getSide() == Side.BUY ? bidEntryBoard : askEntryBoard; 
            long qty = entryBoard.get(lastPx.getLongPx()) - lastQty.getLongQty();
-           entryBoard.put(lastPx.getLongPx(), qty);
+           if(qty != 0L) {
+            entryBoard.put(lastPx.getLongPx(), qty);
+           } else {
+            entryBoard.remove(lastPx.getLongPx());
+           }
         }
         return e; 
     }

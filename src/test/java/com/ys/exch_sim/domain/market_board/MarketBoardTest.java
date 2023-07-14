@@ -186,4 +186,81 @@ public class MarketBoardTest {
         assertEquals(elist2.size(),2);
 
     }
+
+    @Test
+    void testMarketBoard() { 
+        Symbol symbol = new Symbol("BTCJPY",1,100);
+        MarketBoard mb = new MarketBoard(symbol);
+
+        Order buy1 = new Order(symbol,new Px(symbol,100), new Qty(symbol,0.1), 
+            Side.BUY, new ClOrdID("id-buy1") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+
+        Order buy2 = new Order(symbol,new Px(symbol,99), new Qty(symbol,0.2), 
+            Side.BUY, new ClOrdID("id-buy2") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+
+        Order buy3 = new Order(symbol,new Px(symbol,98), new Qty(symbol,0.3), 
+            Side.BUY, new ClOrdID("id-buy3") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+
+        Order sell1 = new Order(symbol,new Px(symbol,101), new Qty(symbol,0.1), 
+            Side.SELL, new ClOrdID("id-sell1") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+
+        Order sell2 = new Order(symbol,new Px(symbol,102), new Qty(symbol,0.2), 
+            Side.SELL, new ClOrdID("id-sell2") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+
+        Order sell3 = new Order(symbol,new Px(symbol,103), new Qty(symbol,0.3), 
+            Side.SELL, new ClOrdID("id-sell3") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+
+        List<Execution> elist1 = mb.newOrder(buy1);
+        List<Execution> elist2 = mb.newOrder(buy2);
+        List<Execution> elist3 = mb.newOrder(buy3);
+        List<Execution> elist4 = mb.newOrder(sell1);
+        List<Execution> elist5 = mb.newOrder(sell2);
+        List<Execution> elist6 = mb.newOrder(sell3);
+        Pair<Long,Long> ask1 = mb.getAsk(0);
+        Pair<Long,Long> bid1 = mb.getBid(0);
+        Pair<Long,Long> ask2 = mb.getAsk(1);
+        Pair<Long,Long> bid2 = mb.getBid(1);
+        Pair<Long,Long> ask3 = mb.getAsk(2);
+        Pair<Long,Long> bid3 = mb.getBid(2);
+        assertEquals(ask1.getLeft(), 101L);
+        assertEquals(ask1.getRight(), 10L);
+        assertEquals(ask2.getLeft(), 102L);
+        assertEquals(ask2.getRight(), 20L);
+        assertEquals(ask3.getLeft(), 103L);
+        assertEquals(ask3.getRight(), 30L);
+        assertEquals(bid1.getLeft(), 100L);
+        assertEquals(bid1.getRight(), 10L);
+        assertEquals(bid2.getLeft(), 99L);
+        assertEquals(bid2.getRight(), 20L);
+        assertEquals(bid3.getLeft(), 98L);
+        assertEquals(bid3.getRight(), 30L);
+
+
+
+        Order buym = new Order(symbol,null, new Qty(symbol,0.2), 
+            Side.BUY, new ClOrdID("id-buym") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.MARKET, Tif.IOC);
+        List<Execution> elist7 = mb.newOrder(buym);
+        Pair<Long,Long> askm = mb.getAsk(0);
+        System.out.println(askm);
+        assertEquals(askm.getLeft(), 102L);
+        assertEquals(askm.getRight(), 10L);
+
+
+        Order sell4 = new Order(symbol,new Px(symbol,102), new Qty(symbol,0.3), 
+            Side.SELL, new ClOrdID("id-sell4") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+        List<Execution> elist8 = mb.newOrder(sell4);
+        Pair<Long,Long> ask4 = mb.getAsk(0);
+        assertEquals(ask4.getLeft(), 102L);
+        assertEquals(ask4.getRight(), 40L);
+
+    }
+
 }
