@@ -3,6 +3,7 @@ package com.ys.exch_sim.domain.market_board;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.Map.Entry;
 
+import com.ys.exch_sim.domain.message.field.ClOrdID;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.message.field.OrdType;
 import com.ys.exch_sim.domain.message.field.Px;
@@ -40,6 +42,8 @@ public class MarketBoard {
             return (int) (o2 - o1);
         }
     });
+
+    Map<ClOrdID, Order> orderMap = new HashMap<>();
 
     public Pair<Long,Long> getAsk(long index) {
         int cnt = 0;
@@ -80,6 +84,7 @@ public class MarketBoard {
                 bidOrderBoard.put(orderPx,orders);
             }
             orders.add(order);
+            orderMap.put(order.getClOrdID(), order);
             Long qty = bidEntryBoard.get(orderPx);
             if(qty == null) {
                 qty = 0L;
@@ -93,6 +98,7 @@ public class MarketBoard {
                 askOrderBoard.put(orderPx,orders);
             }
             orders.add(order);
+            orderMap.put(order.getClOrdID(), order);
             Long qty = askEntryBoard.get(orderPx);
             if(qty == null) {
                 qty = 0L;
@@ -102,8 +108,49 @@ public class MarketBoard {
         }
     }
 
-    List<Execution> newOrder(Order order) {
+    public List<Execution> cancelOrder(Order order) {
         List<Execution> executions = new ArrayList<Execution>();
+        if(orderMap.get(order.getClOrdID()) == null) {
+            Execution e = createReject(order);
+            executions.add(e);
+            return executions;
+        }
+        order = orderMap.get(order.getClOrdID());
+        if(order.getSide() == Side.BUY) {
+            long qty = bidEntryBoard.get(order.getOrderPx().getLongPx());
+            qty -= order.getOrderQty().getLongQty(); 
+            if(qty == 0) {
+                bidEntryBoard.remove(order.getOrderPx().getLongPx());
+            } else {
+                bidEntryBoard.put(order.getOrderPx().getLongPx(), qty);
+            }
+            LinkedList<Order> orders = bidOrderBoard.get(order.getOrderPx().getLongPx());
+            orders.remove(order);
+
+        } else {
+            long qty = askEntryBoard.get(order.getOrderPx().getLongPx());
+            qty -= order.getOrderQty().getLongQty();
+            if(qty == 0) {
+                askEntryBoard.remove(order.getOrderPx().getLongPx());
+            } else {
+                askEntryBoard.put(order.getOrderPx().getLongPx(), qty);
+            }
+            LinkedList<Order> orders = askOrderBoard.get(order.getOrderPx().getLongPx());
+            orders.remove(order);
+        }
+        Execution e = new Execution(order,ExecStatus.CANCELED, order.getOrderPx(), order.getOrderQty());
+        executions.add(e);
+        return executions;
+    }
+
+    public List<Execution> newOrder(Order order) {
+        List<Execution> executions = new ArrayList<Execution>();
+        // TODO Duplicate check
+        if(orderMap.get(order.getClOrdID()) != null) {
+            Execution e = createReject(order);
+            executions.add(e);
+            return executions;
+        }
 
         if (checkMeetingOrder(order)) {
             return processOrderMatching(order);

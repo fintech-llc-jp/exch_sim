@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 
 import com.ys.exch_sim.domain.message.field.ClOrdID;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
-import com.ys.exch_sim.domain.message.field.OrdStatus;
 import com.ys.exch_sim.domain.message.field.OrdType;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
@@ -91,8 +90,6 @@ public class MarketBoardTest {
         List<Execution> elist1 = mb.newOrder(ask1);
         List<Execution> elist2 = mb.newOrder(buy1);
         
-        System.out.println(elist1);
-        System.out.println(elist2);
         assertEquals(elist1.size(),1);
         assertEquals(elist1.get(0).getExecStatus(),ExecStatus.NEW);;
         assertEquals(elist2.size(),2);
@@ -263,4 +260,29 @@ public class MarketBoardTest {
 
     }
 
+    @Test
+    void cancelOrderTest() {
+        Symbol symbol = new Symbol("BTCJPY",1,100);
+        MarketBoard mb = new MarketBoard(symbol);
+
+        Order buy1 = new Order(symbol,new Px(symbol,100), new Qty(symbol,0.1), 
+            Side.BUY, new ClOrdID("id-buy1") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+
+        Order buy2 = new Order(symbol,new Px(symbol,100), new Qty(symbol,0.2), 
+            Side.BUY, new ClOrdID("id-buy2") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+
+        Order buy3 = new Order(symbol,new Px(symbol,100), new Qty(symbol,0.3), 
+            Side.BUY, new ClOrdID("id-buy3") , new Timestamp(LocalDateTime.now()) , 
+            OrdType.LIMIT, Tif.DAY);
+        List<Execution> e1 = mb.newOrder(buy1);
+        List<Execution> e2 = mb.newOrder(buy2);
+        List<Execution> e3 = mb.newOrder(buy3);
+
+        List<Execution> e4 = mb.cancelOrder(buy2);
+        Pair<Long,Long> ask1 = mb.getAsk(0); 
+        Pair<Long,Long> bid1 = mb.getBid(0); 
+
+    }
 }

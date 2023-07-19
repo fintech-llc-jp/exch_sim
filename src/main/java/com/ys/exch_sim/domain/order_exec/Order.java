@@ -7,6 +7,7 @@ import com.ys.exch_sim.domain.message.field.ClOrdID;
 import com.ys.exch_sim.domain.message.field.OrdType;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
+import com.ys.exch_sim.domain.message.field.Session;
 import com.ys.exch_sim.domain.message.field.Side;
 import com.ys.exch_sim.domain.message.field.Symbol;
 import com.ys.exch_sim.domain.message.field.Tif;
@@ -27,6 +28,7 @@ public class Order {
     private OrdStatus ordStatus;
     private Qty leavesQty;
     //private Order next;
+    private Session session;
     private List<Execution> executions = new ArrayList<>(); 
 
     public Order(Symbol symbol, Px px, Qty qty, Side side, ClOrdID clOrdID, Timestamp ts, OrdType ordType, Tif tif) {
