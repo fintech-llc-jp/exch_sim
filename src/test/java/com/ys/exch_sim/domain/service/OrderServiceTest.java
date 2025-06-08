@@ -1,0 +1,169 @@
+package com.ys.exch_sim.domain.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import com.ys.exch_sim.domain.dto.NewOrderRequest;
+import com.ys.exch_sim.domain.dto.OrderResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class OrderServiceTest {
+
+  private OrderService orderService;
+
+  @BeforeEach
+  void setUp() {
+    orderService = new OrderService();
+  }
+
+  @Test
+  void testProcessNewBuyOrder() {
+    // Given
+    String username = "testuser";
+    NewOrderRequest request = new NewOrderRequest();
+    request.setSymbol("BTCJPY");
+    request.setPrice(100.0);
+    request.setQuantity(10L);
+    request.setSide("BUY");
+    request.setOrdType("LIMIT");
+    request.setTif("GTC");
+
+    // When
+    OrderResponse response = orderService.processNewOrder(username, request);
+
+    // Then
+    assertNotNull(response);
+    assertNotNull(response.getClOrdID());
+    assertThat(response.getStatus()).isEqualTo("NEW");
+    // BUY注文は板に残るため、NEW executionが1つ返される（lastPx=0.0, lastQty=0）
+    assertThat(response.getExecutions()).hasSize(1);
+    assertThat(response.getExecutions().get(0).getExecStatus()).isEqualTo("NEW");
+  }
+
+  @Test
+  void testProcessNewSellOrderWithMatching() {
+    // Given - まずBUY注文を作成
+    String username = "testuser";
+    NewOrderRequest buyRequest = new NewOrderRequest();
+    buyRequest.setSymbol("BTCJPY");
+    buyRequest.setPrice(100.0);
+    buyRequest.setQuantity(10L);
+    buyRequest.setSide("BUY");
+    buyRequest.setOrdType("LIMIT");
+    buyRequest.setTif("GTC");
+
+    // BUY注文を処理
+    OrderResponse buyResponse = orderService.processNewOrder(username, buyRequest);
+    assertThat(buyResponse.getStatus()).isEqualTo("NEW");
+
+    // When - 次にSELL注文を作成（部分約定になる）
+    NewOrderRequest sellRequest = new NewOrderRequest();
+    sellRequest.setSymbol("BTCJPY");
+    sellRequest.setPrice(100.0);
+    sellRequest.setQuantity(5L);
+    sellRequest.setSide("SELL");
+    sellRequest.setOrdType("LIMIT");
+    sellRequest.setTif("GTC");
+
+    OrderResponse sellResponse = orderService.processNewOrder(username, sellRequest);
+
+    // Then
+    assertNotNull(sellResponse);
+    assertNotNull(sellResponse.getClOrdID());
+    // 自分の注文に関連するExecutionのみが返される
+    assertThat(sellResponse.getExecutions()).hasSize(1);
+
+    // SELL注文は完全に約定するはず
+    assertThat(sellResponse.getStatus()).isEqualTo("FILLED");
+    assertThat(sellResponse.getExecutions().get(0).getExecStatus()).isEqualTo("FILLED");
+    assertThat(sellResponse.getExecutions().get(0).getLastPx()).isEqualTo(100.0);
+    assertThat(sellResponse.getExecutions().get(0).getLastQty()).isEqualTo(5L);
+  }
+
+  @Test
+  void testProcessMultipleOrdersWithPartialFill() {
+    // Given
+    String username = "testuser";
+
+    // 大きなBUY注文を作成
+    NewOrderRequest buyRequest = new NewOrderRequest();
+    buyRequest.setSymbol("USDJPY");
+    buyRequest.setPrice(150.0);
+    buyRequest.setQuantity(100L);
+    buyRequest.setSide("BUY");
+    buyRequest.setOrdType("LIMIT");
+    buyRequest.setTif("GTC");
+
+    OrderResponse buyResponse = orderService.processNewOrder(username, buyRequest);
+    assertThat(buyResponse.getStatus()).isEqualTo("NEW");
+
+    // When - 小さなSELL注文を複数回実行
+    NewOrderRequest sellRequest1 = new NewOrderRequest();
+    sellRequest1.setSymbol("USDJPY");
+    sellRequest1.setPrice(150.0);
+    sellRequest1.setQuantity(30L);
+    sellRequest1.setSide("SELL");
+    sellRequest1.setOrdType("LIMIT");
+    sellRequest1.setTif("GTC");
+
+    OrderResponse sellResponse1 = orderService.processNewOrder(username, sellRequest1);
+
+    NewOrderRequest sellRequest2 = new NewOrderRequest();
+    sellRequest2.setSymbol("USDJPY");
+    sellRequest2.setPrice(150.0);
+    sellRequest2.setQuantity(20L);
+    sellRequest2.setSide("SELL");
+    sellRequest2.setOrdType("LIMIT");
+    sellRequest2.setTif("GTC");
+
+    OrderResponse sellResponse2 = orderService.processNewOrder(username, sellRequest2);
+
+    // Then
+    // 両方のSELL注文は完全に約定する
+    assertThat(sellResponse1.getStatus()).isEqualTo("FILLED");
+    assertThat(sellResponse1.getExecutions()).hasSize(1);
+    assertThat(sellResponse1.getExecutions().get(0).getExecStatus()).isEqualTo("FILLED");
+    assertThat(sellResponse1.getExecutions().get(0).getLastQty()).isEqualTo(30L);
+
+    assertThat(sellResponse2.getStatus()).isEqualTo("FILLED");
+    assertThat(sellResponse2.getExecutions()).hasSize(1);
+    assertThat(sellResponse2.getExecutions().get(0).getExecStatus()).isEqualTo("FILLED");
+    assertThat(sellResponse2.getExecutions().get(0).getLastQty()).isEqualTo(20L);
+  }
+
+  @Test
+  void testDifferentSymbolsAreIndependent() {
+    // Given
+    String username = "testuser";
+
+    // BTCJPY用のBUY注文
+    NewOrderRequest btcBuyRequest = new NewOrderRequest();
+    btcBuyRequest.setSymbol("BTCJPY");
+    btcBuyRequest.setPrice(100.0);
+    btcBuyRequest.setQuantity(10L);
+    btcBuyRequest.setSide("BUY");
+    btcBuyRequest.setOrdType("LIMIT");
+    btcBuyRequest.setTif("GTC");
+
+    orderService.processNewOrder(username, btcBuyRequest);
+
+    // When - ETHJPY用のSELL注文（マッチしないはず）
+    NewOrderRequest ethSellRequest = new NewOrderRequest();
+    ethSellRequest.setSymbol("ETHJPY");
+    ethSellRequest.setPrice(100.0);
+    ethSellRequest.setQuantity(5L);
+    ethSellRequest.setSide("SELL");
+    ethSellRequest.setOrdType("LIMIT");
+    ethSellRequest.setTif("GTC");
+
+    OrderResponse ethSellResponse = orderService.processNewOrder(username, ethSellRequest);
+
+    // Then - 異なるシンボルなのでマッチングされない
+    assertThat(ethSellResponse.getStatus()).isEqualTo("NEW");
+    assertThat(ethSellResponse.getExecutions()).hasSize(1);
+    assertThat(ethSellResponse.getExecutions().get(0).getExecStatus()).isEqualTo("NEW");
+  }
+}

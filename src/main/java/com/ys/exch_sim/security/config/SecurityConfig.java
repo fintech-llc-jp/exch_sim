@@ -24,7 +24,13 @@ public class SecurityConfig {
     http.securityMatcher("/api/**")
         .authorizeHttpRequests(
             authorize ->
-                authorize.requestMatchers("/api/auth/**").permitAll().anyRequest().authenticated())
+                authorize
+                    .requestMatchers("/api/auth/**")
+                    .permitAll()
+                    .requestMatchers("/api/orders/**")
+                    .authenticated()
+                    .anyRequest()
+                    .authenticated())
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authenticationProvider(authenticationProvider)
