@@ -1,5 +1,6 @@
 package com.ys.exch_sim.domain.controller;
 
+import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.service.OrderService;
@@ -81,6 +82,58 @@ public class OrderController {
     } catch (Exception e) {
       log.error("Error processing new order", e);
       return ResponseEntity.internalServerError().body("Error processing order: " + e.getMessage());
+    }
+  }
+
+  @PostMapping("/cancel")
+  public ResponseEntity<?> cancelOrder(@RequestBody CancelOrderRequest request) {
+    try {
+      // JWTから認証情報を取得
+      Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+      if (authentication == null || !authentication.isAuthenticated()) {
+        log.warn("Unauthenticated request for cancel order");
+        return ResponseEntity.status(401).body("Authentication required");
+      }
+
+      String username = authentication.getName();
+      log.info("Processing cancel order for authenticated user: {}", username);
+
+      // ユーザーが存在するかチェック
+      try {
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        if (userDetails == null) {
+          log.warn("User not found: {}", username);
+          return ResponseEntity.status(404).body("User not found");
+        }
+      } catch (Exception e) {
+        log.warn("Error validating user: {}", username, e);
+        return ResponseEntity.status(404).body("User not found");
+      }
+
+      // 入力バリデーション
+      if (request == null
+          || request.getClOrdID() == null
+          || request.getClOrdID().trim().isEmpty()
+          || request.getSymbol() == null
+          || request.getSymbol().trim().isEmpty()) {
+
+        log.warn("Invalid cancel order request from user: {}", username);
+        return ResponseEntity.badRequest().body("Invalid cancel order parameters");
+      }
+
+      // 注文をキャンセル
+      OrderResponse response = orderService.cancelOrder(username, request);
+
+      log.info(
+          "Order cancelled successfully for user: {} with clOrdID: {}",
+          username,
+          response.getClOrdID());
+
+      return ResponseEntity.ok(response);
+
+    } catch (Exception e) {
+      log.error("Error cancelling order", e);
+      return ResponseEntity.internalServerError().body("Error cancelling order: " + e.getMessage());
     }
   }
 }

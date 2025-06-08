@@ -2,7 +2,9 @@ package com.ys.exch_sim.domain.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -165,5 +167,84 @@ class OrderServiceTest {
     assertThat(ethSellResponse.getStatus()).isEqualTo("NEW");
     assertThat(ethSellResponse.getExecutions()).hasSize(1);
     assertThat(ethSellResponse.getExecutions().get(0).getExecStatus()).isEqualTo("NEW");
+  }
+
+  @Test
+  void testCancelOrder() {
+    // Given - 注文を作成
+    String username = "testuser";
+    NewOrderRequest newOrderRequest = new NewOrderRequest();
+    newOrderRequest.setSymbol("BTCJPY");
+    newOrderRequest.setPrice(100.0);
+    newOrderRequest.setQuantity(10L);
+    newOrderRequest.setSide("BUY");
+    newOrderRequest.setOrdType("LIMIT");
+    newOrderRequest.setTif("GTC");
+
+    OrderResponse newOrderResponse = orderService.processNewOrder(username, newOrderRequest);
+    assertThat(newOrderResponse.getStatus()).isEqualTo("NEW");
+
+    // When - 注文をキャンセル
+    CancelOrderRequest cancelRequest = new CancelOrderRequest();
+    cancelRequest.setClOrdID(newOrderResponse.getClOrdID());
+    cancelRequest.setSymbol("BTCJPY");
+
+    OrderResponse cancelResponse = orderService.cancelOrder(username, cancelRequest);
+
+    // Then
+    assertNotNull(cancelResponse);
+    assertThat(cancelResponse.getClOrdID()).isEqualTo(newOrderResponse.getClOrdID());
+    assertThat(cancelResponse.getStatus()).isEqualTo("CANCELED");
+    assertThat(cancelResponse.getExecutions()).hasSize(1);
+    assertThat(cancelResponse.getExecutions().get(0).getExecStatus()).isEqualTo("CANCELED");
+  }
+
+  @Test
+  void testCancelNonExistentOrder() {
+    // Given
+    String username = "testuser";
+    CancelOrderRequest cancelRequest = new CancelOrderRequest();
+    cancelRequest.setClOrdID("non-existent-order-id");
+    cancelRequest.setSymbol("BTCJPY");
+
+    // When & Then
+    RuntimeException exception =
+        assertThrows(
+            RuntimeException.class,
+            () -> {
+              orderService.cancelOrder(username, cancelRequest);
+            });
+
+    assertThat(exception.getMessage()).contains("Order not found");
+  }
+
+  @Test
+  void testCancelOrderWithWrongSymbol() {
+    // Given - 注文を作成
+    String username = "testuser";
+    NewOrderRequest newOrderRequest = new NewOrderRequest();
+    newOrderRequest.setSymbol("BTCJPY");
+    newOrderRequest.setPrice(100.0);
+    newOrderRequest.setQuantity(10L);
+    newOrderRequest.setSide("BUY");
+    newOrderRequest.setOrdType("LIMIT");
+    newOrderRequest.setTif("GTC");
+
+    OrderResponse newOrderResponse = orderService.processNewOrder(username, newOrderRequest);
+
+    // When - 間違ったシンボルでキャンセルを試行
+    CancelOrderRequest cancelRequest = new CancelOrderRequest();
+    cancelRequest.setClOrdID(newOrderResponse.getClOrdID());
+    cancelRequest.setSymbol("ETHJPY"); // 間違ったシンボル
+
+    // Then
+    RuntimeException exception =
+        assertThrows(
+            RuntimeException.class,
+            () -> {
+              orderService.cancelOrder(username, cancelRequest);
+            });
+
+    assertThat(exception.getMessage()).contains("Symbol mismatch");
   }
 }

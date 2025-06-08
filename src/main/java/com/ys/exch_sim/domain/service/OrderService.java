@@ -1,5 +1,6 @@
 package com.ys.exch_sim.domain.service;
 
+import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.market_board.MarketBoard;
@@ -28,6 +29,9 @@ public class OrderService {
   // シンボルごとのMarketBoardを管理
   private final ConcurrentHashMap<String, MarketBoard> marketBoards = new ConcurrentHashMap<>();
 
+  // 注文IDからOrderへのマッピングを管理（キャンセル用）
+  private final ConcurrentHashMap<String, Order> orderMap = new ConcurrentHashMap<>();
+
   public OrderResponse processNewOrder(String username, NewOrderRequest request) {
     log.info("Processing new order for user: {} with request: {}", username, request);
 
@@ -41,6 +45,9 @@ public class OrderService {
       // 注文を処理
       List<Execution> executions = marketBoard.newOrder(order);
 
+      // 注文をマップに保存（キャンセル用）
+      orderMap.put(order.getClOrdID().getId(), order);
+
       // レスポンスを作成
       OrderResponse response = convertToResponse(order, executions);
 
@@ -53,6 +60,55 @@ public class OrderService {
     } catch (Exception e) {
       log.error("Error processing order for user: " + username, e);
       throw new RuntimeException("Error processing order: " + e.getMessage());
+    }
+  }
+
+  public OrderResponse cancelOrder(String username, CancelOrderRequest request) {
+    log.info("Processing cancel order for user: {} with request: {}", username, request);
+
+    try {
+      // 注文を検索
+      Order order = orderMap.get(request.getClOrdID());
+      if (order == null) {
+        log.warn("Order not found for clOrdID: {}", request.getClOrdID());
+        throw new RuntimeException("Order not found: " + request.getClOrdID());
+      }
+
+      // シンボルの確認
+      if (!order.getSymbol().getName().equals(request.getSymbol())) {
+        log.warn(
+            "Symbol mismatch for clOrdID: {} expected: {} actual: {}",
+            request.getClOrdID(),
+            request.getSymbol(),
+            order.getSymbol().getName());
+        throw new RuntimeException("Symbol mismatch for order: " + request.getClOrdID());
+      }
+
+      // MarketBoardを取得
+      MarketBoard marketBoard = marketBoards.get(request.getSymbol());
+      if (marketBoard == null) {
+        log.warn("MarketBoard not found for symbol: {}", request.getSymbol());
+        throw new RuntimeException("MarketBoard not found for symbol: " + request.getSymbol());
+      }
+
+      // 注文をキャンセル
+      List<Execution> executions = marketBoard.cancelOrder(order);
+
+      // 注文をマップから削除
+      orderMap.remove(request.getClOrdID());
+
+      // レスポンスを作成
+      OrderResponse response = convertToResponse(order, executions);
+
+      log.info(
+          "Order cancelled successfully for user: {} with clOrdID: {}",
+          username,
+          order.getClOrdID().getId());
+      return response;
+
+    } catch (Exception e) {
+      log.error("Error cancelling order for user: " + username, e);
+      throw new RuntimeException("Error cancelling order: " + e.getMessage());
     }
   }
 
