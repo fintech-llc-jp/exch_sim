@@ -18,7 +18,8 @@ class OrderServiceTest {
 
   @BeforeEach
   void setUp() {
-    orderService = new OrderService();
+    ExecutionQueueService executionQueueService = new ExecutionQueueService();
+    orderService = new OrderService(executionQueueService);
   }
 
   @Test

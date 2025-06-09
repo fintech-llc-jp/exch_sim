@@ -1,6 +1,7 @@
 package com.ys.exch_sim.domain.service;
 
 import com.ys.exch_sim.domain.dto.CancelOrderRequest;
+import com.ys.exch_sim.domain.dto.MarketBoardResponse;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.market_board.MarketBoard;
@@ -14,7 +15,9 @@ import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.message.field.Timestamp;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
+import com.ys.exch_sim.infra.Pair;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,6 +35,13 @@ public class OrderService {
   // 注文IDからOrderへのマッピングを管理（キャンセル用）
   private final ConcurrentHashMap<String, Order> orderMap = new ConcurrentHashMap<>();
 
+  // 約定結果キューサービス
+  private final ExecutionQueueService executionQueueService;
+
+  public OrderService(ExecutionQueueService executionQueueService) {
+    this.executionQueueService = executionQueueService;
+  }
+
   public OrderResponse processNewOrder(String username, NewOrderRequest request) {
     log.info("Processing new order for user: {} with request: {}", username, request);
 
@@ -44,6 +54,9 @@ public class OrderService {
 
       // 注文を処理
       List<Execution> executions = marketBoard.newOrder(order);
+
+      // 約定結果をキューに追加（相手方ユーザーにも通知するため）
+      processExecutionsForQueue(executions);
 
       // 注文をマップに保存（キャンセル用）
       orderMap.put(order.getClOrdID().getId(), order);
@@ -94,6 +107,9 @@ public class OrderService {
       // 注文をキャンセル
       List<Execution> executions = marketBoard.cancelOrder(order);
 
+      // 約定結果をキューに追加
+      processExecutionsForQueue(executions);
+
       // 注文をマップから削除
       orderMap.remove(request.getClOrdID());
 
@@ -125,7 +141,7 @@ public class OrderService {
     OrdType ordType = OrdType.valueOf(request.getOrdType().toUpperCase());
     Tif tif = Tif.valueOf(request.getTif().toUpperCase());
 
-    return new Order(symbol, px, qty, side, clOrdID, timestamp, ordType, tif);
+    return new Order(symbol, px, qty, side, clOrdID, timestamp, ordType, tif, username);
   }
 
   private MarketBoard getOrCreateMarketBoard(String symbolName) {
@@ -174,5 +190,59 @@ public class OrderService {
   private Double getPxValue(Px px) {
     // Symbolから精度情報を取得して実際の価格に変換
     return (double) px.getLongPx() / px.getSymbol().getPxMultiplier();
+  }
+
+  private void processExecutionsForQueue(List<Execution> executions) {
+    for (Execution execution : executions) {
+      String username = execution.getOrder().getUsername();
+      if (username != null) {
+        executionQueueService.addExecution(username, execution);
+      }
+    }
+  }
+
+  public MarketBoardResponse getMarketBoard(String symbolName, int depth) {
+    log.info("Getting market board for symbol: {} with depth: {}", symbolName, depth);
+
+    MarketBoard marketBoard = marketBoards.get(symbolName);
+    if (marketBoard == null) {
+      log.warn("MarketBoard not found for symbol: {}", symbolName);
+      // 空の板情報を返す
+      return new MarketBoardResponse(symbolName, new ArrayList<>(), new ArrayList<>());
+    }
+
+    // 指定された深度まで板情報を取得
+    List<MarketBoardResponse.PriceLevel> bids = new ArrayList<>();
+    List<MarketBoardResponse.PriceLevel> asks = new ArrayList<>();
+
+    // ビッド（買い注文）を取得
+    for (int i = 0; i < depth; i++) {
+      Pair<Long, Long> bid = marketBoard.getBid(i);
+      if (bid.getLeft() != 0L && bid.getRight() != 0L) {
+        Symbol symbol = new Symbol(symbolName, 100, 1); // 精度情報
+        double price = (double) bid.getLeft() / symbol.getPxMultiplier();
+        long quantity = bid.getRight() / symbol.getQtyMultiplier();
+        bids.add(new MarketBoardResponse.PriceLevel(price, quantity));
+      } else {
+        break; // これ以上の板情報がない場合は終了
+      }
+    }
+
+    // アスク（売り注文）を取得
+    for (int i = 0; i < depth; i++) {
+      Pair<Long, Long> ask = marketBoard.getAsk(i);
+      if (ask.getLeft() != 0L && ask.getRight() != 0L) {
+        Symbol symbol = new Symbol(symbolName, 100, 1); // 精度情報
+        double price = (double) ask.getLeft() / symbol.getPxMultiplier();
+        long quantity = ask.getRight() / symbol.getQtyMultiplier();
+        asks.add(new MarketBoardResponse.PriceLevel(price, quantity));
+      } else {
+        break; // これ以上の板情報がない場合は終了
+      }
+    }
+
+    log.info(
+        "Retrieved market board for {}: {} bids, {} asks", symbolName, bids.size(), asks.size());
+    return new MarketBoardResponse(symbolName, bids, asks);
   }
 }

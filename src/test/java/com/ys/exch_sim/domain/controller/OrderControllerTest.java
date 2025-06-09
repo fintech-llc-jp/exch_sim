@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
+import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.domain.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,8 @@ class OrderControllerTest {
 
   @BeforeEach
   void setUp() {
-    orderService = new OrderService();
+    ExecutionQueueService executionQueueService = new ExecutionQueueService();
+    orderService = new OrderService(executionQueueService);
     orderController = new OrderController(orderService, null);
   }
 
