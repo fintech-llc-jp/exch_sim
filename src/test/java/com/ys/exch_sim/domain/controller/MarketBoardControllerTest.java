@@ -3,11 +3,17 @@ package com.ys.exch_sim.domain.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.MarketBoardResponse;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
+import com.ys.exch_sim.domain.position.PositionManager;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.domain.service.OrderService;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,11 +24,30 @@ class MarketBoardControllerTest {
 
   private OrderService orderService;
   private MarketBoardController marketBoardController;
+  private InstrumentConfig instrumentConfig;
 
   @BeforeEach
   void setUp() {
     ExecutionQueueService executionQueueService = new ExecutionQueueService();
-    orderService = new OrderService(executionQueueService);
+    PositionManager positionManager = new PositionManager();
+    
+    // InstrumentConfigをモック化
+    instrumentConfig = mock(InstrumentConfig.class);
+    
+    // 有効な商品の設定
+    Map<String, InstrumentConfig.InstrumentDefinition> instruments = new HashMap<>();
+    
+    InstrumentConfig.InstrumentDefinition btcjpy = new InstrumentConfig.InstrumentDefinition();
+    btcjpy.setName("Bitcoin/Japanese Yen");
+    btcjpy.setPriceMultiplier(100);
+    btcjpy.setQtyMultiplier(1);
+    instruments.put("BTCJPY", btcjpy);
+    
+    when(instrumentConfig.getInstruments()).thenReturn(instruments);
+    when(instrumentConfig.isValidSymbol("BTCJPY")).thenReturn(true);
+    when(instrumentConfig.getInstrument("BTCJPY")).thenReturn(btcjpy);
+    
+    orderService = new OrderService(executionQueueService, instrumentConfig, positionManager);
     marketBoardController = new MarketBoardController(orderService);
   }
 

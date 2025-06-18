@@ -3,10 +3,16 @@ package com.ys.exch_sim.domain.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
+import com.ys.exch_sim.domain.position.PositionManager;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,11 +21,47 @@ import org.springframework.boot.test.context.SpringBootTest;
 class OrderServiceTest {
 
   private OrderService orderService;
+  private InstrumentConfig instrumentConfig;
 
   @BeforeEach
   void setUp() {
     ExecutionQueueService executionQueueService = new ExecutionQueueService();
-    orderService = new OrderService(executionQueueService);
+    PositionManager positionManager = new PositionManager();
+    
+    // InstrumentConfigをモック化
+    instrumentConfig = mock(InstrumentConfig.class);
+    
+    // 有効な商品の設定
+    Map<String, InstrumentConfig.InstrumentDefinition> instruments = new HashMap<>();
+    
+    InstrumentConfig.InstrumentDefinition btcjpy = new InstrumentConfig.InstrumentDefinition();
+    btcjpy.setName("Bitcoin/Japanese Yen");
+    btcjpy.setPriceMultiplier(100);
+    btcjpy.setQtyMultiplier(1);
+    instruments.put("BTCJPY", btcjpy);
+    
+    InstrumentConfig.InstrumentDefinition ethjpy = new InstrumentConfig.InstrumentDefinition();
+    ethjpy.setName("Ethereum/Japanese Yen");
+    ethjpy.setPriceMultiplier(100);
+    ethjpy.setQtyMultiplier(1);
+    instruments.put("ETHJPY", ethjpy);
+    
+    InstrumentConfig.InstrumentDefinition usdjpy = new InstrumentConfig.InstrumentDefinition();
+    usdjpy.setName("US Dollar/Japanese Yen");
+    usdjpy.setPriceMultiplier(100);
+    usdjpy.setQtyMultiplier(1);
+    instruments.put("USDJPY", usdjpy);
+    
+    when(instrumentConfig.getInstruments()).thenReturn(instruments);
+    when(instrumentConfig.isValidSymbol("BTCJPY")).thenReturn(true);
+    when(instrumentConfig.isValidSymbol("ETHJPY")).thenReturn(true);
+    when(instrumentConfig.isValidSymbol("USDJPY")).thenReturn(true);
+    when(instrumentConfig.isValidSymbol("INVALID")).thenReturn(false);
+    when(instrumentConfig.getInstrument("BTCJPY")).thenReturn(btcjpy);
+    when(instrumentConfig.getInstrument("ETHJPY")).thenReturn(ethjpy);
+    when(instrumentConfig.getInstrument("USDJPY")).thenReturn(usdjpy);
+    
+    orderService = new OrderService(executionQueueService, instrumentConfig, positionManager);
   }
 
   @Test
@@ -247,5 +289,47 @@ class OrderServiceTest {
             });
 
     assertThat(exception.getMessage()).contains("Symbol mismatch");
+  }
+
+  @Test
+  void testInvalidSymbolRejection() {
+    // Given
+    String username = "testuser";
+    NewOrderRequest request = new NewOrderRequest();
+    request.setSymbol("INVALID");
+    request.setPrice(100.0);
+    request.setQuantity(10L);
+    request.setSide("BUY");
+    request.setOrdType("LIMIT");
+    request.setTif("GTC");
+
+    // When & Then
+    RuntimeException exception =
+        assertThrows(
+            RuntimeException.class,
+            () -> {
+              orderService.processNewOrder(username, request);
+            });
+
+    assertThat(exception.getMessage()).contains("Invalid symbol: INVALID");
+  }
+
+  @Test
+  void testInvalidSymbolRejectionOnCancel() {
+    // Given
+    String username = "testuser";
+    CancelOrderRequest cancelRequest = new CancelOrderRequest();
+    cancelRequest.setClOrdID("some-order-id");
+    cancelRequest.setSymbol("INVALID");
+
+    // When & Then
+    RuntimeException exception =
+        assertThrows(
+            RuntimeException.class,
+            () -> {
+              orderService.cancelOrder(username, cancelRequest);
+            });
+
+    assertThat(exception.getMessage()).contains("Invalid symbol: INVALID");
   }
 }

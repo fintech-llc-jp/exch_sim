@@ -1,5 +1,6 @@
 package com.ys.exch_sim.domain.service;
 
+import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.MarketBoardResponse;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
@@ -15,6 +16,7 @@ import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.message.field.Timestamp;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
+import com.ys.exch_sim.domain.position.PositionManager;
 import com.ys.exch_sim.infra.Pair;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -38,14 +40,28 @@ public class OrderService {
   // 約定結果キューサービス
   private final ExecutionQueueService executionQueueService;
 
-  public OrderService(ExecutionQueueService executionQueueService) {
+  // 商品設定
+  private final InstrumentConfig instrumentConfig;
+
+  // ポジション管理
+  private final PositionManager positionManager;
+
+  public OrderService(ExecutionQueueService executionQueueService, InstrumentConfig instrumentConfig, PositionManager positionManager) {
     this.executionQueueService = executionQueueService;
+    this.instrumentConfig = instrumentConfig;
+    this.positionManager = positionManager;
   }
 
   public OrderResponse processNewOrder(String username, NewOrderRequest request) {
     log.info("Processing new order for user: {} with request: {}", username, request);
 
     try {
+      // 商品の存在チェック
+      if (!instrumentConfig.isValidSymbol(request.getSymbol())) {
+        log.warn("Invalid symbol: {}", request.getSymbol());
+        throw new RuntimeException("Invalid symbol: " + request.getSymbol());
+      }
+
       // 注文の作成
       Order order = createOrder(username, request);
 
@@ -80,6 +96,11 @@ public class OrderService {
     log.info("Processing cancel order for user: {} with request: {}", username, request);
 
     try {
+      // 商品の存在チェック
+      if (!instrumentConfig.isValidSymbol(request.getSymbol())) {
+        log.warn("Invalid symbol: {}", request.getSymbol());
+        throw new RuntimeException("Invalid symbol: " + request.getSymbol());
+      }
       // 注文を検索
       Order order = orderMap.get(request.getClOrdID());
       if (order == null) {
@@ -129,8 +150,15 @@ public class OrderService {
   }
 
   private Order createOrder(String username, NewOrderRequest request) {
-    // シンボルオブジェクトの作成（価格と数量の精度は固定値）
-    Symbol symbol = new Symbol(request.getSymbol(), 100, 1);
+    // 商品設定から精度情報を取得
+    InstrumentConfig.InstrumentDefinition instrument = instrumentConfig.getInstrument(request.getSymbol());
+    
+    // シンボルオブジェクトの作成（設定値から精度を取得）
+    Symbol symbol = new Symbol(
+        request.getSymbol().toUpperCase(), 
+        instrument.getPriceMultiplier(), 
+        instrument.getQtyMultiplier()
+    );
 
     // 各フィールドの作成
     Px px = new Px(symbol, request.getPrice());
@@ -146,10 +174,11 @@ public class OrderService {
 
   private MarketBoard getOrCreateMarketBoard(String symbolName) {
     return marketBoards.computeIfAbsent(
-        symbolName,
+        symbolName.toUpperCase(),
         k -> {
-          Symbol symbol = new Symbol(symbolName, 100, 1);
-          log.info("Creating new MarketBoard for symbol: {}", symbolName);
+          InstrumentConfig.InstrumentDefinition instrument = instrumentConfig.getInstrument(symbolName);
+          Symbol symbol = new Symbol(k, instrument.getPriceMultiplier(), instrument.getQtyMultiplier());
+          log.info("Creating new MarketBoard for symbol: {}", k);
           return new MarketBoard(symbol);
         });
   }
@@ -197,6 +226,9 @@ public class OrderService {
       String username = execution.getOrder().getUsername();
       if (username != null) {
         executionQueueService.addExecution(username, execution);
+        
+        // ポジション管理にも約定情報を送信
+        positionManager.processExecution(execution);
       }
     }
   }
@@ -204,7 +236,13 @@ public class OrderService {
   public MarketBoardResponse getMarketBoard(String symbolName, int depth) {
     log.info("Getting market board for symbol: {} with depth: {}", symbolName, depth);
 
-    MarketBoard marketBoard = marketBoards.get(symbolName);
+    // 商品の存在チェック
+    if (!instrumentConfig.isValidSymbol(symbolName)) {
+      log.warn("Invalid symbol: {}", symbolName);
+      throw new RuntimeException("Invalid symbol: " + symbolName);
+    }
+
+    MarketBoard marketBoard = marketBoards.get(symbolName.toUpperCase());
     if (marketBoard == null) {
       log.warn("MarketBoard not found for symbol: {}", symbolName);
       // 空の板情報を返す
@@ -215,13 +253,15 @@ public class OrderService {
     List<MarketBoardResponse.PriceLevel> bids = new ArrayList<>();
     List<MarketBoardResponse.PriceLevel> asks = new ArrayList<>();
 
+    // 商品設定から精度情報を取得
+    InstrumentConfig.InstrumentDefinition instrument = instrumentConfig.getInstrument(symbolName);
+
     // ビッド（買い注文）を取得
     for (int i = 0; i < depth; i++) {
       Pair<Long, Long> bid = marketBoard.getBid(i);
       if (bid.getLeft() != 0L && bid.getRight() != 0L) {
-        Symbol symbol = new Symbol(symbolName, 100, 1); // 精度情報
-        double price = (double) bid.getLeft() / symbol.getPxMultiplier();
-        long quantity = bid.getRight() / symbol.getQtyMultiplier();
+        double price = (double) bid.getLeft() / instrument.getPriceMultiplier();
+        long quantity = bid.getRight() / instrument.getQtyMultiplier();
         bids.add(new MarketBoardResponse.PriceLevel(price, quantity));
       } else {
         break; // これ以上の板情報がない場合は終了
@@ -232,9 +272,8 @@ public class OrderService {
     for (int i = 0; i < depth; i++) {
       Pair<Long, Long> ask = marketBoard.getAsk(i);
       if (ask.getLeft() != 0L && ask.getRight() != 0L) {
-        Symbol symbol = new Symbol(symbolName, 100, 1); // 精度情報
-        double price = (double) ask.getLeft() / symbol.getPxMultiplier();
-        long quantity = ask.getRight() / symbol.getQtyMultiplier();
+        double price = (double) ask.getLeft() / instrument.getPriceMultiplier();
+        long quantity = ask.getRight() / instrument.getQtyMultiplier();
         asks.add(new MarketBoardResponse.PriceLevel(price, quantity));
       } else {
         break; // これ以上の板情報がない場合は終了

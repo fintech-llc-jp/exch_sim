@@ -62,7 +62,7 @@ public class ExecutionPollingController {
               .map(
                   exec ->
                       new ExecutionPollingResponse.ExecutionDto(
-                          exec.getExecID(),
+                          exec.getExecID().getId(),
                           exec.getOrder().getClOrdID().getId(),
                           exec.getOrder().getSymbol().getName(),
                           exec.getExecStatus().toString(),

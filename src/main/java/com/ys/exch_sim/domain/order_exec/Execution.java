@@ -1,5 +1,6 @@
 package com.ys.exch_sim.domain.order_exec;
 
+import com.ys.exch_sim.domain.message.field.ExecID;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
@@ -13,7 +14,7 @@ public class Execution {
   private Px lastPx;
   private Qty lastQty;
   private String counterPartyUsername;
-  private String execID;
+  private ExecID execID;
 
   public Execution(Order order, ExecStatus execStatus, Px lastPx, Qty lastQty) {
     this.order = order;
@@ -21,7 +22,7 @@ public class Execution {
     this.lastPx = lastPx;
     this.lastQty = lastQty;
     this.counterPartyUsername = null;
-    this.execID = UUID.randomUUID().toString();
+    this.execID = new ExecID(UUID.randomUUID().toString());
   }
 
   public Execution(
@@ -31,6 +32,6 @@ public class Execution {
     this.lastPx = lastPx;
     this.lastQty = lastQty;
     this.counterPartyUsername = counterPartyUsername;
-    this.execID = UUID.randomUUID().toString();
+    this.execID = new ExecID(UUID.randomUUID().toString());
   }
 }
