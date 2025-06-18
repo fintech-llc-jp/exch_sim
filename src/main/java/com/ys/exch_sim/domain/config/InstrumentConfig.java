@@ -17,6 +17,15 @@ public class InstrumentConfig {
         private String name;
         private long priceMultiplier;
         private long qtyMultiplier;
+        private String type; // Cash or FX
+        
+        public boolean isCash() {
+            return "Cash".equalsIgnoreCase(type);
+        }
+        
+        public boolean isFX() {
+            return "FX".equalsIgnoreCase(type);
+        }
     }
 
     public boolean isValidSymbol(String symbol) {

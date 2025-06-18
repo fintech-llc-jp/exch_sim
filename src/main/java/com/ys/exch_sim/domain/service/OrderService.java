@@ -16,6 +16,7 @@ import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.message.field.Timestamp;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
+import com.ys.exch_sim.domain.position.Position;
 import com.ys.exch_sim.domain.position.PositionManager;
 import com.ys.exch_sim.infra.Pair;
 import java.time.LocalDateTime;
@@ -60,6 +61,20 @@ public class OrderService {
       if (!instrumentConfig.isValidSymbol(request.getSymbol())) {
         log.warn("Invalid symbol: {}", request.getSymbol());
         throw new RuntimeException("Invalid symbol: " + request.getSymbol());
+      }
+
+      // Cash商品の空売りチェック
+      InstrumentConfig.InstrumentDefinition instrument = instrumentConfig.getInstrument(request.getSymbol());
+      if (instrument.isCash() && "SELL".equalsIgnoreCase(request.getSide())) {
+        // Cash商品の場合、売り注文前に十分なポジションがあるかチェック
+        Position currentPosition = positionManager.getPosition(username, request.getSymbol());
+        long availableQty = currentPosition != null ? currentPosition.getNetQty() : 0L;
+        
+        if (availableQty < request.getQuantity()) {
+          log.warn("Insufficient position for cash sale. User: {}, Symbol: {}, Available: {}, Requested: {}", 
+                  username, request.getSymbol(), availableQty, request.getQuantity());
+          throw new RuntimeException("Insufficient position for cash sale. Available: " + availableQty + ", Requested: " + request.getQuantity());
+        }
       }
 
       // 注文の作成
