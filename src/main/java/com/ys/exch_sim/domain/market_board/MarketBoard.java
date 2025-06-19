@@ -73,7 +73,7 @@ public class MarketBoard {
     this.symbol = symbol;
   }
 
-  void addOrderToBoard(Order order) {
+  private void addOrderToBoard(Order order) {
     Long orderPx = order.getOrderPx().getLongPx();
     Long orderQty = order.getOrderQty().getLongQty();
     if (order.getSide() == Side.BUY) {
