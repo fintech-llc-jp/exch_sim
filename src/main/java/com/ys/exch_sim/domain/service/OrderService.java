@@ -7,6 +7,7 @@ import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.market_board.MarketBoard;
 import com.ys.exch_sim.domain.message.field.ClOrdID;
+import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.message.field.OrdType;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
@@ -47,7 +48,10 @@ public class OrderService {
   // ポジション管理
   private final PositionManager positionManager;
 
-  public OrderService(ExecutionQueueService executionQueueService, InstrumentConfig instrumentConfig, PositionManager positionManager) {
+  public OrderService(
+      ExecutionQueueService executionQueueService,
+      InstrumentConfig instrumentConfig,
+      PositionManager positionManager) {
     this.executionQueueService = executionQueueService;
     this.instrumentConfig = instrumentConfig;
     this.positionManager = positionManager;
@@ -64,16 +68,26 @@ public class OrderService {
       }
 
       // Cash商品の空売りチェック
-      InstrumentConfig.InstrumentDefinition instrument = instrumentConfig.getInstrument(request.getSymbol());
+      InstrumentConfig.InstrumentDefinition instrument =
+          instrumentConfig.getInstrument(request.getSymbol());
       if (instrument.isCash() && "SELL".equalsIgnoreCase(request.getSide())) {
         // Cash商品の場合、売り注文前に十分なポジションがあるかチェック
         Position currentPosition = positionManager.getPosition(username, request.getSymbol());
         long availableQty = currentPosition != null ? currentPosition.getNetQty() : 0L;
-        
+
         if (availableQty < request.getQuantity()) {
-          log.warn("Insufficient position for cash sale. User: {}, Symbol: {}, Available: {}, Requested: {}", 
-                  username, request.getSymbol(), availableQty, request.getQuantity());
-          throw new RuntimeException("Insufficient position for cash sale. Available: " + availableQty + ", Requested: " + request.getQuantity());
+          log.warn(
+              "Insufficient position for cash sale. User: {}, Symbol: {}, Available: {}, Requested:"
+                  + " {}",
+              username,
+              request.getSymbol(),
+              availableQty,
+              request.getQuantity());
+          throw new RuntimeException(
+              "Insufficient position for cash sale. Available: "
+                  + availableQty
+                  + ", Requested: "
+                  + request.getQuantity());
         }
       }
 
@@ -166,18 +180,45 @@ public class OrderService {
 
   private Order createOrder(String username, NewOrderRequest request) {
     // 商品設定から精度情報を取得
-    InstrumentConfig.InstrumentDefinition instrument = instrumentConfig.getInstrument(request.getSymbol());
-    
+    InstrumentConfig.InstrumentDefinition instrument =
+        instrumentConfig.getInstrument(request.getSymbol());
+
+    log.info(
+        "Creating order for user: {} symbol: {} with instrument config: priceMultiplier={},"
+            + " qtyMultiplier={}",
+        username,
+        request.getSymbol(),
+        instrument.getPriceMultiplier(),
+        instrument.getQtyMultiplier());
+    log.info(
+        "Raw request values: price={}, quantity={}", request.getPrice(), request.getQuantity());
+
     // シンボルオブジェクトの作成（設定値から精度を取得）
-    Symbol symbol = new Symbol(
-        request.getSymbol().toUpperCase(), 
-        instrument.getPriceMultiplier(), 
-        instrument.getQtyMultiplier()
-    );
+    Symbol symbol =
+        new Symbol(
+            request.getSymbol().toUpperCase(),
+            instrument.getPriceMultiplier(),
+            instrument.getQtyMultiplier());
 
     // 各フィールドの作成
     Px px = new Px(symbol, request.getPrice());
     Qty qty = new Qty(symbol, request.getQuantity());
+
+    log.info(
+        "Calculated values: px.getLongPx()={}, qty.getLongQty()={}",
+        px.getLongPx(),
+        qty.getLongQty());
+    log.info(
+        "Price calculation: {} * {} = {}",
+        request.getPrice(),
+        instrument.getPriceMultiplier(),
+        px.getLongPx());
+    log.info(
+        "Quantity calculation: {} * {} = {}",
+        request.getQuantity(),
+        instrument.getQtyMultiplier(),
+        qty.getLongQty());
+
     Side side = Side.valueOf(request.getSide().toUpperCase());
     ClOrdID clOrdID = new ClOrdID(UUID.randomUUID().toString());
     Timestamp timestamp = new Timestamp(LocalDateTime.now());
@@ -191,8 +232,10 @@ public class OrderService {
     return marketBoards.computeIfAbsent(
         symbolName.toUpperCase(),
         k -> {
-          InstrumentConfig.InstrumentDefinition instrument = instrumentConfig.getInstrument(symbolName);
-          Symbol symbol = new Symbol(k, instrument.getPriceMultiplier(), instrument.getQtyMultiplier());
+          InstrumentConfig.InstrumentDefinition instrument =
+              instrumentConfig.getInstrument(symbolName);
+          Symbol symbol =
+              new Symbol(k, instrument.getPriceMultiplier(), instrument.getQtyMultiplier());
           log.info("Creating new MarketBoard for symbol: {}", k);
           return new MarketBoard(symbol);
         });
@@ -241,9 +284,11 @@ public class OrderService {
       String username = execution.getOrder().getUsername();
       if (username != null) {
         executionQueueService.addExecution(username, execution);
-        
-        // ポジション管理にも約定情報を送信
-        positionManager.processExecution(execution);
+
+        if (execution.getExecStatus() == ExecStatus.PARTIAL_FILL
+            || execution.getExecStatus() == ExecStatus.FILLED) {
+          positionManager.processExecution(execution);
+        }
       }
     }
   }
