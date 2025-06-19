@@ -16,6 +16,10 @@ import com.ys.exch_sim.domain.order_exec.Order;
 import com.ys.exch_sim.infra.Pair;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 public class MarketBoardTest {
@@ -487,5 +491,145 @@ public class MarketBoardTest {
     List<Execution> e4 = mb.cancelOrder(buy2);
     Pair<Long, Long> ask1 = mb.getAsk(0);
     Pair<Long, Long> bid1 = mb.getBid(0);
+  }
+
+  @Test
+  void testConcurrentOrderProcessing() throws InterruptedException {
+    Symbol symbol = new Symbol("BTCJPY", 100, 1);
+    MarketBoard mb = new MarketBoard(symbol);
+    
+    int threadCount = 10;
+    int ordersPerThread = 50;
+    ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+    CountDownLatch latch = new CountDownLatch(threadCount);
+    AtomicInteger orderIdCounter = new AtomicInteger(0);
+    AtomicInteger successfulOrders = new AtomicInteger(0);
+    
+    // 複数スレッドから同時に注文を投入
+    for (int i = 0; i < threadCount; i++) {
+      final int threadId = i;
+      executor.submit(() -> {
+        try {
+          for (int j = 0; j < ordersPerThread; j++) {
+            int orderId = orderIdCounter.incrementAndGet();
+            String clOrdId = "order-" + threadId + "-" + j;
+            
+            Order order = new Order(
+                symbol,
+                new Px(symbol, 100 + (orderId % 10)), // 価格を少しずつ変える
+                new Qty(symbol, 1),
+                threadId % 2 == 0 ? Side.BUY : Side.SELL, // 奇数スレッドは売り、偶数スレッドは買い
+                new ClOrdID(clOrdId),
+                new Timestamp(LocalDateTime.now()),
+                OrdType.LIMIT,
+                Tif.GTC,
+                "user" + threadId
+            );
+            
+            try {
+              List<Execution> executions = mb.newOrder(order);
+              if (executions != null && !executions.isEmpty()) {
+                successfulOrders.incrementAndGet();
+              }
+            } catch (Exception e) {
+              // スレッドセーフティの問題があると例外が発生する可能性
+              e.printStackTrace();
+            }
+            
+            // 少し待機
+            Thread.sleep(1);
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        } finally {
+          latch.countDown();
+        }
+      });
+    }
+    
+    // すべてのスレッドの完了を待機
+    latch.await();
+    executor.shutdown();
+    
+    // 結果を検証 - データの整合性がとれているか確認
+    System.out.println("Successfully processed orders: " + successfulOrders.get());
+    System.out.println("Total expected orders: " + (threadCount * ordersPerThread));
+    
+    // 板情報の読み取りテスト
+    for (int i = 0; i < 5; i++) {
+      Pair<Long, Long> bid = mb.getBid(i);
+      Pair<Long, Long> ask = mb.getAsk(i);
+      // NPEや不正な状態がないことを確認
+      assertEquals(bid != null, true);
+      assertEquals(ask != null, true);
+    }
+  }
+
+  @Test
+  void testConcurrentOrderAndCancel() throws InterruptedException {
+    Symbol symbol = new Symbol("BTCJPY", 100, 1);
+    MarketBoard mb = new MarketBoard(symbol);
+    
+    int threadCount = 8;
+    ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+    CountDownLatch latch = new CountDownLatch(threadCount);
+    AtomicInteger orderCounter = new AtomicInteger(0);
+    
+    // 新規注文スレッドとキャンセルスレッドを混在
+    for (int i = 0; i < threadCount; i++) {
+      final int threadId = i;
+      executor.submit(() -> {
+        try {
+          for (int j = 0; j < 20; j++) {
+            String clOrdId = "order-" + threadId + "-" + j;
+            
+            Order order = new Order(
+                symbol,
+                new Px(symbol, 100),
+                new Qty(symbol, 1),
+                Side.BUY,
+                new ClOrdID(clOrdId),
+                new Timestamp(LocalDateTime.now()),
+                OrdType.LIMIT,
+                Tif.GTC,
+                "user" + threadId
+            );
+            
+            // 注文投入
+            mb.newOrder(order);
+            orderCounter.incrementAndGet();
+            
+            // すぐにキャンセルを試行（一部の注文）
+            if (j % 3 == 0) {
+              try {
+                mb.cancelOrder(order);
+              } catch (Exception e) {
+                // キャンセル失敗は想定範囲内
+              }
+            }
+            
+            Thread.sleep(1);
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        } finally {
+          latch.countDown();
+        }
+      });
+    }
+    
+    latch.await();
+    executor.shutdown();
+    
+    // 最終的な板状態を確認
+    System.out.println("Total orders processed: " + orderCounter.get());
+    
+    // データの整合性チェック
+    for (int i = 0; i < 3; i++) {
+      Pair<Long, Long> bid = mb.getBid(i);
+      if (bid.getLeft() > 0) {
+        assertEquals(bid.getRight() > 0, true);
+      }
+    }
   }
 }

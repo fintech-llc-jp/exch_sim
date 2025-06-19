@@ -45,7 +45,7 @@ public class MarketBoard {
 
   Map<ClOrdID, Order> orderMap = new HashMap<>();
 
-  public Pair<Long, Long> getAsk(long index) {
+  public synchronized Pair<Long, Long> getAsk(long index) {
     int cnt = 0;
     for (Map.Entry<Long, Long> ent : askEntryBoard.entrySet()) {
       if (cnt == index) {
@@ -56,7 +56,7 @@ public class MarketBoard {
     return new Pair<>(0L, 0L);
   }
 
-  public Pair<Long, Long> getBid(long index) {
+  public synchronized Pair<Long, Long> getBid(long index) {
     int cnt = 0;
     for (Map.Entry<Long, Long> ent : bidEntryBoard.entrySet()) {
       if (cnt == index) {
@@ -107,7 +107,7 @@ public class MarketBoard {
     }
   }
 
-  public List<Execution> cancelOrder(Order order) {
+  public synchronized List<Execution> cancelOrder(Order order) {
     List<Execution> executions = new ArrayList<Execution>();
     if (orderMap.get(order.getClOrdID()) == null) {
       Execution e = createReject(order);
@@ -143,7 +143,7 @@ public class MarketBoard {
     return executions;
   }
 
-  public List<Execution> newOrder(Order order) {
+  public synchronized List<Execution> newOrder(Order order) {
     List<Execution> executions = new ArrayList<Execution>();
     // TODO Duplicate check
     if (orderMap.get(order.getClOrdID()) != null) {
