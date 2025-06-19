@@ -1,6 +1,6 @@
 # Exchange Simulator (exch_sim)
 
-金融取引所システムのシミュレーターです。注文の発注・取消、約定処理、板情報取得などの機能を提供します。
+金融取引所システムのシミュレーターです。注文の発注・取消、約定処理、板情報取得、ポジション管理、MarketMaker機能などを提供します。
 
 ## 機能概要
 
@@ -8,307 +8,332 @@
 - **約定処理**: リアルタイムでの注文マッチング
 - **板情報取得**: 買い注文・売り注文の価格・数量情報
 - **約定結果配信**: ユーザー毎の約定結果ポーリング
+- **ポジション管理**: 取引履歴・損益計算・ポートフォリオ管理
+- **MarketMaker機能**: MARKET_MAKER専用の一括注文機能
+- **商品タイプ管理**: Cash（現物）とFX（先物）の取引制限
 - **JWT認証**: セキュアなAPIアクセス
+- **権限ベースアクセス制御**: 役割別API制限
 
 ## 技術スタック
 
 - **Java**: 17+
 - **Spring Boot**: 3.x
-- **Spring Security**: JWT認証
+- **Spring Security**: JWT認証・権限管理
+- **Spring AOP**: 権限チェック
 - **Gradle**: ビルドツール
 - **JUnit 5**: テストフレームワーク
+
+## 商品タイプと取引制限
+
+### Cash（現物）商品
+- **空売り禁止**: 保有ポジション以上の売り注文は拒否
+- **例**: G_BTCJPY, B_BTCJPY, TESTJPY
+
+### FX（先物）商品
+- **自由取引**: 売り・買いどちらからでも取引開始可能
+- **例**: G_FX_BTCJPY, B_FX_BTCJPY, G_ETHJPY
+
+## ユーザー権限
+
+### ROLE_USER
+- 基本的な注文・取引機能
+- ポジション確認・取引履歴
+
+### ROLE_MARKET_MAKER
+- USER権限に加えて
+- MarketMake一括注文機能
+- 既存注文の一括キャンセル・再投入
 
 ## API仕様
 
 ### 認証
 
-すべてのAPIエンドポイント（板情報取得を除く）はJWT認証が必要です。
+#### ユーザー登録
+**POST** `/api/auth/signup`
+
+```bash
+curl -X POST http://localhost:8080/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "trader001",
+    "password": "SecurePass123"
+  }'
+```
+
+#### ログイン
+**POST** `/api/auth/login`
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "trader001",
+    "password": "SecurePass123"
+  }'
+```
+
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9..."
+}
+```
 
 ### 1. 注文管理 API
 
 #### 新規注文
-
 **POST** `/api/orders/new`
-
-新しい注文を発注します。
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "symbol": "BTCJPY",
-  "price": 100.5,
-  "quantity": 10,
-  "side": "BUY",
-  "ordType": "LIMIT",
-  "tif": "GTC"
-}
-```
-
-**Request Fields:**
-- `symbol` (string, required): 取引ペア（例: BTCJPY, ETHJPY）
-- `price` (number, required): 注文価格
-- `quantity` (number, required): 注文数量
-- `side` (string, required): 売買区分
-  - `BUY`: 買い注文
-  - `SELL`: 売り注文
-- `ordType` (string, required): 注文タイプ
-  - `LIMIT`: 指値注文
-  - `MARKET`: 成行注文
-- `tif` (string, required): 注文有効期限
-  - `GTC`: Good Till Cancel（取消まで有効）
-  - `IOC`: Immediate Or Cancel（即時実行または取消）
-  - `FOK`: Fill Or Kill（全量実行または取消）
-
-**Response:**
-```json
-{
-  "clOrdID": "uuid-string",
-  "status": "NEW",
-  "executions": [
-    {
-      "execID": "exec-uuid",
-      "execStatus": "NEW",
-      "lastPx": 0.0,
-      "lastQty": 0
-    }
-  ]
-}
-```
-
-**Response Codes:**
-- `200 OK`: 注文処理成功
-- `400 Bad Request`: 無効な注文パラメータ
-- `401 Unauthorized`: 認証が必要
-- `404 Not Found`: ユーザーが見つからない
-- `500 Internal Server Error`: サーバーエラー
-
-#### 注文取消
-
-**POST** `/api/orders/cancel`
-
-既存の注文を取り消します。
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "clOrdID": "uuid-string",
-  "symbol": "BTCJPY"
-}
-```
-
-**Request Fields:**
-- `clOrdID` (string, required): 取消対象の注文ID
-- `symbol` (string, required): 取引ペア
-
-**Response:**
-```json
-{
-  "clOrdID": "uuid-string",
-  "status": "CANCELED",
-  "executions": [
-    {
-      "execID": "exec-uuid",
-      "execStatus": "CANCELED",
-      "lastPx": 100.5,
-      "lastQty": 10
-    }
-  ]
-}
-```
-
-### 2. 約定結果ポーリング API
-
-#### 約定結果取得
-
-**GET** `/api/executions/poll?maxCount=10`
-
-ユーザーの約定結果を取得します。
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-**Query Parameters:**
-- `maxCount` (integer, optional): 最大取得件数（デフォルト: 10）
-
-**Response:**
-```json
-{
-  "username": "user1",
-  "executionCount": 2,
-  "executions": [
-    {
-      "execID": "exec-uuid-1",
-      "clOrdID": "order-uuid-1",
-      "symbol": "BTCJPY",
-      "execStatus": "FILLED",
-      "lastPx": 100.5,
-      "lastQty": 10,
-      "counterPartyUsername": "user2",
-      "side": "BUY"
-    },
-    {
-      "execID": "exec-uuid-2",
-      "clOrdID": "order-uuid-2",
-      "symbol": "BTCJPY",
-      "execStatus": "PARTIAL_FILL",
-      "lastPx": 100.0,
-      "lastQty": 5,
-      "counterPartyUsername": "user3",
-      "side": "SELL"
-    }
-  ]
-}
-```
-
-**Response Codes:**
-- `200 OK`: 取得成功
-- `401 Unauthorized`: 認証が必要
-- `404 Not Found`: ユーザーが見つからない
-- `500 Internal Server Error`: サーバーエラー
-
-#### 約定結果キューサイズ取得
-
-**GET** `/api/executions/queue-size`
-
-ユーザーの約定結果キューの件数を取得します。
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-**Response:**
-```json
-{
-  "username": "user1",
-  "queueSize": 3
-}
-```
-
-### 3. 板情報取得 API
-
-#### 板情報取得
-
-**GET** `/api/market/board/{symbol}?depth=10`
-
-指定された取引ペアの板情報を取得します。
-
-**Path Parameters:**
-- `symbol` (string, required): 取引ペア（例: BTCJPY）
-
-**Query Parameters:**
-- `depth` (integer, optional): 板の深度（1-100、デフォルト: 10）
-
-**Response:**
-```json
-{
-  "symbol": "BTCJPY",
-  "bids": [
-    {
-      "price": 100.0,
-      "quantity": 10
-    },
-    {
-      "price": 99.5,
-      "quantity": 15
-    }
-  ],
-  "asks": [
-    {
-      "price": 100.5,
-      "quantity": 8
-    },
-    {
-      "price": 101.0,
-      "quantity": 12
-    }
-  ]
-}
-```
-
-**Response Fields:**
-- `symbol`: 取引ペア
-- `bids`: 買い注文リスト（価格降順）
-- `asks`: 売り注文リスト（価格昇順）
-- `price`: 価格
-- `quantity`: 数量
-
-**Response Codes:**
-- `200 OK`: 取得成功
-- `400 Bad Request`: 無効なパラメータ
-- `500 Internal Server Error`: サーバーエラー
-
-#### 簡易板情報取得
-
-**GET** `/api/market/board/{symbol}/simple`
-
-指定された取引ペアの簡易板情報（深度5）を取得します。
-
-**Path Parameters:**
-- `symbol` (string, required): 取引ペア
-
-**Response:**
-板情報取得APIと同じ形式で、深度5の情報を返します。
-
-## 使用例
-
-### 1. 買い注文の発注
 
 ```bash
 curl -X POST http://localhost:8080/api/orders/new \
   -H "Authorization: Bearer <JWT_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "symbol": "BTCJPY",
-    "price": 100.0,
-    "quantity": 10,
+    "symbol": "G_FX_BTCJPY",
+    "price": 5000000,
+    "quantity": 1,
     "side": "BUY",
     "ordType": "LIMIT",
     "tif": "GTC"
   }'
 ```
 
-### 2. 約定結果の確認
+**Request Fields:**
+- `symbol` (string, required): 取引ペア
+- `price` (number, required): 注文価格
+- `quantity` (number, required): 注文数量
+- `side` (string, required): 売買区分（BUY/SELL）
+- `ordType` (string, required): 注文タイプ（LIMIT/MARKET）
+- `tif` (string, required): 注文有効期限（GTC/IOC/FOK）
+
+**Cash商品の制限:**
+- 売り注文時は保有ポジションをチェック
+- 不足時は`Insufficient position for cash sale`エラー
+
+#### 注文取消
+**POST** `/api/orders/cancel`
+
+```bash
+curl -X POST http://localhost:8080/api/orders/cancel \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clOrdID": "order-uuid-string",
+    "symbol": "G_FX_BTCJPY"
+  }'
+```
+
+### 2. 約定結果ポーリング API
+
+#### 約定結果取得
+**GET** `/api/executions/poll?maxCount=10`
 
 ```bash
 curl -X GET "http://localhost:8080/api/executions/poll?maxCount=5" \
   -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
-### 3. 板情報の取得
+#### 約定結果キューサイズ取得
+**GET** `/api/executions/queue-size`
 
 ```bash
-curl -X GET "http://localhost:8080/api/market/board/BTCJPY?depth=10"
+curl -X GET "http://localhost:8080/api/executions/queue-size" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
-## エラーレスポンス
+### 3. 板情報取得 API
 
-エラーが発生した場合、以下の形式でレスポンスが返されます：
+#### 板情報取得
+**GET** `/api/market/board/{symbol}?depth=10`
 
+```bash
+curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY?depth=10"
+```
+
+#### 簡易板情報取得
+**GET** `/api/market/board/{symbol}/simple`
+
+```bash
+curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY/simple"
+```
+
+### 4. ポジション管理 API
+
+#### ポートフォリオサマリー取得
+**GET** `/api/positions/summary`
+
+```bash
+curl -X GET "http://localhost:8080/api/positions/summary" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+**Response:**
 ```json
 {
-  "error": "エラーメッセージ"
+  "username": "trader001",
+  "totalRealizedPnL": 1500.0,
+  "totalUnrealizedPnL": -200.0,
+  "totalPnL": 1300.0,
+  "totalTradeCount": 15,
+  "totalTradingVolume": 50000000.0,
+  "positions": [
+    {
+      "symbol": "G_FX_BTCJPY",
+      "netQty": 5,
+      "averageBuyPrice": 4950000.0,
+      "realizedPnL": 500.0,
+      "unrealizedPnL": -200.0,
+      "totalPnL": 300.0
+    }
+  ],
+  "symbolTradeCounts": {
+    "G_FX_BTCJPY": 10,
+    "G_ETHJPY": 5
+  }
 }
 ```
 
-または文字列メッセージ：
+#### 銘柄別ポジション取得
+**GET** `/api/positions/{symbol}`
 
+```bash
+curl -X GET "http://localhost:8080/api/positions/G_FX_BTCJPY" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
 ```
-"Authentication required"
+
+#### 取引履歴取得
+**GET** `/api/positions/trades?limit=50&symbol=G_FX_BTCJPY`
+
+```bash
+curl -X GET "http://localhost:8080/api/positions/trades?limit=20&symbol=G_FX_BTCJPY" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+### 5. MarketMaker API (MARKET_MAKER権限必要)
+
+#### 一括注文投入
+**POST** `/api/market-make/orders`
+
+```bash
+curl -X POST http://localhost:8080/api/market-make/orders \
+  -H "Authorization: Bearer <MARKET_MAKER_JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "G_FX_BTCJPY",
+    "bidLevels": [
+      {"price": 4995000, "quantity": 1},
+      {"price": 4990000, "quantity": 2},
+      {"price": 4985000, "quantity": 3}
+    ],
+    "askLevels": [
+      {"price": 5005000, "quantity": 1},
+      {"price": 5010000, "quantity": 2},
+      {"price": 5015000, "quantity": 3}
+    ]
+  }'
+```
+
+**Response:**
+```json
+{
+  "username": "marketmaker1",
+  "symbol": "G_FX_BTCJPY",
+  "cancelledOrdersCount": 6,
+  "newBidOrdersCount": 3,
+  "newAskOrdersCount": 3,
+  "bidOrderIds": ["bid-order-1", "bid-order-2", "bid-order-3"],
+  "askOrderIds": ["ask-order-1", "ask-order-2", "ask-order-3"],
+  "status": "SUCCESS",
+  "message": "Market make orders processed successfully"
+}
+```
+
+#### 注文一括キャンセル
+**DELETE** `/api/market-make/orders/{symbol}`
+
+```bash
+curl -X DELETE http://localhost:8080/api/market-make/orders/G_FX_BTCJPY \
+  -H "Authorization: Bearer <MARKET_MAKER_JWT_TOKEN>"
+```
+
+#### MarketMake注文状況確認
+**GET** `/api/market-make/orders/{symbol}/status`
+
+```bash
+curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
+  -H "Authorization: Bearer <MARKET_MAKER_JWT_TOKEN>"
+```
+
+## 設定されている商品
+
+| 商品名 | タイプ | 説明 | 価格精度 | 数量精度 |
+|--------|--------|------|----------|----------|
+| G_BTCJPY | Cash | 現物ビットコイン | 100 | 1 |
+| G_FX_BTCJPY | FX | ビットコイン先物 | 100 | 1 |
+| B_BTCJPY | Cash | 現物ビットコイン | 100 | 1 |
+| B_FX_BTCJPY | FX | ビットコイン先物 | 100 | 1 |
+| G_ETHJPY | FX | イーサリアム先物 | 100 | 1 |
+| TESTJPY | Cash | テスト用現物 | 100 | 1 |
+
+## ユーザーデータ管理
+
+ユーザー情報は `./users.json` ファイルに保存されます：
+
+```json
+{
+  "users": [
+    {
+      "username": "trader001",
+      "password": "$2a$10$...",
+      "roles": ["ROLE_USER"]
+    },
+    {
+      "username": "marketmaker1",
+      "password": "$2a$10$...",
+      "roles": ["ROLE_USER", "ROLE_MARKET_MAKER"]
+    }
+  ]
+}
+```
+
+## 主要機能の特徴
+
+### ポジション管理
+- **自動計算**: 約定時にポジション・損益を自動更新
+- **実現損益**: 売買確定時の損益
+- **未実現損益**: 現在価格での含み損益
+- **取引履歴**: 全約定の詳細記録
+
+### MarketMaker機能
+- **アトミック処理**: 既存注文キャンセル→新規注文を不可分で実行
+- **シングルスレッド**: 銘柄別ロックでMarketBoardの整合性保証
+- **一括管理**: 同一ユーザー・銘柄の注文を効率的に管理
+
+### 商品タイプ制御
+- **Cash**: 保有ポジション以上の売り注文を自動拒否
+- **FX**: 制限なし、自由な売買が可能
+
+## エラーレスポンス
+
+### 権限エラー
+```json
+{
+  "error": "MARKET_MAKER role required"
+}
+```
+
+### ポジション不足エラー
+```json
+{
+  "error": "Insufficient position for cash sale. Available: 0, Requested: 10"
+}
+```
+
+### 無効商品エラー
+```json
+{
+  "error": "Invalid symbol: INVALID_SYMBOL"
+}
 ```
 
 ## 約定ステータス
@@ -355,6 +380,10 @@ curl -X GET "http://localhost:8080/api/market/board/BTCJPY?depth=10"
 - 約定マッチング
 - 板情報管理
 - 約定結果配信
+- ポジション管理
+- MarketMaker機能
+- 権限制御
+- Cash/FX取引制限
 - エラーハンドリング
 
 ### アーキテクチャ
@@ -365,11 +394,62 @@ src/main/java/com/ys/exch_sim/
 │   ├── controller/          # REST APIエンドポイント
 │   ├── service/             # ビジネスロジック
 │   ├── dto/                 # データ転送オブジェクト
+│   ├── config/              # 設定管理
 │   ├── market_board/        # 板管理
 │   ├── order_exec/          # 注文・約定管理
+│   ├── position/            # ポジション・損益管理
 │   └── message/             # メッセージフィールド
-├── security/                # 認証・認可
+├── security/                # 認証・認可・権限制御
 └── infra/                   # インフラストラクチャ
+```
+
+## 使用例シナリオ
+
+### 1. 一般トレーダーの取引
+```bash
+# 1. ユーザー登録
+curl -X POST http://localhost:8080/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"username": "trader001", "password": "pass123"}'
+
+# 2. ログイン
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "trader001", "password": "pass123"}'
+
+# 3. FX商品で買い注文
+curl -X POST http://localhost:8080/api/orders/new \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"symbol": "G_FX_BTCJPY", "price": 5000000, "quantity": 1, "side": "BUY", "ordType": "LIMIT", "tif": "GTC"}'
+
+# 4. ポジション確認
+curl -X GET http://localhost:8080/api/positions/summary \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+### 2. MarketMakerの流動性提供
+```bash
+# 1. MarketMaker権限でログイン
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "marketmaker1", "password": "mmpass123"}'
+
+# 2. 一括注文投入（既存注文を自動キャンセル）
+curl -X POST http://localhost:8080/api/market-make/orders \
+  -H "Authorization: Bearer <MARKET_MAKER_JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "G_FX_BTCJPY",
+    "bidLevels": [
+      {"price": 4995000, "quantity": 1},
+      {"price": 4990000, "quantity": 2}
+    ],
+    "askLevels": [
+      {"price": 5005000, "quantity": 1},
+      {"price": 5010000, "quantity": 2}
+    ]
+  }'
 ```
 
 ## ライセンス
@@ -380,7 +460,7 @@ src/main/java/com/ys/exch_sim/
 
 # Exchange Simulator (exch_sim) - English Version
 
-A financial exchange system simulator that provides order placement/cancellation, execution processing, order book information retrieval, and other features.
+A comprehensive financial exchange system simulator that provides order placement/cancellation, execution processing, position management, and market making capabilities.
 
 ## Features
 
@@ -388,370 +468,70 @@ A financial exchange system simulator that provides order placement/cancellation
 - **Execution Processing**: Real-time order matching
 - **Order Book Information**: Price and quantity information for buy/sell orders
 - **Execution Result Distribution**: Per-user execution result polling
+- **Position Management**: Trade history, P&L calculation, and portfolio management
+- **Market Making**: MARKET_MAKER exclusive bulk order functionality
+- **Instrument Type Management**: Cash (spot) and FX (futures) trading restrictions
 - **JWT Authentication**: Secure API access
+- **Role-based Access Control**: API restrictions by user roles
 
 ## Technology Stack
 
 - **Java**: 17+
 - **Spring Boot**: 3.x
-- **Spring Security**: JWT authentication
+- **Spring Security**: JWT authentication & authorization
+- **Spring AOP**: Permission checking
 - **Gradle**: Build tool
 - **JUnit 5**: Testing framework
 
-## API Specification
-
-### Authentication
-
-All API endpoints (except order book retrieval) require JWT authentication.
-
-### 1. Order Management API
-
-#### New Order
-
-**POST** `/api/orders/new`
-
-Place a new order.
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "symbol": "BTCJPY",
-  "price": 100.5,
-  "quantity": 10,
-  "side": "BUY",
-  "ordType": "LIMIT",
-  "tif": "GTC"
-}
-```
-
-**Request Fields:**
-- `symbol` (string, required): Trading pair (e.g., BTCJPY, ETHJPY)
-- `price` (number, required): Order price
-- `quantity` (number, required): Order quantity
-- `side` (string, required): Buy/sell side
-  - `BUY`: Buy order
-  - `SELL`: Sell order
-- `ordType` (string, required): Order type
-  - `LIMIT`: Limit order
-  - `MARKET`: Market order
-- `tif` (string, required): Time in force
-  - `GTC`: Good Till Cancel
-  - `IOC`: Immediate Or Cancel
-  - `FOK`: Fill Or Kill
-
-**Response:**
-```json
-{
-  "clOrdID": "uuid-string",
-  "status": "NEW",
-  "executions": [
-    {
-      "execID": "exec-uuid",
-      "execStatus": "NEW",
-      "lastPx": 0.0,
-      "lastQty": 0
-    }
-  ]
-}
-```
-
-**Response Codes:**
-- `200 OK`: Order processed successfully
-- `400 Bad Request`: Invalid order parameters
-- `401 Unauthorized`: Authentication required
-- `404 Not Found`: User not found
-- `500 Internal Server Error`: Server error
-
-#### Cancel Order
-
-**POST** `/api/orders/cancel`
-
-Cancel an existing order.
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "clOrdID": "uuid-string",
-  "symbol": "BTCJPY"
-}
-```
-
-**Request Fields:**
-- `clOrdID` (string, required): Order ID to cancel
-- `symbol` (string, required): Trading pair
-
-**Response:**
-```json
-{
-  "clOrdID": "uuid-string",
-  "status": "CANCELED",
-  "executions": [
-    {
-      "execID": "exec-uuid",
-      "execStatus": "CANCELED",
-      "lastPx": 100.5,
-      "lastQty": 10
-    }
-  ]
-}
-```
-
-### 2. Execution Polling API
-
-#### Get Execution Results
-
-**GET** `/api/executions/poll?maxCount=10`
-
-Retrieve user's execution results.
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-**Query Parameters:**
-- `maxCount` (integer, optional): Maximum number of results to retrieve (default: 10)
-
-**Response:**
-```json
-{
-  "username": "user1",
-  "executionCount": 2,
-  "executions": [
-    {
-      "execID": "exec-uuid-1",
-      "clOrdID": "order-uuid-1",
-      "symbol": "BTCJPY",
-      "execStatus": "FILLED",
-      "lastPx": 100.5,
-      "lastQty": 10,
-      "counterPartyUsername": "user2",
-      "side": "BUY"
-    },
-    {
-      "execID": "exec-uuid-2",
-      "clOrdID": "order-uuid-2",
-      "symbol": "BTCJPY",
-      "execStatus": "PARTIAL_FILL",
-      "lastPx": 100.0,
-      "lastQty": 5,
-      "counterPartyUsername": "user3",
-      "side": "SELL"
-    }
-  ]
-}
-```
-
-**Response Codes:**
-- `200 OK`: Retrieved successfully
-- `401 Unauthorized`: Authentication required
-- `404 Not Found`: User not found
-- `500 Internal Server Error`: Server error
-
-#### Get Execution Queue Size
-
-**GET** `/api/executions/queue-size`
-
-Get the size of user's execution result queue.
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-**Response:**
-```json
-{
-  "username": "user1",
-  "queueSize": 3
-}
-```
-
-### 3. Market Data API
-
-#### Get Order Book
-
-**GET** `/api/market/board/{symbol}?depth=10`
-
-Retrieve order book information for the specified trading pair.
-
-**Path Parameters:**
-- `symbol` (string, required): Trading pair (e.g., BTCJPY)
-
-**Query Parameters:**
-- `depth` (integer, optional): Order book depth (1-100, default: 10)
-
-**Response:**
-```json
-{
-  "symbol": "BTCJPY",
-  "bids": [
-    {
-      "price": 100.0,
-      "quantity": 10
-    },
-    {
-      "price": 99.5,
-      "quantity": 15
-    }
-  ],
-  "asks": [
-    {
-      "price": 100.5,
-      "quantity": 8
-    },
-    {
-      "price": 101.0,
-      "quantity": 12
-    }
-  ]
-}
-```
-
-**Response Fields:**
-- `symbol`: Trading pair
-- `bids`: Buy orders list (price descending order)
-- `asks`: Sell orders list (price ascending order)
-- `price`: Price
-- `quantity`: Quantity
-
-**Response Codes:**
-- `200 OK`: Retrieved successfully
-- `400 Bad Request`: Invalid parameters
-- `500 Internal Server Error`: Server error
-
-#### Get Simple Order Book
-
-**GET** `/api/market/board/{symbol}/simple`
-
-Retrieve simple order book information (depth 5) for the specified trading pair.
-
-**Path Parameters:**
-- `symbol` (string, required): Trading pair
-
-**Response:**
-Same format as the order book API, returning depth 5 information.
-
-## Usage Examples
-
-### 1. Place a Buy Order
-
-```bash
-curl -X POST http://localhost:8080/api/orders/new \
-  -H "Authorization: Bearer <JWT_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "symbol": "BTCJPY",
-    "price": 100.0,
-    "quantity": 10,
-    "side": "BUY",
-    "ordType": "LIMIT",
-    "tif": "GTC"
-  }'
-```
-
-### 2. Check Execution Results
-
-```bash
-curl -X GET "http://localhost:8080/api/executions/poll?maxCount=5" \
-  -H "Authorization: Bearer <JWT_TOKEN>"
-```
-
-### 3. Get Order Book Information
-
-```bash
-curl -X GET "http://localhost:8080/api/market/board/BTCJPY?depth=10"
-```
-
-## Error Responses
-
-When an error occurs, responses are returned in the following format:
-
-```json
-{
-  "error": "Error message"
-}
-```
-
-Or as a string message:
-
-```
-"Authentication required"
-```
-
-## Execution Status
-
-- `NEW`: New order (added to order book)
-- `PARTIAL_FILL`: Partially filled
-- `FILLED`: Fully filled
-- `CANCELED`: Canceled
-- `REJECTED`: Rejected
-
-## Build and Run
-
-### Prerequisites
-
-- Java 17 or higher
-- Gradle 8.x or higher
-
-### Build
-
-```bash
-./gradlew build
-```
-
-### Run Tests
-
-```bash
-./gradlew test
-```
-
-### Start Application
-
-```bash
-./gradlew bootRun
-```
-
-The application starts at `http://localhost:8080`.
-
-## Development
-
-### Test Coverage
-
-Main test cases:
-- Order processing logic
-- Execution matching
-- Order book management
-- Execution result distribution
-- Error handling
-
-### Architecture
-
-```
-src/main/java/com/ys/exch_sim/
-├── domain/
-│   ├── controller/          # REST API endpoints
-│   ├── service/             # Business logic
-│   ├── dto/                 # Data transfer objects
-│   ├── market_board/        # Order book management
-│   ├── order_exec/          # Order/execution management
-│   └── message/             # Message fields
-├── security/                # Authentication/authorization
-└── infra/                   # Infrastructure
-```
+## Instrument Types and Trading Restrictions
+
+### Cash (Spot) Instruments
+- **Short Selling Prohibited**: Sell orders exceeding held positions are rejected
+- **Examples**: G_BTCJPY, B_BTCJPY, TESTJPY
+
+### FX (Futures) Instruments
+- **Free Trading**: Trading can start from either buy or sell side
+- **Examples**: G_FX_BTCJPY, B_FX_BTCJPY, G_ETHJPY
+
+## User Roles
+
+### ROLE_USER
+- Basic order and trading functions
+- Position checking and trade history
+
+### ROLE_MARKET_MAKER
+- All USER permissions plus:
+- Market make bulk order functionality
+- Bulk cancellation and re-placement of existing orders
+
+## Key Features
+
+### Position Management
+- **Automatic Calculation**: Positions and P&L automatically updated on execution
+- **Realized P&L**: Profit/loss from completed trades
+- **Unrealized P&L**: Mark-to-market P&L based on current prices
+- **Trade History**: Detailed record of all executions
+
+### Market Making Functionality
+- **Atomic Processing**: Cancel existing orders → place new orders atomically
+- **Single-threaded**: Symbol-level locking ensures MarketBoard consistency
+- **Bulk Management**: Efficient management of orders by user and symbol
+
+### Instrument Type Control
+- **Cash**: Automatically rejects sell orders exceeding held positions
+- **FX**: No restrictions, free buying and selling
+
+## Available Instruments
+
+| Symbol | Type | Description | Price Precision | Quantity Precision |
+|--------|------|-------------|-----------------|-------------------|
+| G_BTCJPY | Cash | Bitcoin Spot | 100 | 1 |
+| G_FX_BTCJPY | FX | Bitcoin Futures | 100 | 1 |
+| B_BTCJPY | Cash | Bitcoin Spot | 100 | 1 |
+| B_FX_BTCJPY | FX | Bitcoin Futures | 100 | 1 |
+| G_ETHJPY | FX | Ethereum Futures | 100 | 1 |
+| TESTJPY | Cash | Test Spot | 100 | 1 |
 
 ## License
 
-This project is released under the MIT License. 
+This project is released under the MIT License.
