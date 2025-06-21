@@ -31,7 +31,7 @@
 
 ### FX（先物）商品
 - **自由取引**: 売り・買いどちらからでも取引開始可能
-- **例**: G_FX_BTCJPY, B_FX_BTCJPY, G_ETHJPY
+- **例**: G_FX_BTCJPY, B_FX_BTCJPY
 
 ## ユーザー権限
 
@@ -187,8 +187,7 @@ curl -X GET "http://localhost:8080/api/positions/summary" \
     }
   ],
   "symbolTradeCounts": {
-    "G_FX_BTCJPY": 10,
-    "G_ETHJPY": 5
+    "G_FX_BTCJPY": 10
   }
 }
 ```
@@ -268,12 +267,11 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 
 | 商品名 | タイプ | 説明 | 価格精度 | 数量精度 |
 |--------|--------|------|----------|----------|
-| G_BTCJPY | Cash | 現物ビットコイン | 100 | 1 |
-| G_FX_BTCJPY | FX | ビットコイン先物 | 100 | 1 |
-| B_BTCJPY | Cash | 現物ビットコイン | 100 | 1 |
-| B_FX_BTCJPY | FX | ビットコイン先物 | 100 | 1 |
-| G_ETHJPY | FX | イーサリアム先物 | 100 | 1 |
-| TESTJPY | Cash | テスト用現物 | 100 | 1 |
+| G_BTCJPY | Cash | 現物ビットコイン | 1 | 1000 |
+| G_FX_BTCJPY | FX | ビットコイン先物 | 1 | 1000 |
+| B_BTCJPY | Cash | 現物ビットコイン | 1 | 1000 |
+| B_FX_BTCJPY | FX | ビットコイン先物 | 1 | 1000 |
+| TESTJPY | Cash | テスト用現物 | 1 | 1000 |
 
 ## ユーザーデータ管理
 
@@ -491,7 +489,7 @@ A comprehensive financial exchange system simulator that provides order placemen
 
 ### FX (Futures) Instruments
 - **Free Trading**: Trading can start from either buy or sell side
-- **Examples**: G_FX_BTCJPY, B_FX_BTCJPY, G_ETHJPY
+- **Examples**: G_FX_BTCJPY, B_FX_BTCJPY
 
 ## User Roles
 
@@ -525,12 +523,11 @@ A comprehensive financial exchange system simulator that provides order placemen
 
 | Symbol | Type | Description | Price Precision | Quantity Precision |
 |--------|------|-------------|-----------------|-------------------|
-| G_BTCJPY | Cash | Bitcoin Spot | 100 | 1 |
-| G_FX_BTCJPY | FX | Bitcoin Futures | 100 | 1 |
-| B_BTCJPY | Cash | Bitcoin Spot | 100 | 1 |
-| B_FX_BTCJPY | FX | Bitcoin Futures | 100 | 1 |
-| G_ETHJPY | FX | Ethereum Futures | 100 | 1 |
-| TESTJPY | Cash | Test Spot | 100 | 1 |
+| G_BTCJPY | Cash | Bitcoin Spot | 1 | 1000 |
+| G_FX_BTCJPY | FX | Bitcoin Futures | 1 | 1000 |
+| B_BTCJPY | Cash | Bitcoin Spot | 1 | 1000 |
+| B_FX_BTCJPY | FX | Bitcoin Futures | 1 | 1000 |
+| TESTJPY | Cash | Test Spot | 1 | 1000 |
 
 ## License
 
