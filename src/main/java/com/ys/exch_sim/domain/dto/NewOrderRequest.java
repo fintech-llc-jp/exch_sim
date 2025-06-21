@@ -10,8 +10,9 @@ import lombok.NoArgsConstructor;
 public class NewOrderRequest {
   private String symbol;
   private Double price;
-  private Long quantity;
+  private Double quantity;
   private String side; // "BUY" or "SELL"
   private String ordType; // "LIMIT" or "MARKET"
   private String tif; // "GTC", "IOC", "FOK"
+  private Boolean isMarketMake;
 }

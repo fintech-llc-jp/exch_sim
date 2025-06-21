@@ -27,34 +27,34 @@ class OrderServiceTest {
   void setUp() {
     ExecutionQueueService executionQueueService = new ExecutionQueueService();
     PositionManager positionManager = new PositionManager();
-    
+
     // InstrumentConfigをモック化
     instrumentConfig = mock(InstrumentConfig.class);
-    
+
     // 有効な商品の設定
     Map<String, InstrumentConfig.InstrumentDefinition> instruments = new HashMap<>();
-    
+
     InstrumentConfig.InstrumentDefinition btcjpy = new InstrumentConfig.InstrumentDefinition();
     btcjpy.setName("Bitcoin/Japanese Yen");
     btcjpy.setPriceMultiplier(100);
     btcjpy.setQtyMultiplier(1);
     btcjpy.setType("Cash");
     instruments.put("BTCJPY", btcjpy);
-    
+
     InstrumentConfig.InstrumentDefinition ethjpy = new InstrumentConfig.InstrumentDefinition();
     ethjpy.setName("Ethereum/Japanese Yen");
     ethjpy.setPriceMultiplier(100);
     ethjpy.setQtyMultiplier(1);
     ethjpy.setType("FX");
     instruments.put("ETHJPY", ethjpy);
-    
+
     InstrumentConfig.InstrumentDefinition usdjpy = new InstrumentConfig.InstrumentDefinition();
     usdjpy.setName("US Dollar/Japanese Yen");
     usdjpy.setPriceMultiplier(100);
     usdjpy.setQtyMultiplier(1);
     usdjpy.setType("FX");
     instruments.put("USDJPY", usdjpy);
-    
+
     when(instrumentConfig.getInstruments()).thenReturn(instruments);
     when(instrumentConfig.isValidSymbol("BTCJPY")).thenReturn(true);
     when(instrumentConfig.isValidSymbol("ETHJPY")).thenReturn(true);
@@ -63,7 +63,7 @@ class OrderServiceTest {
     when(instrumentConfig.getInstrument("BTCJPY")).thenReturn(btcjpy);
     when(instrumentConfig.getInstrument("ETHJPY")).thenReturn(ethjpy);
     when(instrumentConfig.getInstrument("USDJPY")).thenReturn(usdjpy);
-    
+
     orderService = new OrderService(executionQueueService, instrumentConfig, positionManager);
   }
 
@@ -74,7 +74,7 @@ class OrderServiceTest {
     NewOrderRequest request = new NewOrderRequest();
     request.setSymbol("BTCJPY");
     request.setPrice(100.0);
-    request.setQuantity(10L);
+    request.setQuantity(10.0);
     request.setSide("BUY");
     request.setOrdType("LIMIT");
     request.setTif("GTC");
@@ -98,7 +98,7 @@ class OrderServiceTest {
     NewOrderRequest buyRequest = new NewOrderRequest();
     buyRequest.setSymbol("ETHJPY");
     buyRequest.setPrice(100.0);
-    buyRequest.setQuantity(10L);
+    buyRequest.setQuantity(10.0);
     buyRequest.setSide("BUY");
     buyRequest.setOrdType("LIMIT");
     buyRequest.setTif("GTC");
@@ -111,7 +111,7 @@ class OrderServiceTest {
     NewOrderRequest sellRequest = new NewOrderRequest();
     sellRequest.setSymbol("ETHJPY");
     sellRequest.setPrice(100.0);
-    sellRequest.setQuantity(5L);
+    sellRequest.setQuantity(5.0);
     sellRequest.setSide("SELL");
     sellRequest.setOrdType("LIMIT");
     sellRequest.setTif("GTC");
@@ -140,7 +140,7 @@ class OrderServiceTest {
     NewOrderRequest buyRequest = new NewOrderRequest();
     buyRequest.setSymbol("USDJPY");
     buyRequest.setPrice(150.0);
-    buyRequest.setQuantity(100L);
+    buyRequest.setQuantity(100.0);
     buyRequest.setSide("BUY");
     buyRequest.setOrdType("LIMIT");
     buyRequest.setTif("GTC");
@@ -152,7 +152,7 @@ class OrderServiceTest {
     NewOrderRequest sellRequest1 = new NewOrderRequest();
     sellRequest1.setSymbol("USDJPY");
     sellRequest1.setPrice(150.0);
-    sellRequest1.setQuantity(30L);
+    sellRequest1.setQuantity(30.0);
     sellRequest1.setSide("SELL");
     sellRequest1.setOrdType("LIMIT");
     sellRequest1.setTif("GTC");
@@ -162,7 +162,7 @@ class OrderServiceTest {
     NewOrderRequest sellRequest2 = new NewOrderRequest();
     sellRequest2.setSymbol("USDJPY");
     sellRequest2.setPrice(150.0);
-    sellRequest2.setQuantity(20L);
+    sellRequest2.setQuantity(20.0);
     sellRequest2.setSide("SELL");
     sellRequest2.setOrdType("LIMIT");
     sellRequest2.setTif("GTC");
@@ -191,7 +191,7 @@ class OrderServiceTest {
     NewOrderRequest btcBuyRequest = new NewOrderRequest();
     btcBuyRequest.setSymbol("BTCJPY");
     btcBuyRequest.setPrice(100.0);
-    btcBuyRequest.setQuantity(10L);
+    btcBuyRequest.setQuantity(10.0);
     btcBuyRequest.setSide("BUY");
     btcBuyRequest.setOrdType("LIMIT");
     btcBuyRequest.setTif("GTC");
@@ -202,7 +202,7 @@ class OrderServiceTest {
     NewOrderRequest ethSellRequest = new NewOrderRequest();
     ethSellRequest.setSymbol("ETHJPY");
     ethSellRequest.setPrice(100.0);
-    ethSellRequest.setQuantity(5L);
+    ethSellRequest.setQuantity(5.0);
     ethSellRequest.setSide("SELL");
     ethSellRequest.setOrdType("LIMIT");
     ethSellRequest.setTif("GTC");
@@ -222,7 +222,7 @@ class OrderServiceTest {
     NewOrderRequest newOrderRequest = new NewOrderRequest();
     newOrderRequest.setSymbol("BTCJPY");
     newOrderRequest.setPrice(100.0);
-    newOrderRequest.setQuantity(10L);
+    newOrderRequest.setQuantity(10.0);
     newOrderRequest.setSide("BUY");
     newOrderRequest.setOrdType("LIMIT");
     newOrderRequest.setTif("GTC");
@@ -271,7 +271,7 @@ class OrderServiceTest {
     NewOrderRequest newOrderRequest = new NewOrderRequest();
     newOrderRequest.setSymbol("BTCJPY");
     newOrderRequest.setPrice(100.0);
-    newOrderRequest.setQuantity(10L);
+    newOrderRequest.setQuantity(10.0);
     newOrderRequest.setSide("BUY");
     newOrderRequest.setOrdType("LIMIT");
     newOrderRequest.setTif("GTC");
@@ -301,7 +301,7 @@ class OrderServiceTest {
     NewOrderRequest request = new NewOrderRequest();
     request.setSymbol("INVALID");
     request.setPrice(100.0);
-    request.setQuantity(10L);
+    request.setQuantity(10.0);
     request.setSide("BUY");
     request.setOrdType("LIMIT");
     request.setTif("GTC");
@@ -343,7 +343,7 @@ class OrderServiceTest {
     NewOrderRequest sellRequest = new NewOrderRequest();
     sellRequest.setSymbol("BTCJPY");
     sellRequest.setPrice(100.0);
-    sellRequest.setQuantity(10L);
+    sellRequest.setQuantity(10.0);
     sellRequest.setSide("SELL");
     sellRequest.setOrdType("LIMIT");
     sellRequest.setTif("GTC");
@@ -363,13 +363,13 @@ class OrderServiceTest {
   void testCashSellWithSufficientPosition() {
     // このテストは複雑すぎるため、シンプルなケースのみテスト
     // 実際の運用では、ポジション作成後にCash売りができることを確認
-    
+
     // 代わりに簡単な統合テストとして、FX商品の空売りができることのみ確認
     String username = "testuser";
     NewOrderRequest sellRequest = new NewOrderRequest();
     sellRequest.setSymbol("ETHJPY"); // FX商品
     sellRequest.setPrice(100.0);
-    sellRequest.setQuantity(5L);
+    sellRequest.setQuantity(5.0);
     sellRequest.setSide("SELL");
     sellRequest.setOrdType("LIMIT");
     sellRequest.setTif("GTC");
@@ -387,7 +387,7 @@ class OrderServiceTest {
     NewOrderRequest sellRequest = new NewOrderRequest();
     sellRequest.setSymbol("ETHJPY");
     sellRequest.setPrice(200.0);
-    sellRequest.setQuantity(5L);
+    sellRequest.setQuantity(5.0);
     sellRequest.setSide("SELL");
     sellRequest.setOrdType("LIMIT");
     sellRequest.setTif("GTC");

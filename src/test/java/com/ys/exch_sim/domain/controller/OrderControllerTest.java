@@ -28,31 +28,31 @@ class OrderControllerTest {
   void setUp() {
     ExecutionQueueService executionQueueService = new ExecutionQueueService();
     PositionManager positionManager = new PositionManager();
-    
+
     // InstrumentConfigをモック化
     instrumentConfig = mock(InstrumentConfig.class);
-    
+
     // 有効な商品の設定
     Map<String, InstrumentConfig.InstrumentDefinition> instruments = new HashMap<>();
-    
+
     InstrumentConfig.InstrumentDefinition btcjpy = new InstrumentConfig.InstrumentDefinition();
     btcjpy.setName("Bitcoin/Japanese Yen");
     btcjpy.setPriceMultiplier(100);
     btcjpy.setQtyMultiplier(1);
     instruments.put("BTCJPY", btcjpy);
-    
+
     InstrumentConfig.InstrumentDefinition testjpy = new InstrumentConfig.InstrumentDefinition();
     testjpy.setName("Test/Japanese Yen");
     testjpy.setPriceMultiplier(100);
     testjpy.setQtyMultiplier(1);
     instruments.put("TESTJPY", testjpy);
-    
+
     when(instrumentConfig.getInstruments()).thenReturn(instruments);
     when(instrumentConfig.isValidSymbol("BTCJPY")).thenReturn(true);
     when(instrumentConfig.isValidSymbol("TESTJPY")).thenReturn(true);
     when(instrumentConfig.getInstrument("BTCJPY")).thenReturn(btcjpy);
     when(instrumentConfig.getInstrument("TESTJPY")).thenReturn(testjpy);
-    
+
     orderService = new OrderService(executionQueueService, instrumentConfig, positionManager);
     orderController = new OrderController(orderService, null);
   }
@@ -64,7 +64,7 @@ class OrderControllerTest {
     NewOrderRequest request = new NewOrderRequest();
     request.setSymbol("BTCJPY");
     request.setPrice(100.0);
-    request.setQuantity(10L);
+    request.setQuantity(10.0);
     request.setSide("BUY");
     request.setOrdType("LIMIT");
     request.setTif("GTC");
@@ -86,7 +86,7 @@ class OrderControllerTest {
     NewOrderRequest request = new NewOrderRequest();
     request.setSymbol("BTCJPY");
     request.setPrice(-100.0); // 負の価格
-    request.setQuantity(10L);
+    request.setQuantity(10.0);
     request.setSide("BUY");
     request.setOrdType("LIMIT");
     request.setTif("GTC");
@@ -102,7 +102,7 @@ class OrderControllerTest {
     NewOrderRequest request = new NewOrderRequest();
     request.setSymbol(null);
     request.setPrice(100.0);
-    request.setQuantity(10L);
+    request.setQuantity(10.0);
     request.setSide("BUY");
     request.setOrdType("LIMIT");
     request.setTif("GTC");
@@ -121,7 +121,7 @@ class OrderControllerTest {
     NewOrderRequest buyRequest = new NewOrderRequest();
     buyRequest.setSymbol("TESTJPY");
     buyRequest.setPrice(100.0);
-    buyRequest.setQuantity(10L);
+    buyRequest.setQuantity(10.0);
     buyRequest.setSide("BUY");
     buyRequest.setOrdType("LIMIT");
     buyRequest.setTif("GTC");
@@ -136,7 +136,7 @@ class OrderControllerTest {
     NewOrderRequest sellRequest = new NewOrderRequest();
     sellRequest.setSymbol("TESTJPY");
     sellRequest.setPrice(100.0);
-    sellRequest.setQuantity(5L);
+    sellRequest.setQuantity(5.0);
     sellRequest.setSide("SELL");
     sellRequest.setOrdType("LIMIT");
     sellRequest.setTif("GTC");

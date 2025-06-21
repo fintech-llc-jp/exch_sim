@@ -75,7 +75,7 @@ public class MarketMakeService {
                 "Processing bid level: price={}, quantity={}",
                 level.getPrice(),
                 level.getQuantity());
-            NewOrderRequest orderRequest = createOrderRequest(symbol, level, "BUY");
+            NewOrderRequest orderRequest = createOrderRequest(symbol, level, "BUY", true);
             OrderResponse response = orderService.processNewOrder(username, orderRequest);
             bidOrderIds.add(response.getClOrdID());
             addMarketMakeOrder(username, symbol, response.getClOrdID());
@@ -103,7 +103,7 @@ public class MarketMakeService {
                 "Processing ask level: price={}, quantity={}",
                 level.getPrice(),
                 level.getQuantity());
-            NewOrderRequest orderRequest = createOrderRequest(symbol, level, "SELL");
+            NewOrderRequest orderRequest = createOrderRequest(symbol, level, "SELL", true);
             OrderResponse response = orderService.processNewOrder(username, orderRequest);
             askOrderIds.add(response.getClOrdID());
             addMarketMakeOrder(username, symbol, response.getClOrdID());
@@ -209,7 +209,7 @@ public class MarketMakeService {
   }
 
   private NewOrderRequest createOrderRequest(
-      String symbol, MarketMakeOrderRequest.OrderLevel level, String side) {
+      String symbol, MarketMakeOrderRequest.OrderLevel level, String side, boolean isMarketMake) {
     log.info(
         "Creating order request for symbol: {} side: {} with level: price={}, quantity={},"
             + " ordType={}, tif={}",
@@ -227,6 +227,7 @@ public class MarketMakeService {
     request.setSide(side);
     request.setOrdType(level.getOrdType());
     request.setTif(level.getTif());
+    request.setIsMarketMake(isMarketMake);
 
     log.info("Created NewOrderRequest: {}", request);
     return request;

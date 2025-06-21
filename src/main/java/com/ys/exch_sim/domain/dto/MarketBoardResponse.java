@@ -18,6 +18,6 @@ public class MarketBoardResponse {
   @NoArgsConstructor
   public static class PriceLevel {
     private Double price;
-    private Long quantity;
+    private Double quantity;
   }
 }

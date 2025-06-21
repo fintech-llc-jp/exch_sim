@@ -68,26 +68,28 @@ public class OrderService {
       }
 
       // Cash商品の空売りチェック
-      InstrumentConfig.InstrumentDefinition instrument =
-          instrumentConfig.getInstrument(request.getSymbol());
-      if (instrument.isCash() && "SELL".equalsIgnoreCase(request.getSide())) {
-        // Cash商品の場合、売り注文前に十分なポジションがあるかチェック
-        Position currentPosition = positionManager.getPosition(username, request.getSymbol());
-        long availableQty = currentPosition != null ? currentPosition.getNetQty() : 0L;
+      if (request.getIsMarketMake() == null || !request.getIsMarketMake()) {
+        InstrumentConfig.InstrumentDefinition instrument =
+            instrumentConfig.getInstrument(request.getSymbol());
+        if (instrument.isCash() && "SELL".equalsIgnoreCase(request.getSide())) {
+          // Cash商品の場合、売り注文前に十分なポジションがあるかチェック
+          Position currentPosition = positionManager.getPosition(username, request.getSymbol());
+          long availableQty = currentPosition != null ? currentPosition.getNetQty() : 0L;
 
-        if (availableQty < request.getQuantity()) {
-          log.warn(
-              "Insufficient position for cash sale. User: {}, Symbol: {}, Available: {}, Requested:"
-                  + " {}",
-              username,
-              request.getSymbol(),
-              availableQty,
-              request.getQuantity());
-          throw new RuntimeException(
-              "Insufficient position for cash sale. Available: "
-                  + availableQty
-                  + ", Requested: "
-                  + request.getQuantity());
+          if (availableQty < request.getQuantity()) {
+            log.warn(
+                "Insufficient position for cash sale. User: {}, Symbol: {}, Available: {},"
+                    + " Requested: {}",
+                username,
+                request.getSymbol(),
+                availableQty,
+                request.getQuantity());
+            throw new RuntimeException(
+                "Insufficient position for cash sale. Available: "
+                    + availableQty
+                    + ", Requested: "
+                    + request.getQuantity());
+          }
         }
       }
 
@@ -321,7 +323,7 @@ public class OrderService {
       Pair<Long, Long> bid = marketBoard.getBid(i);
       if (bid.getLeft() != 0L && bid.getRight() != 0L) {
         double price = (double) bid.getLeft() / instrument.getPriceMultiplier();
-        long quantity = bid.getRight() / instrument.getQtyMultiplier();
+        double quantity = (double) bid.getRight() / instrument.getQtyMultiplier();
         bids.add(new MarketBoardResponse.PriceLevel(price, quantity));
       } else {
         break; // これ以上の板情報がない場合は終了
@@ -333,7 +335,7 @@ public class OrderService {
       Pair<Long, Long> ask = marketBoard.getAsk(i);
       if (ask.getLeft() != 0L && ask.getRight() != 0L) {
         double price = (double) ask.getLeft() / instrument.getPriceMultiplier();
-        long quantity = ask.getRight() / instrument.getQtyMultiplier();
+        double quantity = (double) ask.getRight() / instrument.getQtyMultiplier();
         asks.add(new MarketBoardResponse.PriceLevel(price, quantity));
       } else {
         break; // これ以上の板情報がない場合は終了

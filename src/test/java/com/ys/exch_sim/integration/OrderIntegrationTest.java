@@ -58,7 +58,7 @@ class OrderIntegrationTest {
     NewOrderRequest buyRequest = new NewOrderRequest();
     buyRequest.setSymbol("BTCJPY");
     buyRequest.setPrice(100.0);
-    buyRequest.setQuantity(10L);
+    buyRequest.setQuantity(10.0);
     buyRequest.setSide("BUY");
     buyRequest.setOrdType("LIMIT");
     buyRequest.setTif("GTC");
@@ -81,7 +81,7 @@ class OrderIntegrationTest {
     NewOrderRequest sellRequest = new NewOrderRequest();
     sellRequest.setSymbol("BTCJPY");
     sellRequest.setPrice(100.0);
-    sellRequest.setQuantity(5L);
+    sellRequest.setQuantity(5.0);
     sellRequest.setSide("SELL");
     sellRequest.setOrdType("LIMIT");
     sellRequest.setTif("GTC");
@@ -107,7 +107,7 @@ class OrderIntegrationTest {
     NewOrderRequest request = new NewOrderRequest();
     request.setSymbol("BTCJPY");
     request.setPrice(100.0);
-    request.setQuantity(10L);
+    request.setQuantity(10.0);
     request.setSide("BUY");
     request.setOrdType("LIMIT");
     request.setTif("GTC");
@@ -124,7 +124,7 @@ class OrderIntegrationTest {
     NewOrderRequest request = new NewOrderRequest();
     request.setSymbol("BTCJPY");
     request.setPrice(100.0);
-    request.setQuantity(10L);
+    request.setQuantity(10.0);
     request.setSide("BUY");
     request.setOrdType("LIMIT");
     request.setTif("GTC");
@@ -150,7 +150,7 @@ class OrderIntegrationTest {
     NewOrderRequest buy1Request = new NewOrderRequest();
     buy1Request.setSymbol("SYMBOL1");
     buy1Request.setPrice(100.0);
-    buy1Request.setQuantity(10L);
+    buy1Request.setQuantity(10.0);
     buy1Request.setSide("BUY");
     buy1Request.setOrdType("LIMIT");
     buy1Request.setTif("GTC");
@@ -167,7 +167,7 @@ class OrderIntegrationTest {
     NewOrderRequest sell2Request = new NewOrderRequest();
     sell2Request.setSymbol("SYMBOL2");
     sell2Request.setPrice(100.0);
-    sell2Request.setQuantity(5L);
+    sell2Request.setQuantity(5.0);
     sell2Request.setSide("SELL");
     sell2Request.setOrdType("LIMIT");
     sell2Request.setTif("GTC");
