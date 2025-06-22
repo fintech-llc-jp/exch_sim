@@ -1,6 +1,11 @@
 package com.ys.exch_sim.domain.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.ys.exch_sim.domain.message.field.ClOrdID;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
@@ -11,21 +16,33 @@ import com.ys.exch_sim.domain.message.field.Side;
 import com.ys.exch_sim.domain.message.field.Symbol;
 import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.message.field.Timestamp;
+import com.ys.exch_sim.domain.message.field.Username;
 import com.ys.exch_sim.domain.order_exec.Execution;
+import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.order_exec.Order;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+@ExtendWith(MockitoExtension.class)
 class ExecutionQueueServiceTest {
 
+  @Mock
+  private ExecutionRepository executionRepository;
+
+  @InjectMocks
   private ExecutionQueueService executionQueueService;
+
   private Symbol symbol;
 
   @BeforeEach
   void setUp() {
-    executionQueueService = new ExecutionQueueService();
     symbol = new Symbol("BTCJPY", 100, 1);
   }
 
@@ -216,6 +233,71 @@ class ExecutionQueueServiceTest {
     assertThat(polledExecution.getOrder().getUsername()).isEqualTo(user1);
     assertThat(polledExecution.getCounterPartyUsername()).isEqualTo(user2);
     assertThat(polledExecution.getExecStatus()).isEqualTo(ExecStatus.FILLED);
+  }
+
+  @Test
+  void testAddNonMarketMakerExecutionSavesToDatabase() {
+    // Given
+    String username = "testuser";
+    Order order = createTestOrder("order1", Side.BUY, username);
+    Execution execution = new Execution(order, ExecStatus.FILLED, new Px(symbol, 100.0), new Qty(symbol, 10));
+    
+    when(executionRepository.save(any(Execution.class))).thenReturn(execution);
+
+    // When
+    executionQueueService.addExecution(username, execution);
+
+    // Then
+    verify(executionRepository, times(1)).save(execution);
+  }
+
+  @Test
+  void testAddMarketMakerExecutionDoesNotSaveToDatabase() {
+    // Given
+    String username = "testuser";
+    Execution marketMakerExecution = createMarketMakerExecution(username);
+
+    // When
+    executionQueueService.addExecution(username, marketMakerExecution);
+
+    // Then
+    verify(executionRepository, never()).save(any(Execution.class));
+  }
+
+  @Test
+  void testDatabaseSaveFailureDoesNotAffectQueueOperation() {
+    // Given
+    String username = "testuser";
+    Order order = createTestOrder("order1", Side.BUY, username);
+    Execution execution = new Execution(order, ExecStatus.FILLED, new Px(symbol, 100.0), new Qty(symbol, 10));
+    
+    when(executionRepository.save(any(Execution.class))).thenThrow(new RuntimeException("Database error"));
+
+    // When
+    executionQueueService.addExecution(username, execution);
+
+    // Then
+    verify(executionRepository, times(1)).save(execution);
+    
+    // Queue operation should still work
+    List<Execution> polledExecutions = executionQueueService.pollExecutions(username, 10);
+    assertThat(polledExecutions).hasSize(1);
+    assertThat(polledExecutions.get(0)).isEqualTo(execution);
+  }
+
+  private Execution createMarketMakerExecution(String username) {
+    return new Execution(
+        UUID.randomUUID().toString(),
+        "order123",
+        username,
+        "BTCJPY",
+        ExecStatus.FILLED,
+        1000L,
+        1L,
+        null,
+        LocalDateTime.now(),
+        true // isMarketMaker = true
+    );
   }
 
   private Order createTestOrder(String orderId, Side side, String username) {
