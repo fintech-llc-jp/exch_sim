@@ -132,7 +132,8 @@ class ExecutionRepositoryTest {
             1L,
             null,
             createdAt,
-            isMarketMaker
+            isMarketMaker,
+            "BUY"
         );
     }
 }

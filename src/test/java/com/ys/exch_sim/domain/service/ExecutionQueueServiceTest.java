@@ -296,7 +296,8 @@ class ExecutionQueueServiceTest {
         1L,
         null,
         LocalDateTime.now(),
-        true // isMarketMaker = true
+        true, // isMarketMaker = true
+        "BUY"
     );
   }
 

@@ -49,6 +49,9 @@ public class Execution {
   @Column(name = "is_market_maker")
   private Boolean isMarketMaker;
 
+  @Column(name = "side")
+  private String side;
+
   // Legacy fields for backward compatibility - these are not persisted
   @Transient
   private Order order;
@@ -76,6 +79,7 @@ public class Execution {
     this.lastQty = lastQty != null ? (long) lastQty.getLongQty() : null;
     this.createdAt = LocalDateTime.now();
     this.isMarketMaker = false;
+    this.side = order.getSide().toString();
   }
 
   // Legacy constructor with counter party
@@ -95,12 +99,13 @@ public class Execution {
     this.lastQty = lastQty != null ? (long) lastQty.getLongQty() : null;
     this.createdAt = LocalDateTime.now();
     this.isMarketMaker = false;
+    this.side = order.getSide().toString();
   }
   
   // Constructor for database-only executions (used in tests)
   public Execution(String execID, String orderID, String username, String symbol, 
                    ExecStatus execStatus, Long lastPx, Long lastQty, String counterPartyUsername,
-                   LocalDateTime createdAt, Boolean isMarketMaker) {
+                   LocalDateTime createdAt, Boolean isMarketMaker, String side) {
     this.execID = execID;
     this.orderID = orderID;
     this.username = username;
@@ -111,6 +116,7 @@ public class Execution {
     this.counterPartyUsername = counterPartyUsername;
     this.createdAt = createdAt;
     this.isMarketMaker = isMarketMaker;
+    this.side = side;
     this.order = null; // No original order object
     this.originalLastPx = null;
     this.originalLastQty = null;
@@ -174,6 +180,14 @@ public class Execution {
   
   public Boolean getIsMarketMaker() {
     return this.isMarketMaker;
+  }
+  
+  public String getSide() {
+    return this.side;
+  }
+  
+  public String getOrderID() {
+    return this.orderID;
   }
   
   // Additional getters for raw database values (for testing)

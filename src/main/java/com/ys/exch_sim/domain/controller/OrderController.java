@@ -54,8 +54,6 @@ public class OrderController {
       if (request == null
           || request.getSymbol() == null
           || request.getSymbol().trim().isEmpty()
-          || request.getPrice() == null
-          || request.getPrice() <= 0
           || request.getQuantity() == null
           || request.getQuantity() <= 0
           || request.getSide() == null
@@ -67,6 +65,18 @@ public class OrderController {
 
         log.warn("Invalid order request from user: {}", username);
         return ResponseEntity.badRequest().body("Invalid order parameters");
+      }
+
+      // 指値注文の場合は価格が必要
+      if ("LIMIT".equals(request.getOrdType()) && 
+          (request.getPrice() == null || request.getPrice() <= 0)) {
+        log.warn("Invalid price for LIMIT order from user: {}", username);
+        return ResponseEntity.badRequest().body("Price is required for LIMIT orders");
+      }
+
+      // 成行注文の場合は価格を0に設定（価格が指定されていない場合）
+      if ("MARKET".equals(request.getOrdType()) && request.getPrice() == null) {
+        request.setPrice(0.0);
       }
 
       // 注文を処理

@@ -283,7 +283,15 @@ public class OrderService {
 
   private void processExecutionsForQueue(List<Execution> executions) {
     for (Execution execution : executions) {
-      String username = execution.getOrder().getUsername();
+      String username = null;
+      try {
+        // Try to get username from order first (for non-persisted executions)
+        username = execution.getOrder().getUsername();
+      } catch (UnsupportedOperationException e) {
+        // For persisted executions, get username from execution entity
+        username = execution.getUsername();
+      }
+      
       if (username != null) {
         executionQueueService.addExecution(username, execution);
 

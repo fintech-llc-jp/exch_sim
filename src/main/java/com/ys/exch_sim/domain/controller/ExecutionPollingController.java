@@ -60,8 +60,10 @@ public class ExecutionPollingController {
       List<ExecutionPollingResponse.ExecutionDto> executionDtos =
           executions.stream()
               .map(
-                  exec ->
-                      new ExecutionPollingResponse.ExecutionDto(
+                  exec -> {
+                    try {
+                      // Try to get data from original order first (for non-persisted executions)
+                      return new ExecutionPollingResponse.ExecutionDto(
                           exec.getExecID().getId(),
                           exec.getOrder().getClOrdID().getId(),
                           exec.getOrder().getSymbol().getName(),
@@ -69,7 +71,20 @@ public class ExecutionPollingController {
                           getPxValue(exec.getLastPx()),
                           exec.getLastQty().getLongQty(),
                           exec.getCounterPartyUsername(),
-                          exec.getOrder().getSide().toString()))
+                          exec.getOrder().getSide().toString());
+                    } catch (UnsupportedOperationException e) {
+                      // For persisted executions, use the stored data
+                      return new ExecutionPollingResponse.ExecutionDto(
+                          exec.getExecID().getId(),
+                          exec.getOrderID(), // Use stored orderID
+                          exec.getSymbol(),   // Use stored symbol
+                          exec.getExecStatus().toString(),
+                          getPxValueFromRaw(exec.getLastPxRaw()),
+                          exec.getLastQtyRaw(),
+                          exec.getCounterPartyUsername(),
+                          determineSideFromExecution(exec)); // We need to determine side differently
+                    }
+                  })
               .collect(Collectors.toList());
 
       ExecutionPollingResponse response =
@@ -107,5 +122,16 @@ public class ExecutionPollingController {
 
   private Double getPxValue(Px px) {
     return (double) px.getLongPx() / px.getSymbol().getPxMultiplier();
+  }
+  
+  private Double getPxValueFromRaw(Long rawPx) {
+    if (rawPx == null) return null;
+    // Assuming default multiplier of 100 for stored data
+    return rawPx.doubleValue() / 100.0;
+  }
+  
+  private String determineSideFromExecution(Execution exec) {
+    // Use the stored side from the execution entity
+    return exec.getSide() != null ? exec.getSide() : "UNKNOWN";
   }
 }

@@ -192,7 +192,8 @@ class ExecutionPersistenceIntegrationTest {
             1L,
             null,
             LocalDateTime.now(),
-            true // isMarketMaker = true
+            true, // isMarketMaker = true
+            "SELL"
         );
     }
 }

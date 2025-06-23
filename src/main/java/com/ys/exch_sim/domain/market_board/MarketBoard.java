@@ -380,12 +380,18 @@ public class MarketBoard {
     Execution e = new Execution(order, execStatus, lastPx, lastQty, counterPartyUsername);
     order.getExecutions().add(e);
     if (counterOrder) {
-      Map<Long, Long> entryBoard = order.getSide() == Side.BUY ? bidEntryBoard : askEntryBoard;
-      long qty = entryBoard.get(lastPx.getLongPx()) - lastQty.getLongQty();
-      if (qty != 0L) {
-        entryBoard.put(lastPx.getLongPx(), qty);
-      } else {
-        entryBoard.remove(lastPx.getLongPx());
+      // For counterOrder, we need to update the opposite side of the entry board
+      // If order is BUY, it matches against ASK orders, so we update askEntryBoard
+      // If order is SELL, it matches against BID orders, so we update bidEntryBoard
+      Map<Long, Long> entryBoard = order.getSide() == Side.BUY ? askEntryBoard : bidEntryBoard;
+      Long currentQty = entryBoard.get(lastPx.getLongPx());
+      if (currentQty != null) {
+        long qty = currentQty - lastQty.getLongQty();
+        if (qty != 0L) {
+          entryBoard.put(lastPx.getLongPx(), qty);
+        } else {
+          entryBoard.remove(lastPx.getLongPx());
+        }
       }
     }
     return e;
@@ -409,7 +415,8 @@ public class MarketBoard {
       if (order.getTif() == Tif.FOK && order.getOrdType() == OrdType.MARKET) {
         long qty = order.getOrderQty().getLongQty();
         long sum = 0;
-        for (Entry<Long, Long> ent : bidEntryBoard.entrySet()) {
+        // For BUY market orders, check available quantity on the ASK side
+        for (Entry<Long, Long> ent : askEntryBoard.entrySet()) {
           sum += ent.getValue();
           if (sum >= qty) {
             return true;
@@ -428,7 +435,8 @@ public class MarketBoard {
       if (order.getTif() == Tif.FOK && order.getOrdType() == OrdType.MARKET) {
         long qty = order.getOrderQty().getLongQty();
         long sum = 0;
-        for (Entry<Long, Long> ent : askEntryBoard.entrySet()) {
+        // For SELL market orders, check available quantity on the BID side
+        for (Entry<Long, Long> ent : bidEntryBoard.entrySet()) {
           sum += ent.getValue();
           if (sum >= qty) {
             return true;
