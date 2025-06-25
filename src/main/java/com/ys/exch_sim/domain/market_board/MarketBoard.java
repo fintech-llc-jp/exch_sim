@@ -189,6 +189,8 @@ public class MarketBoard {
     long leavesQty = order.getLeavesQty().getLongQty();
     Map<Long, LinkedList<Order>> board =
         order.getSide() == Side.BUY ? askOrderBoard : bidOrderBoard;
+    Map<Long, Long> entryBoard = order.getSide() == Side.BUY ? askEntryBoard : bidEntryBoard;
+    
     for (Entry<Long, LinkedList<Order>> ent : board.entrySet()) {
       Long px = ent.getKey();
       LinkedList<Order> orders = ent.getValue();
@@ -260,8 +262,18 @@ public class MarketBoard {
           removeOrders.add(counterOrder);
         }
       }
+      // 完全約定した注文を削除し、注文マップからも削除
       for (Order o : removeOrders) {
         orders.remove(o);
+        orderMap.remove(o.getClOrdID());
+      }
+      // 価格レベルに注文が残っていない場合は板情報から削除
+      if (orders.isEmpty()) {
+        entryBoard.remove(px);
+      }
+      // 完全約定したらループ終了
+      if (leavesQty == 0) {
+        break;
       }
     }
 
