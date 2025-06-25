@@ -20,6 +20,6 @@ public class OrderResponse {
     private String execID;
     private String execStatus;
     private Double lastPx;
-    private Long lastQty;
+    private Double lastQty;
   }
 }

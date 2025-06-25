@@ -269,7 +269,7 @@ public class OrderService {
                         UUID.randomUUID().toString(),
                         exec.getExecStatus().toString(),
                         getPxValue(exec.getLastPx()),
-                        exec.getLastQty().getLongQty()))
+                        getQtyValue(exec.getLastQty())))
             .collect(Collectors.toList());
 
     response.setExecutions(executionDtos);
@@ -279,6 +279,11 @@ public class OrderService {
   private Double getPxValue(Px px) {
     // Symbolから精度情報を取得して実際の価格に変換
     return (double) px.getLongPx() / px.getSymbol().getPxMultiplier();
+  }
+
+  private Double getQtyValue(Qty qty) {
+    // Symbolから精度情報を取得して実際の数量に変換
+    return (double) qty.getLongQty() / qty.getSymbol().getQtyMultiplier();
   }
 
   private void processExecutionsForQueue(List<Execution> executions) {

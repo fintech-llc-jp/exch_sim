@@ -22,7 +22,7 @@ public class ExecutionPollingResponse {
     private String symbol;
     private String execStatus;
     private Double lastPx;
-    private Long lastQty;
+    private Double lastQty;
     private String counterPartyUsername;
     private String side;
   }

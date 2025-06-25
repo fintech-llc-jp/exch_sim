@@ -2,6 +2,7 @@ package com.ys.exch_sim.domain.controller;
 
 import com.ys.exch_sim.domain.dto.ExecutionPollingResponse;
 import com.ys.exch_sim.domain.message.field.Px;
+import com.ys.exch_sim.domain.message.field.Qty;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.security.service.CustomUserDetailsService;
@@ -69,7 +70,7 @@ public class ExecutionPollingController {
                           exec.getOrder().getSymbol().getName(),
                           exec.getExecStatus().toString(),
                           getPxValue(exec.getLastPx()),
-                          exec.getLastQty().getLongQty(),
+                          getQtyValue(exec.getLastQty()),
                           exec.getCounterPartyUsername(),
                           exec.getOrder().getSide().toString());
                     } catch (UnsupportedOperationException e) {
@@ -80,7 +81,7 @@ public class ExecutionPollingController {
                           exec.getSymbol(),   // Use stored symbol
                           exec.getExecStatus().toString(),
                           getPxValueFromRaw(exec.getLastPxRaw()),
-                          exec.getLastQtyRaw(),
+                          getQtyValueFromRaw(exec.getLastQtyRaw()),
                           exec.getCounterPartyUsername(),
                           determineSideFromExecution(exec)); // We need to determine side differently
                     }
@@ -124,10 +125,21 @@ public class ExecutionPollingController {
     return (double) px.getLongPx() / px.getSymbol().getPxMultiplier();
   }
   
+  private Double getQtyValue(Qty qty) {
+    return (double) qty.getLongQty() / qty.getSymbol().getQtyMultiplier();
+  }
+  
   private Double getPxValueFromRaw(Long rawPx) {
     if (rawPx == null) return null;
     // Assuming default multiplier of 100 for stored data
     return rawPx.doubleValue() / 100.0;
+  }
+  
+  private Double getQtyValueFromRaw(Long rawQty) {
+    if (rawQty == null) return null;
+    // For B_FX_BTCJPY, qtyMultiplier=1000, so we need to convert back
+    // Assuming default multiplier of 1000 for stored quantity data
+    return rawQty.doubleValue() / 1000.0;
   }
   
   private String determineSideFromExecution(Execution exec) {
