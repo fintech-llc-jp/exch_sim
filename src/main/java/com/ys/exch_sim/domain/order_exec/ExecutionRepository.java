@@ -1,5 +1,7 @@
 package com.ys.exch_sim.domain.order_exec;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -19,4 +21,9 @@ public interface ExecutionRepository extends JpaRepository<Execution, String> {
     List<Execution> findRecentExecutionsForUser(@Param("username") String username, @Param("fromDate") LocalDateTime fromDate);
     
     List<Execution> findBySymbolAndIsMarketMakerFalseOrderByCreatedAtDesc(String symbol);
+    
+    // Pagination methods
+    Page<Execution> findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(String username, Pageable pageable);
+    
+    Page<Execution> findByUsernameAndSymbolAndIsMarketMakerFalseOrderByCreatedAtDesc(String username, String symbol, Pageable pageable);
 }

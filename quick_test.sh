@@ -29,7 +29,7 @@ case "$1" in
       -H "Authorization: Bearer ${JWT_TOKEN}" \
       -d '{
         "symbol": "B_FX_BTCJPY",
-        "quantity": 0.001,
+        "quantity": 0.01,
         "side": "BUY",
         "ordType": "MARKET",
         "tif": "IOC"
@@ -42,7 +42,7 @@ case "$1" in
       -H "Authorization: Bearer ${JWT_TOKEN}" \
       -d '{
         "symbol": "B_FX_BTCJPY",
-        "quantity": 0.001,
+        "quantity": 0.01,
         "side": "SELL",
         "ordType": "MARKET",
         "tif": "IOC"
@@ -73,11 +73,24 @@ case "$1" in
       -d "{
         \"symbol\": \"B_FX_BTCJPY\",
         \"price\": ${PRICE},
-        \"quantity\": 0.001,
+        \"quantity\": 0.01,
         \"side\": \"BUY\",
         \"ordType\": \"LIMIT\",
         \"tif\": \"GTC\"
       }" | jq '.'
+    ;;
+  "history")
+    PAGE=${2:-"0"}
+    SIZE=${3:-"10"}
+    SYMBOL=${4}
+    echo "📜 約定履歴取得 (page: ${PAGE}, size: ${SIZE}, symbol: ${SYMBOL})..."
+    if [ -n "$SYMBOL" ]; then
+      curl -s -X GET "${BASE_URL}/api/executions/history?page=${PAGE}&size=${SIZE}&symbol=${SYMBOL}" \
+        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    else
+      curl -s -X GET "${BASE_URL}/api/executions/history?page=${PAGE}&size=${SIZE}" \
+        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    fi
     ;;
   "full-test")
     echo "🔄 フルテスト実行..."
@@ -90,7 +103,7 @@ case "$1" in
       -H "Authorization: Bearer ${JWT_TOKEN}" \
       -d '{
         "symbol": "B_FX_BTCJPY",
-        "quantity": 0.001,
+        "quantity": 0.01,
         "side": "BUY",
         "ordType": "MARKET",
         "tif": "IOC"
@@ -116,6 +129,7 @@ case "$1" in
     echo "  $0 queue-size      - キューサイズ確認"
     echo "  $0 board [SYMBOL]  - マーケットボード確認"
     echo "  $0 limit-buy [PRICE] - 指値買い注文"
+    echo "  $0 history [PAGE] [SIZE] [SYMBOL] - 約定履歴取得"
     echo "  $0 full-test       - フルテスト実行"
     ;;
 esac

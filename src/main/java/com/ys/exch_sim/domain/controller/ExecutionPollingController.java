@@ -1,9 +1,11 @@
 package com.ys.exch_sim.domain.controller;
 
+import com.ys.exch_sim.domain.dto.ExecutionHistoryResponse;
 import com.ys.exch_sim.domain.dto.ExecutionPollingResponse;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
 import com.ys.exch_sim.domain.order_exec.Execution;
+import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.security.service.CustomUserDetailsService;
 import java.util.List;
@@ -11,6 +13,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,6 +33,7 @@ public class ExecutionPollingController {
 
   private final ExecutionQueueService executionQueueService;
   private final CustomUserDetailsService userDetailsService;
+  private final ExecutionRepository executionRepository;
 
   @GetMapping("/poll")
   public ResponseEntity<?> pollExecutions(@RequestParam(defaultValue = "10") int maxCount) {
@@ -145,5 +151,143 @@ public class ExecutionPollingController {
   private String determineSideFromExecution(Execution exec) {
     // Use the stored side from the execution entity
     return exec.getSide() != null ? exec.getSide() : "UNKNOWN";
+  }
+
+  @GetMapping("/debug")
+  public ResponseEntity<?> debugExecutions() {
+    try {
+      Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+      if (authentication == null || !authentication.isAuthenticated()) {
+        return ResponseEntity.status(401).body("Authentication required");
+      }
+
+      String username = authentication.getName();
+      
+      // 基本統計
+      long totalCount = executionRepository.count();
+      List<Execution> allExecutions = executionRepository.findAll();
+      List<Execution> userExecutions = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(username);
+      
+      Map<String, Object> debug = Map.of(
+        "totalExecutionsInDb", totalCount,
+        "allExecutionsSize", allExecutions.size(),
+        "userExecutionsSize", userExecutions.size(),
+        "username", username,
+        "sampleExecution", userExecutions.isEmpty() ? null : Map.of(
+          "id", userExecutions.get(0).getOrderID(),
+          "username", userExecutions.get(0).getUsername(),
+          "symbol", userExecutions.get(0).getSymbol(),
+          "isMarketMaker", userExecutions.get(0).getIsMarketMaker()
+        )
+      );
+      
+      return ResponseEntity.ok(debug);
+    } catch (Exception e) {
+      return ResponseEntity.internalServerError().body("Debug error: " + e.getMessage());
+    }
+  }
+
+  @GetMapping("/history")
+  public ResponseEntity<?> getExecutionHistory(
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size,
+      @RequestParam(required = false) String symbol) {
+    try {
+      log.info("Execution history request received - page: {}, size: {}, symbol: {}", page, size, symbol);
+      
+      // JWTから認証情報を取得
+      Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+      if (authentication == null || !authentication.isAuthenticated()) {
+        log.warn("Unauthenticated request for execution history");
+        return ResponseEntity.status(401).body("Authentication required");
+      }
+
+      String username = authentication.getName();
+      log.info("Getting execution history for user: {}", username);
+
+      // ページネーション設定
+      Pageable pageable = PageRequest.of(page, size);
+      log.info("Created pageable: page={}, size={}", page, size);
+
+      // 実際のページネーション処理
+      Page<Execution> executionPage;
+      try {
+        if (symbol != null && !symbol.trim().isEmpty()) {
+          log.info("Querying with symbol filter: {}", symbol.toUpperCase());
+          executionPage = executionRepository.findByUsernameAndSymbolAndIsMarketMakerFalseOrderByCreatedAtDesc(
+              username, symbol.toUpperCase(), pageable);
+        } else {
+          log.info("Querying without symbol filter for user: {}", username);
+          // デバッグ用: まず全件取得して問題を確認
+          List<Execution> allUserExecutions = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(username);
+          log.info("Total executions for user {}: {}", username, allUserExecutions.size());
+          if (!allUserExecutions.isEmpty()) {
+            Execution firstExec = allUserExecutions.get(0);
+            log.info("First execution: id={}, username={}, symbol={}, status={}, isMarketMaker={}", 
+                     firstExec.getOrderID(), firstExec.getUsername(), firstExec.getSymbol(), 
+                     firstExec.getExecStatus(), firstExec.getIsMarketMaker());
+          }
+          
+          executionPage = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(
+              username, pageable);
+        }
+        log.info("Found {} total executions for user: {}, page contains: {} executions", 
+                 executionPage.getTotalElements(), username, executionPage.getContent().size());
+        
+        // 各executionの詳細をログ出力
+        for (Execution exec : executionPage.getContent()) {
+          log.info("Execution: id={}, username={}, symbol={}, status={}, isMarketMaker={}", 
+                   exec.getOrderID(), exec.getUsername(), exec.getSymbol(), 
+                   exec.getExecStatus(), exec.getIsMarketMaker());
+        }
+        
+      } catch (Exception e) {
+        log.error("Database query error for user: {}", username, e);
+        return ResponseEntity.internalServerError()
+            .body("Database error: " + e.getMessage());
+      }
+
+      // レスポンス用DTOに変換
+      List<ExecutionHistoryResponse.ExecutionHistoryDto> executionDtos =
+          executionPage.getContent().stream()
+              .map(exec -> {
+                try {
+                  return new ExecutionHistoryResponse.ExecutionHistoryDto(
+                      exec.getExecID().getId(),
+                      exec.getOrderID(),
+                      exec.getSymbol(),
+                      exec.getExecStatus().toString(),
+                      getPxValueFromRaw(exec.getLastPxRaw()),
+                      getQtyValueFromRaw(exec.getLastQtyRaw()),
+                      exec.getCounterPartyUsername(),
+                      exec.getSide(),
+                      exec.getCreatedAt()
+                  );
+                } catch (Exception e) {
+                  log.error("Error converting execution to DTO: {}", exec, e);
+                  return null;
+                }
+              })
+              .filter(dto -> dto != null)
+              .collect(Collectors.toList());
+
+      ExecutionHistoryResponse response = new ExecutionHistoryResponse(
+          username,
+          page,
+          size,
+          executionPage.getTotalPages(),
+          executionPage.getTotalElements(),
+          executionDtos
+      );
+
+      log.info("Successfully retrieved {} execution history records for user: {}", 
+               executionDtos.size(), username);
+      return ResponseEntity.ok(response);
+
+    } catch (Exception e) {
+      log.error("Error getting execution history", e);
+      return ResponseEntity.internalServerError()
+          .body("Error getting execution history: " + e.getMessage());
+    }
   }
 }
