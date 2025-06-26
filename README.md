@@ -8,6 +8,7 @@
 - **約定処理**: リアルタイムでの注文マッチング
 - **板情報取得**: 買い注文・売り注文の価格・数量情報
 - **約定結果配信**: ユーザー毎の約定結果ポーリング
+- **約定履歴管理**: ページネーション付き約定履歴取得・H2データベース永続化
 - **ポジション管理**: 取引履歴・損益計算・ポートフォリオ管理
 - **MarketMaker機能**: MARKET_MAKER専用の一括注文機能
 - **商品タイプ管理**: Cash（現物）とFX（先物）の取引制限
@@ -20,6 +21,8 @@
 - **Spring Boot**: 3.x
 - **Spring Security**: JWT認証・権限管理
 - **Spring AOP**: 権限チェック
+- **H2 Database**: 約定履歴永続化
+- **Spring Data JPA**: データベースアクセス
 - **Gradle**: ビルドツール
 - **JUnit 5**: テストフレームワーク
 
@@ -123,15 +126,69 @@ curl -X POST http://localhost:8080/api/orders/cancel \
   }'
 ```
 
-### 2. 約定結果ポーリング API
+### 2. 約定結果取得 API
 
-#### 約定結果取得
+#### 約定履歴取得（ページネーション付き）- **推奨**
+**GET** `/api/executions/history?page=0&size=20&symbol=B_FX_BTCJPY`
+
+```bash
+# 全銘柄の約定履歴（最新20件、FILLED/PARTIAL_FILLのみ）
+curl -X GET "http://localhost:8080/api/executions/history?page=0&size=20" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 特定銘柄の約定履歴（最新10件）
+curl -X GET "http://localhost:8080/api/executions/history?page=0&size=10&symbol=B_FX_BTCJPY" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 2ページ目（21-40件目）の約定履歴
+curl -X GET "http://localhost:8080/api/executions/history?page=1&size=20" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+**Query Parameters:**
+- `page` (int, optional): ページ番号（0から開始）、デフォルト: 0
+- `size` (int, optional): 1ページあたりの件数、デフォルト: 20
+- `symbol` (string, optional): 銘柄フィルタ
+
+**特徴:**
+- ✅ **ページネーション対応**: 大量の約定履歴を効率的に取得
+- ✅ **約定のみ表示**: `FILLED`と`PARTIAL_FILL`のみ（`NEW`は除外）
+- ✅ **永続化**: H2データベースに保存された履歴データ
+- ✅ **時系列ソート**: 最新の約定から降順で表示
+
+**Response:**
+```json
+{
+  "username": "testuser",
+  "page": 0,
+  "size": 5,
+  "totalPages": 2,
+  "totalElements": 8,
+  "executions": [
+    {
+      "execID": "23fc010f-9b72-47e7-9505-c65fc61a3826",
+      "clOrdID": "e5f41070-82f3-4daa-9333-5c3944481ce5",
+      "symbol": "B_FX_BTCJPY",
+      "execStatus": "FILLED",
+      "lastPx": 157641.77,
+      "lastQty": 0.01,
+      "counterPartyUsername": "marketmaker1",
+      "side": "SELL",
+      "createdAt": "2025-06-25T22:46:48.540225"
+    }
+  ]
+}
+```
+
+#### 約定結果ポーリング（リアルタイム用）
 **GET** `/api/executions/poll?maxCount=10`
 
 ```bash
 curl -X GET "http://localhost:8080/api/executions/poll?maxCount=5" \
   -H "Authorization: Bearer <JWT_TOKEN>"
 ```
+
+**注意:** ポーリングは一度取得すると消費されるため、履歴表示には**約定履歴API**の使用を推奨します。
 
 #### 約定結果キューサイズ取得
 **GET** `/api/executions/queue-size`
@@ -145,8 +202,6 @@ curl -X GET "http://localhost:8080/api/executions/queue-size" \
 
 #### 板情報取得
 **GET** `/api/market/board/{symbol}?depth=10`
-
-```bash
 curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY?depth=10"
 ```
 
@@ -369,7 +424,51 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 
 アプリケーションは `http://localhost:8080` で起動します。
 
-## 開発
+## 開発・テストツール
+
+### quick_test.sh - テストスクリプト
+
+プロジェクトルートの `quick_test.sh` を使用して様々な機能をテストできます：
+
+```bash
+# 基本的な使用方法
+./quick_test.sh [コマンド] [オプション]
+
+# 利用可能なコマンド
+./quick_test.sh market-buy                    # 成行買い注文
+./quick_test.sh market-sell                   # 成行売り注文
+./quick_test.sh limit-buy [PRICE]             # 指値買い注文
+./quick_test.sh poll                          # 約定ポーリング
+./quick_test.sh queue-size                    # 約定キューサイズ確認
+./quick_test.sh board [SYMBOL]                # 板情報取得
+./quick_test.sh history [PAGE] [SIZE] [SYMBOL] # 約定履歴取得
+./quick_test.sh full-test                     # フルテスト実行
+```
+
+**約定履歴テストの例:**
+```bash
+# 最新10件の約定履歴
+./quick_test.sh history
+
+# 最新5件の約定履歴
+./quick_test.sh history 0 5
+
+# B_FX_BTCJPYの最新3件
+./quick_test.sh history 0 3 B_FX_BTCJPY
+
+# 2ページ目（6-10件目）
+./quick_test.sh history 1 5
+```
+
+### データベース管理
+
+**H2データベース:**
+- **ファイル**: `./data/executions.mv.db`
+- **Console**: http://localhost:8080/h2-console
+- **接続設定**:
+  - JDBC URL: `jdbc:h2:file:./data/executions`
+  - Username: `sa`
+  - Password: (空白)
 
 ### テストカバレッジ
 
@@ -378,6 +477,7 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 - 約定マッチング
 - 板情報管理
 - 約定結果配信
+- 約定履歴永続化
 - ポジション管理
 - MarketMaker機能
 - 権限制御
@@ -466,6 +566,7 @@ A comprehensive financial exchange system simulator that provides order placemen
 - **Execution Processing**: Real-time order matching
 - **Order Book Information**: Price and quantity information for buy/sell orders
 - **Execution Result Distribution**: Per-user execution result polling
+- **Execution History Management**: Paginated execution history with H2 database persistence
 - **Position Management**: Trade history, P&L calculation, and portfolio management
 - **Market Making**: MARKET_MAKER exclusive bulk order functionality
 - **Instrument Type Management**: Cash (spot) and FX (futures) trading restrictions
@@ -478,6 +579,8 @@ A comprehensive financial exchange system simulator that provides order placemen
 - **Spring Boot**: 3.x
 - **Spring Security**: JWT authentication & authorization
 - **Spring AOP**: Permission checking
+- **H2 Database**: Execution history persistence
+- **Spring Data JPA**: Database access layer
 - **Gradle**: Build tool
 - **JUnit 5**: Testing framework
 

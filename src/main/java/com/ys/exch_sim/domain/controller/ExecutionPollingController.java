@@ -46,6 +46,8 @@ public class ExecutionPollingController {
       }
 
       String username = authentication.getName();
+      log.warn("⚠️  DEPRECATED: Frontend is still using /poll endpoint! User: {} with maxCount: {}", username, maxCount);
+      log.warn("⚠️  PLEASE UPDATE FRONTEND TO USE /api/executions/history for execution history!");
       log.info("Polling executions for user: {} with maxCount: {}", username, maxCount);
 
       // ユーザー存在確認
@@ -168,16 +170,35 @@ public class ExecutionPollingController {
       List<Execution> allExecutions = executionRepository.findAll();
       List<Execution> userExecutions = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(username);
       
+      // 新しいフィルタでの統計
+      Page<Execution> filledExecutions = executionRepository.findFilledExecutionsByUsernameOrderByCreatedAtDesc(
+          username, PageRequest.of(0, 10));
+      
+      // 全ユーザーのFILLED/PARTIAL_FILL統計
+      List<Execution> allFilledExecutions = executionRepository.findAll().stream()
+          .filter(e -> e.getExecStatus().toString().equals("FILLED") || e.getExecStatus().toString().equals("PARTIAL_FILL"))
+          .toList();
+          
+      // ユーザー別の統計
+      Map<String, Long> statusCounts = userExecutions.stream()
+          .collect(java.util.stream.Collectors.groupingBy(
+              e -> e.getExecStatus().toString(), 
+              java.util.stream.Collectors.counting()));
+      
       Map<String, Object> debug = Map.of(
         "totalExecutionsInDb", totalCount,
         "allExecutionsSize", allExecutions.size(),
         "userExecutionsSize", userExecutions.size(),
+        "filledExecutionsForUser", filledExecutions.getTotalElements(),
+        "allFilledExecutionsInDb", allFilledExecutions.size(),
+        "userExecutionStatusCounts", statusCounts,
         "username", username,
-        "sampleExecution", userExecutions.isEmpty() ? null : Map.of(
-          "id", userExecutions.get(0).getOrderID(),
-          "username", userExecutions.get(0).getUsername(),
-          "symbol", userExecutions.get(0).getSymbol(),
-          "isMarketMaker", userExecutions.get(0).getIsMarketMaker()
+        "sampleFilledExecution", filledExecutions.getContent().isEmpty() ? null : Map.of(
+          "id", filledExecutions.getContent().get(0).getOrderID(),
+          "username", filledExecutions.getContent().get(0).getUsername(),
+          "symbol", filledExecutions.getContent().get(0).getSymbol(),
+          "status", filledExecutions.getContent().get(0).getExecStatus().toString(),
+          "isMarketMaker", filledExecutions.getContent().get(0).getIsMarketMaker()
         )
       );
       
@@ -191,9 +212,10 @@ public class ExecutionPollingController {
   public ResponseEntity<?> getExecutionHistory(
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size,
-      @RequestParam(required = false) String symbol) {
+      @RequestParam(required = false) String symbol,
+      @RequestParam(defaultValue = "true") boolean filledOnly) {
     try {
-      log.info("Execution history request received - page: {}, size: {}, symbol: {}", page, size, symbol);
+      log.info("✅ CORRECT API: /history endpoint called - page: {}, size: {}, symbol: {}, filledOnly: {}", page, size, symbol, filledOnly);
       
       // JWTから認証情報を取得
       Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -212,24 +234,28 @@ public class ExecutionPollingController {
       // 実際のページネーション処理
       Page<Execution> executionPage;
       try {
-        if (symbol != null && !symbol.trim().isEmpty()) {
-          log.info("Querying with symbol filter: {}", symbol.toUpperCase());
-          executionPage = executionRepository.findByUsernameAndSymbolAndIsMarketMakerFalseOrderByCreatedAtDesc(
-              username, symbol.toUpperCase(), pageable);
-        } else {
-          log.info("Querying without symbol filter for user: {}", username);
-          // デバッグ用: まず全件取得して問題を確認
-          List<Execution> allUserExecutions = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(username);
-          log.info("Total executions for user {}: {}", username, allUserExecutions.size());
-          if (!allUserExecutions.isEmpty()) {
-            Execution firstExec = allUserExecutions.get(0);
-            log.info("First execution: id={}, username={}, symbol={}, status={}, isMarketMaker={}", 
-                     firstExec.getOrderID(), firstExec.getUsername(), firstExec.getSymbol(), 
-                     firstExec.getExecStatus(), firstExec.getIsMarketMaker());
+        if (filledOnly) {
+          // FILLED/PARTIAL_FILLのみを取得
+          if (symbol != null && !symbol.trim().isEmpty()) {
+            log.info("Querying FILLED executions with symbol filter: {}", symbol.toUpperCase());
+            executionPage = executionRepository.findFilledExecutionsByUsernameAndSymbolOrderByCreatedAtDesc(
+                username, symbol.toUpperCase(), pageable);
+          } else {
+            log.info("Querying FILLED executions without symbol filter for user: {}", username);
+            executionPage = executionRepository.findFilledExecutionsByUsernameOrderByCreatedAtDesc(
+                username, pageable);
           }
-          
-          executionPage = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(
-              username, pageable);
+        } else {
+          // 全ステータスを取得（デバッグ用）
+          if (symbol != null && !symbol.trim().isEmpty()) {
+            log.info("Querying ALL executions with symbol filter: {}", symbol.toUpperCase());
+            executionPage = executionRepository.findByUsernameAndSymbolAndIsMarketMakerFalseOrderByCreatedAtDesc(
+                username, symbol.toUpperCase(), pageable);
+          } else {
+            log.info("Querying ALL executions without symbol filter for user: {}", username);
+            executionPage = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(
+                username, pageable);
+          }
         }
         log.info("Found {} total executions for user: {}, page contains: {} executions", 
                  executionPage.getTotalElements(), username, executionPage.getContent().size());
