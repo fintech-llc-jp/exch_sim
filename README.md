@@ -334,7 +334,97 @@ curl -X GET "http://localhost:8080/api/positions/trades?limit=20&symbol=G_FX_BTC
   -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
-### 5. MarketMaker API (MARKET_MAKER権限必要)
+### 5. Trade Insert API
+
+#### トレード挿入
+**POST** `/api/trade/insert`
+
+板情報をチェックしてマッチする注文があれば注文を発注・約定させ、ない場合は約定を直接挿入します。
+
+```bash
+# BUY注文の場合：ASK側の板をチェックしてマッチング
+curl -X POST http://localhost:8080/api/trade/insert \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "B_FX_BTCJPY",
+    "price": 15525000,
+    "quantity": 0.02,
+    "side": "BUY"
+  }'
+
+# SELL注文の場合：BID側の板をチェックしてマッチング
+curl -X POST http://localhost:8080/api/trade/insert \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "B_FX_BTCJPY",
+    "price": 15520000,
+    "quantity": 0.01,
+    "side": "SELL"
+  }'
+```
+
+**Request Fields:**
+- `symbol` (string, required): 取引ペア
+- `price` (number, required): 取引価格
+- `quantity` (number, required): 取引数量
+- `side` (string, required): 売買区分（BUY/SELL）
+
+**動作ロジック:**
+1. **BUY注文の場合**: ASK側の板をチェックし、指定価格以下のASK注文があれば自動マッチング
+2. **SELL注文の場合**: BID側の板をチェックし、指定価格以上のBID注文があれば自動マッチング
+3. **マッチする注文がある場合**: IOC（Immediate or Cancel）注文を発注して自然にマッチング
+4. **マッチする注文がない場合**: 約定を直接データベースに挿入
+
+**Response（マッチング成功時）:**
+```json
+{
+  "type": "ORDER_PLACED",
+  "symbol": "B_FX_BTCJPY",
+  "side": "BUY",
+  "price": 15525000.0,
+  "quantity": 0.02,
+  "message": "Order placed and matched against existing orders",
+  "executions": [
+    {
+      "execID": "abc-123-def",
+      "execStatus": "FILLED",
+      "lastPx": 15524893.0,
+      "lastQty": 0.02
+    }
+  ]
+}
+```
+
+**Response（直接挿入時）:**
+```json
+{
+  "type": "EXECUTION_INSERTED",
+  "symbol": "B_FX_BTCJPY",
+  "side": "BUY",
+  "price": 15525000.0,
+  "quantity": 0.02,
+  "message": "Execution inserted directly (no matching orders found)",
+  "executions": [
+    {
+      "execID": "xyz-456-ghi",
+      "execStatus": "FILLED",
+      "lastPx": 15525000.0,
+      "lastQty": 0.02
+    }
+  ]
+}
+```
+
+**特徴:**
+- ✅ **自動マッチング**: 既存の板注文と価格が合えば自動的に注文マッチング
+- ✅ **直接挿入**: マッチしない場合は約定を直接作成・永続化
+- ✅ **板情報更新**: マッチング時は実際の板数量が正しく更新される
+- ✅ **IOC注文**: マッチング時はIOC（即座に約定または取消）で処理
+- ✅ **認証必須**: JWT認証が必要
+
+### 6. MarketMaker API (MARKET_MAKER権限必要)
 
 #### 一括注文投入
 **POST** `/api/market-make/orders`
@@ -516,6 +606,7 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 ./quick_test.sh history-all [PAGE] [SIZE] [SYMBOL] # 全約定履歴取得（デバッグ用）
 ./quick_test.sh all-history [PAGE] [SIZE] [SYMBOL] # 全体約定履歴取得（全ユーザー）
 ./quick_test.sh volume [SYMBOL] [FROM_TIME] [TO_TIME] # 約定量計算
+./quick_test.sh trade-insert [SYMBOL] [PRICE] [QUANTITY] [SIDE] # トレード挿入
 ./quick_test.sh full-test                     # フルテスト実行
 ```
 
@@ -547,6 +638,21 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 
 # デフォルトパラメータで実行
 ./quick_test.sh volume
+```
+
+**トレード挿入テストの例:**
+```bash
+# BUY注文でのトレード挿入（板マッチング確認）
+./quick_test.sh trade-insert B_FX_BTCJPY 15525000 0.02 BUY
+
+# SELL注文でのトレード挿入
+./quick_test.sh trade-insert B_FX_BTCJPY 15520000 0.01 SELL
+
+# 実行前後の板状態を比較表示
+./quick_test.sh trade-insert G_FX_BTCJPY 5000000 0.1 BUY
+
+# デフォルトパラメータで実行
+./quick_test.sh trade-insert
 ```
 
 ### データベース管理

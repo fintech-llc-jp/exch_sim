@@ -12,6 +12,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -139,7 +140,7 @@ class ExecutionPersistenceIntegrationTest {
     void testRecentExecutionsQuery() {
         // Given
         String username = "testuser";
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         LocalDateTime oneHourAgo = now.minusHours(1);
         
         Order order = createTestOrder("order1", Side.BUY, username);
@@ -149,12 +150,12 @@ class ExecutionPersistenceIntegrationTest {
         executionQueueService.addExecution(username, execution);
 
         // Then
-        List<Execution> recentExecutions = executionRepository.findRecentExecutionsForUser(username, oneHourAgo);
+        List<Execution> recentExecutions = executionRepository.findRecentExecutionsForUser(username, ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, oneHourAgo);
         assertThat(recentExecutions).hasSize(1);
         assertThat(recentExecutions.get(0).getCreatedAt()).isAfter(oneHourAgo);
 
         // Test with future date - should return empty
-        List<Execution> futureExecutions = executionRepository.findRecentExecutionsForUser(username, now.plusHours(1));
+        List<Execution> futureExecutions = executionRepository.findRecentExecutionsForUser(username, ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, now.plusHours(1));
         assertThat(futureExecutions).isEmpty();
     }
 

@@ -18,8 +18,8 @@ public interface ExecutionRepository extends JpaRepository<Execution, String> {
     
     List<Execution> findByUsernameAndSymbolAndIsMarketMakerFalseOrderByCreatedAtDesc(String username, String symbol);
     
-    @Query("SELECT e FROM Execution e WHERE e.username = :username AND e.isMarketMaker = false AND e.createdAt >= :fromDate ORDER BY e.createdAt DESC")
-    List<Execution> findRecentExecutionsForUser(@Param("username") String username, @Param("fromDate") LocalDateTime fromDate);
+    @Query("SELECT e FROM Execution e WHERE e.username = :username AND e.isMarketMaker = false AND (e.execStatus = :filledStatus OR e.execStatus = :partialFillStatus) AND e.createdAt >= :fromDate ORDER BY e.createdAt DESC")
+    List<Execution> findRecentExecutionsForUser(@Param("username") String username, @Param("filledStatus") ExecStatus filledStatus, @Param("partialFillStatus") ExecStatus partialFillStatus, @Param("fromDate") LocalDateTime fromDate);
     
     List<Execution> findBySymbolAndIsMarketMakerFalseOrderByCreatedAtDesc(String symbol);
     

@@ -115,6 +115,32 @@ case "$1" in
     curl -s -X GET "${BASE_URL}/api/executions/db-info" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
     ;;
+  "trade-insert")
+    SYMBOL=${2:-"B_FX_BTCJPY"}
+    PRICE=${3:-"1000.0"}
+    QUANTITY=${4:-"0.01"}
+    SIDE=${5:-"BUY"}
+    echo "💱 トレード挿入 (symbol: ${SYMBOL}, price: ${PRICE}, quantity: ${QUANTITY}, side: ${SIDE})..."
+    echo "📋 実行前の板状態:"
+    curl -s -X GET "${BASE_URL}/api/market/board/${SYMBOL}" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.asks[0:3], .bids[0:3]'
+    echo ""
+    echo "🔄 トレード挿入実行中..."
+    TRADE_RESULT=$(curl -s -X POST "${BASE_URL}/api/trade/insert" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" \
+      -d "{
+        \"symbol\": \"${SYMBOL}\",
+        \"price\": ${PRICE},
+        \"quantity\": ${QUANTITY},
+        \"side\": \"${SIDE}\"
+      }")
+    echo "$TRADE_RESULT" | jq '.'
+    echo ""
+    echo "📋 実行後の板状態:"
+    curl -s -X GET "${BASE_URL}/api/market/board/${SYMBOL}" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.asks[0:3], .bids[0:3]'
+    ;;
   "all-history")
     PAGE=${2:-"0"}
     SIZE=${3:-"10"}
@@ -179,6 +205,7 @@ case "$1" in
     echo "  $0 volume [SYMBOL] [FROM_TIME] [TO_TIME] - 約定量計算"
     echo "  $0 debug           - デバッグ情報取得"
     echo "  $0 db-info         - データベース情報とタイムゾーン確認"
+    echo "  $0 trade-insert [SYMBOL] [PRICE] [QUANTITY] [SIDE] - トレード挿入"
     echo "  $0 full-test       - フルテスト実行"
     ;;
 esac

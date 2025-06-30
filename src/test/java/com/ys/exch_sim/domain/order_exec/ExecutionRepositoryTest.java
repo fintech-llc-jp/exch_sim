@@ -7,6 +7,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -77,7 +78,7 @@ class ExecutionRepositoryTest {
     @Test
     void testFindRecentExecutionsForUser() {
         // Given
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         LocalDateTime yesterday = now.minusDays(1);
         LocalDateTime twoDaysAgo = now.minusDays(2);
         
@@ -88,7 +89,7 @@ class ExecutionRepositoryTest {
         executionRepository.save(oldExecution);
         
         // When
-        List<Execution> results = executionRepository.findRecentExecutionsForUser("user1", yesterday);
+        List<Execution> results = executionRepository.findRecentExecutionsForUser("user1", ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, yesterday);
         
         // Then
         assertThat(results).hasSize(1);
@@ -118,7 +119,7 @@ class ExecutionRepositoryTest {
     }
 
     private Execution createTestExecution(String username, String symbol, boolean isMarketMaker) {
-        return createTestExecutionWithDate(username, symbol, isMarketMaker, LocalDateTime.now());
+        return createTestExecutionWithDate(username, symbol, isMarketMaker, LocalDateTime.now(ZoneOffset.UTC));
     }
 
     private Execution createTestExecutionWithDate(String username, String symbol, boolean isMarketMaker, LocalDateTime createdAt) {
