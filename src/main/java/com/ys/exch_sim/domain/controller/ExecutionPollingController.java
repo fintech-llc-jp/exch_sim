@@ -316,4 +316,78 @@ public class ExecutionPollingController {
           .body("Error getting execution history: " + e.getMessage());
     }
   }
+
+  @GetMapping("/all")
+  public ResponseEntity<?> getAllExecutionHistory(
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size,
+      @RequestParam(required = false) String symbol) {
+    try {
+      log.info("✅ Global execution history request - page: {}, size: {}, symbol: {}", page, size, symbol);
+      
+      // ページネーション設定
+      Pageable pageable = PageRequest.of(page, size);
+
+      // 全ユーザーの約定を取得
+      Page<Execution> executionPage;
+      try {
+        if (symbol != null && !symbol.trim().isEmpty()) {
+          log.info("Querying global FILLED executions with symbol filter: {}", symbol.toUpperCase());
+          executionPage = executionRepository.findAllFilledExecutionsBySymbolOrderByCreatedAtDesc(
+              symbol.toUpperCase(), pageable);
+        } else {
+          log.info("Querying all global FILLED executions");
+          executionPage = executionRepository.findAllFilledExecutionsOrderByCreatedAtDesc(pageable);
+        }
+        log.info("Found {} total global executions, page contains: {} executions", 
+                 executionPage.getTotalElements(), executionPage.getContent().size());
+        
+      } catch (Exception e) {
+        log.error("Database query error for global executions", e);
+        return ResponseEntity.internalServerError()
+            .body("Database error: " + e.getMessage());
+      }
+
+      // レスポンス用DTOに変換
+      List<ExecutionHistoryResponse.ExecutionHistoryDto> executionDtos =
+          executionPage.getContent().stream()
+              .map(exec -> {
+                try {
+                  return new ExecutionHistoryResponse.ExecutionHistoryDto(
+                      exec.getExecID().getId(),
+                      exec.getOrderID(),
+                      exec.getSymbol(),
+                      exec.getExecStatus().toString(),
+                      getPxValueFromRaw(exec.getLastPxRaw()),
+                      getQtyValueFromRaw(exec.getLastQtyRaw()),
+                      exec.getCounterPartyUsername(),
+                      exec.getSide(),
+                      exec.getCreatedAt()
+                  );
+                } catch (Exception e) {
+                  log.error("Error converting execution to DTO: {}", exec, e);
+                  return null;
+                }
+              })
+              .filter(dto -> dto != null)
+              .collect(Collectors.toList());
+
+      ExecutionHistoryResponse response = new ExecutionHistoryResponse(
+          "ALL_USERS", // グローバル約定なので特別な値
+          page,
+          size,
+          executionPage.getTotalPages(),
+          executionPage.getTotalElements(),
+          executionDtos
+      );
+
+      log.info("Successfully retrieved {} global execution history records", executionDtos.size());
+      return ResponseEntity.ok(response);
+
+    } catch (Exception e) {
+      log.error("Error getting global execution history", e);
+      return ResponseEntity.internalServerError()
+          .body("Error getting global execution history: " + e.getMessage());
+    }
+  }
 }

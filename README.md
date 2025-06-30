@@ -156,6 +156,35 @@ curl -X GET "http://localhost:8080/api/executions/history?page=1&size=20" \
 - ✅ **永続化**: H2データベースに保存された履歴データ
 - ✅ **時系列ソート**: 最新の約定から降順で表示
 
+#### 全体約定履歴取得（全ユーザー）
+**GET** `/api/executions/all?page=0&size=20&symbol=B_FX_BTCJPY`
+
+```bash
+# 全ユーザーの約定履歴（最新20件、FILLED/PARTIAL_FILLのみ）
+curl -X GET "http://localhost:8080/api/executions/all?page=0&size=20" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 特定銘柄の全ユーザー約定履歴（最新10件）
+curl -X GET "http://localhost:8080/api/executions/all?page=0&size=10&symbol=B_FX_BTCJPY" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 2ページ目（21-40件目）の全ユーザー約定履歴
+curl -X GET "http://localhost:8080/api/executions/all?page=1&size=20" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+**Query Parameters:**
+- `page` (int, optional): ページ番号（0から開始）、デフォルト: 0
+- `size` (int, optional): 1ページあたりの件数、デフォルト: 20
+- `symbol` (string, optional): 銘柄フィルタ
+
+**特徴:**
+- ✅ **全ユーザー対象**: システム全体の約定履歴を取得
+- ✅ **ページネーション対応**: 大量の約定履歴を効率的に取得
+- ✅ **約定のみ表示**: `FILLED`と`PARTIAL_FILL`のみ（`NEW`は除外）
+- ✅ **永続化**: H2データベースに保存された履歴データ
+- ✅ **時系列ソート**: 最新の約定から降順で表示
+
 **Response:**
 ```json
 {

@@ -110,6 +110,19 @@ case "$1" in
     curl -s -X GET "${BASE_URL}/api/executions/debug" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
     ;;
+  "all-history")
+    PAGE=${2:-"0"}
+    SIZE=${3:-"10"}
+    SYMBOL=${4}
+    echo "🌍 全体約定履歴取得 (page: ${PAGE}, size: ${SIZE}, symbol: ${SYMBOL})..."
+    if [ -n "$SYMBOL" ]; then
+      curl -s -X GET "${BASE_URL}/api/executions/all?page=${PAGE}&size=${SIZE}&symbol=${SYMBOL}" \
+        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    else
+      curl -s -X GET "${BASE_URL}/api/executions/all?page=${PAGE}&size=${SIZE}" \
+        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    fi
+    ;;
   "full-test")
     echo "🔄 フルテスト実行..."
     echo "1️⃣ 初期キューサイズ:"
@@ -149,6 +162,7 @@ case "$1" in
     echo "  $0 limit-buy [PRICE] - 指値買い注文"
     echo "  $0 history [PAGE] [SIZE] [SYMBOL] - 約定履歴取得（FILLED/PARTIAL_FILLのみ）"
     echo "  $0 history-all [PAGE] [SIZE] [SYMBOL] - 全約定履歴取得（デバッグ用）"
+    echo "  $0 all-history [PAGE] [SIZE] [SYMBOL] - 全体約定履歴取得（全ユーザー）"
     echo "  $0 debug           - デバッグ情報取得"
     echo "  $0 full-test       - フルテスト実行"
     ;;

@@ -270,6 +270,13 @@ public class MarketBoard {
       // 価格レベルに注文が残っていない場合は板情報から削除
       if (orders.isEmpty()) {
         entryBoard.remove(px);
+      } else {
+        // 価格レベルに注文が残っている場合は、残りの数量を正確に計算
+        long totalQty = 0;
+        for (Order remainingOrder : orders) {
+          totalQty += remainingOrder.getLeavesQty().getLongQty();
+        }
+        entryBoard.put(px, totalQty);
       }
       // 完全約定したらループ終了
       if (leavesQty == 0) {
@@ -391,21 +398,7 @@ public class MarketBoard {
     order.setLeavesQty(new Qty(order.getSymbol(), newLeavesQty));
     Execution e = new Execution(order, execStatus, lastPx, lastQty, counterPartyUsername);
     order.getExecutions().add(e);
-    if (counterOrder) {
-      // For counterOrder, we need to update the opposite side of the entry board
-      // If order is BUY, it matches against ASK orders, so we update askEntryBoard
-      // If order is SELL, it matches against BID orders, so we update bidEntryBoard
-      Map<Long, Long> entryBoard = order.getSide() == Side.BUY ? askEntryBoard : bidEntryBoard;
-      Long currentQty = entryBoard.get(lastPx.getLongPx());
-      if (currentQty != null) {
-        long qty = currentQty - lastQty.getLongQty();
-        if (qty != 0L) {
-          entryBoard.put(lastPx.getLongPx(), qty);
-        } else {
-          entryBoard.remove(lastPx.getLongPx());
-        }
-      }
-    }
+    // Entry board quantity update is now handled in the main processing loop
     return e;
   }
 

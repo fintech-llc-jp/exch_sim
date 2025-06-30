@@ -33,4 +33,11 @@ public interface ExecutionRepository extends JpaRepository<Execution, String> {
     
     @Query("SELECT e FROM Execution e WHERE e.username = :username AND e.symbol = :symbol AND e.isMarketMaker = false AND e.execStatus IN ('FILLED', 'PARTIAL_FILL') ORDER BY e.createdAt DESC")
     Page<Execution> findFilledExecutionsByUsernameAndSymbolOrderByCreatedAtDesc(@Param("username") String username, @Param("symbol") String symbol, Pageable pageable);
+    
+    // Global execution history methods (all users)
+    @Query("SELECT e FROM Execution e WHERE e.isMarketMaker = false AND e.execStatus IN ('FILLED', 'PARTIAL_FILL') ORDER BY e.createdAt DESC")
+    Page<Execution> findAllFilledExecutionsOrderByCreatedAtDesc(Pageable pageable);
+    
+    @Query("SELECT e FROM Execution e WHERE e.symbol = :symbol AND e.isMarketMaker = false AND e.execStatus IN ('FILLED', 'PARTIAL_FILL') ORDER BY e.createdAt DESC")
+    Page<Execution> findAllFilledExecutionsBySymbolOrderByCreatedAtDesc(@Param("symbol") String symbol, Pageable pageable);
 }
