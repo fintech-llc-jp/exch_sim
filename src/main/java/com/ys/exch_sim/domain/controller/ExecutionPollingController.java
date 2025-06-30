@@ -2,12 +2,17 @@ package com.ys.exch_sim.domain.controller;
 
 import com.ys.exch_sim.domain.dto.ExecutionHistoryResponse;
 import com.ys.exch_sim.domain.dto.ExecutionPollingResponse;
+import com.ys.exch_sim.domain.dto.VolumeCalculationResponse;
+import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.security.service.CustomUserDetailsService;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -172,7 +177,7 @@ public class ExecutionPollingController {
       
       // 新しいフィルタでの統計
       Page<Execution> filledExecutions = executionRepository.findFilledExecutionsByUsernameOrderByCreatedAtDesc(
-          username, PageRequest.of(0, 10));
+          username, ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, PageRequest.of(0, 10));
       
       // 全ユーザーのFILLED/PARTIAL_FILL統計
       List<Execution> allFilledExecutions = executionRepository.findAll().stream()
@@ -239,11 +244,11 @@ public class ExecutionPollingController {
           if (symbol != null && !symbol.trim().isEmpty()) {
             log.info("Querying FILLED executions with symbol filter: {}", symbol.toUpperCase());
             executionPage = executionRepository.findFilledExecutionsByUsernameAndSymbolOrderByCreatedAtDesc(
-                username, symbol.toUpperCase(), pageable);
+                username, symbol.toUpperCase(), ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, pageable);
           } else {
             log.info("Querying FILLED executions without symbol filter for user: {}", username);
             executionPage = executionRepository.findFilledExecutionsByUsernameOrderByCreatedAtDesc(
-                username, pageable);
+                username, ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, pageable);
           }
         } else {
           // 全ステータスを取得（デバッグ用）
@@ -334,10 +339,10 @@ public class ExecutionPollingController {
         if (symbol != null && !symbol.trim().isEmpty()) {
           log.info("Querying global FILLED executions with symbol filter: {}", symbol.toUpperCase());
           executionPage = executionRepository.findAllFilledExecutionsBySymbolOrderByCreatedAtDesc(
-              symbol.toUpperCase(), pageable);
+              symbol.toUpperCase(), ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, pageable);
         } else {
           log.info("Querying all global FILLED executions");
-          executionPage = executionRepository.findAllFilledExecutionsOrderByCreatedAtDesc(pageable);
+          executionPage = executionRepository.findAllFilledExecutionsOrderByCreatedAtDesc(ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, pageable);
         }
         log.info("Found {} total global executions, page contains: {} executions", 
                  executionPage.getTotalElements(), executionPage.getContent().size());
@@ -388,6 +393,88 @@ public class ExecutionPollingController {
       log.error("Error getting global execution history", e);
       return ResponseEntity.internalServerError()
           .body("Error getting global execution history: " + e.getMessage());
+    }
+  }
+
+  @GetMapping("/volume")
+  public ResponseEntity<?> calculateVolume(
+      @RequestParam String symbol,
+      @RequestParam String fromTime,
+      @RequestParam String toTime) {
+    try {
+      log.info("📊 Volume calculation request - symbol: {}, fromTime: {}, toTime: {}", symbol, fromTime, toTime);
+      
+      // Parse time parameters
+      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+      LocalDateTime fromDateTime;
+      LocalDateTime toDateTime;
+      
+      try {
+        fromDateTime = LocalDateTime.parse(fromTime, formatter);
+        toDateTime = LocalDateTime.parse(toTime, formatter);
+      } catch (DateTimeParseException e) {
+        log.error("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss", e);
+        return ResponseEntity.badRequest()
+            .body("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss (e.g., 2025-06-30T10:00:00)");
+      }
+      
+      // Validate time range
+      if (fromDateTime.isAfter(toDateTime)) {
+        return ResponseEntity.badRequest()
+            .body("fromTime must be before toTime");
+      }
+      
+      // Calculate volume
+      Long volumeRaw;
+      Long executionCount;
+      try {
+        if (symbol.equalsIgnoreCase("ALL")) {
+          // Calculate total volume for all symbols
+          volumeRaw = executionRepository.calculateTotalVolumeByTimeRange(ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, fromDateTime, toDateTime);
+          executionCount = executionRepository.findAll().stream()
+              .filter(e -> !e.getIsMarketMaker() && 
+                         (e.getExecStatus().toString().equals("FILLED") || e.getExecStatus().toString().equals("PARTIAL_FILL")) &&
+                         !e.getCreatedAt().isBefore(fromDateTime) && !e.getCreatedAt().isAfter(toDateTime))
+              .count();
+        } else {
+          // Calculate volume for specific symbol
+          volumeRaw = executionRepository.calculateVolumeBySymbolAndTimeRange(symbol.toUpperCase(), ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, fromDateTime, toDateTime);
+          executionCount = executionRepository.countExecutionsBySymbolAndTimeRange(symbol.toUpperCase(), ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, fromDateTime, toDateTime);
+        }
+        
+        log.info("Volume calculation result - symbol: {}, volumeRaw: {}, executionCount: {}", symbol, volumeRaw, executionCount);
+        
+      } catch (Exception e) {
+        log.error("Database query error for volume calculation", e);
+        return ResponseEntity.internalServerError()
+            .body("Database error: " + e.getMessage());
+      }
+      
+      // Convert raw volume to actual value (assuming qtyMultiplier=1000 for most symbols)
+      Double totalVolume = volumeRaw != null ? volumeRaw.doubleValue() / 1000.0 : 0.0;
+      
+      // Create time range description
+      String timeRangeDescription = String.format("From %s to %s", 
+          fromDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+          toDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+      
+      VolumeCalculationResponse response = new VolumeCalculationResponse(
+          symbol.toUpperCase(),
+          fromDateTime,
+          toDateTime,
+          totalVolume,
+          executionCount,
+          timeRangeDescription
+      );
+      
+      log.info("Successfully calculated volume for symbol: {}, total volume: {}, execution count: {}", 
+               symbol, totalVolume, executionCount);
+      return ResponseEntity.ok(response);
+      
+    } catch (Exception e) {
+      log.error("Error calculating volume", e);
+      return ResponseEntity.internalServerError()
+          .body("Error calculating volume: " + e.getMessage());
     }
   }
 }

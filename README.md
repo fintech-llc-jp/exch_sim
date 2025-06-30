@@ -185,6 +185,47 @@ curl -X GET "http://localhost:8080/api/executions/all?page=1&size=20" \
 - ✅ **永続化**: H2データベースに保存された履歴データ
 - ✅ **時系列ソート**: 最新の約定から降順で表示
 
+#### 約定量計算API
+**GET** `/api/executions/volume?symbol=B_FX_BTCJPY&fromTime=2025-06-30T10:00:00&toTime=2025-06-30T12:00:00`
+
+```bash
+# 特定銘柄の約定量計算（2時間分）
+curl -X GET "http://localhost:8080/api/executions/volume?symbol=B_FX_BTCJPY&fromTime=2025-06-30T10:00:00&toTime=2025-06-30T12:00:00" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 全銘柄の約定量計算（1日分）
+curl -X GET "http://localhost:8080/api/executions/volume?symbol=ALL&fromTime=2025-06-30T00:00:00&toTime=2025-06-30T23:59:59" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 今日の約定量計算（特定銘柄）
+curl -X GET "http://localhost:8080/api/executions/volume?symbol=G_FX_BTCJPY&fromTime=2025-06-30T00:00:00&toTime=2025-06-30T23:59:59" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+**Query Parameters:**
+- `symbol` (string, required): 銘柄名（"ALL"で全銘柄対象）
+- `fromTime` (string, required): 開始時刻（yyyy-MM-ddTHH:mm:ss形式）
+- `toTime` (string, required): 終了時刻（yyyy-MM-ddTHH:mm:ss形式）
+
+**特徴:**
+- ✅ **時間範囲指定**: 任意の期間での約定量集計
+- ✅ **銘柄フィルタ**: 特定銘柄または全銘柄対応
+- ✅ **約定のみ対象**: `FILLED`と`PARTIAL_FILL`のみ（`NEW`は除外）
+- ✅ **MarketMaker除外**: 一般ユーザーの取引のみ集計
+- ✅ **統計情報**: 総約定量と約定回数を提供
+
+**Response:**
+```json
+{
+  "symbol": "B_FX_BTCJPY",
+  "fromTime": "2025-06-30T10:00:00",
+  "toTime": "2025-06-30T12:00:00",
+  "totalVolume": 1.5,
+  "executionCount": 12,
+  "timeRangeDescription": "From 2025-06-30 10:00:00 to 2025-06-30 12:00:00"
+}
+```
+
 **Response:**
 ```json
 {
@@ -470,7 +511,10 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 ./quick_test.sh poll                          # 約定ポーリング
 ./quick_test.sh queue-size                    # 約定キューサイズ確認
 ./quick_test.sh board [SYMBOL]                # 板情報取得
-./quick_test.sh history [PAGE] [SIZE] [SYMBOL] # 約定履歴取得
+./quick_test.sh history [PAGE] [SIZE] [SYMBOL] # 約定履歴取得（FILLED/PARTIAL_FILLのみ）
+./quick_test.sh history-all [PAGE] [SIZE] [SYMBOL] # 全約定履歴取得（デバッグ用）
+./quick_test.sh all-history [PAGE] [SIZE] [SYMBOL] # 全体約定履歴取得（全ユーザー）
+./quick_test.sh volume [SYMBOL] [FROM_TIME] [TO_TIME] # 約定量計算
 ./quick_test.sh full-test                     # フルテスト実行
 ```
 
@@ -487,6 +531,21 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 
 # 2ページ目（6-10件目）
 ./quick_test.sh history 1 5
+```
+
+**約定量計算テストの例:**
+```bash
+# 特定銘柄の今日の約定量
+./quick_test.sh volume B_FX_BTCJPY 2025-06-30T00:00:00 2025-06-30T23:59:59
+
+# 過去2時間の約定量
+./quick_test.sh volume G_FX_BTCJPY 2025-06-30T10:00:00 2025-06-30T12:00:00
+
+# 全銘柄の約定量（今日）
+./quick_test.sh volume ALL 2025-06-30T00:00:00 2025-06-30T23:59:59
+
+# デフォルトパラメータで実行
+./quick_test.sh volume
 ```
 
 ### データベース管理

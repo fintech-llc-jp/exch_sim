@@ -123,6 +123,14 @@ case "$1" in
         -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
     fi
     ;;
+  "volume")
+    SYMBOL=${2:-"B_FX_BTCJPY"}
+    FROM_TIME=${3:-"2025-06-30T00:00:00"}
+    TO_TIME=${4:-"2025-06-30T23:59:59"}
+    echo "📊 約定量計算 (symbol: ${SYMBOL}, from: ${FROM_TIME}, to: ${TO_TIME})..."
+    curl -s -X GET "${BASE_URL}/api/executions/volume?symbol=${SYMBOL}&fromTime=${FROM_TIME}&toTime=${TO_TIME}" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    ;;
   "full-test")
     echo "🔄 フルテスト実行..."
     echo "1️⃣ 初期キューサイズ:"
@@ -163,6 +171,7 @@ case "$1" in
     echo "  $0 history [PAGE] [SIZE] [SYMBOL] - 約定履歴取得（FILLED/PARTIAL_FILLのみ）"
     echo "  $0 history-all [PAGE] [SIZE] [SYMBOL] - 全約定履歴取得（デバッグ用）"
     echo "  $0 all-history [PAGE] [SIZE] [SYMBOL] - 全体約定履歴取得（全ユーザー）"
+    echo "  $0 volume [SYMBOL] [FROM_TIME] [TO_TIME] - 約定量計算"
     echo "  $0 debug           - デバッグ情報取得"
     echo "  $0 full-test       - フルテスト実行"
     ;;
