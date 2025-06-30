@@ -81,4 +81,10 @@ $RECYCLE.BIN/
 application-local.properties
 application-dev.properties
 application-prod.properties
-*.env 
+*.env
+
+### H2 Database files ###
+data/
+*.db
+*.trace.db
+*.lock.db
