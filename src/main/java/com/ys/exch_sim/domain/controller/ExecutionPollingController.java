@@ -11,6 +11,9 @@ import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.security.service.CustomUserDetailsService;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -404,18 +407,25 @@ public class ExecutionPollingController {
     try {
       log.info("📊 Volume calculation request - symbol: {}, fromTime: {}, toTime: {}", symbol, fromTime, toTime);
       
-      // Parse time parameters
+      // Parse time parameters (assuming UTC)
       DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
       LocalDateTime fromDateTime;
       LocalDateTime toDateTime;
       
       try {
+        // Parse as LocalDateTime but treat as UTC
         fromDateTime = LocalDateTime.parse(fromTime, formatter);
         toDateTime = LocalDateTime.parse(toTime, formatter);
+        
+        log.info("Parsed times (treated as UTC): from={}, to={}", fromDateTime, toDateTime);
+        
+        // Note: Existing data in database might be in local time (JST)
+        // For backward compatibility, we assume existing data is in JST and convert accordingly
+        // New data will be stored in UTC
       } catch (DateTimeParseException e) {
-        log.error("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss", e);
+        log.error("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss (UTC)", e);
         return ResponseEntity.badRequest()
-            .body("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss (e.g., 2025-06-30T10:00:00)");
+            .body("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss (UTC time, e.g., 2025-06-30T10:00:00)");
       }
       
       // Validate time range
@@ -475,6 +485,60 @@ public class ExecutionPollingController {
       log.error("Error calculating volume", e);
       return ResponseEntity.internalServerError()
           .body("Error calculating volume: " + e.getMessage());
+    }
+  }
+
+  @GetMapping("/db-info")
+  public ResponseEntity<?> getDatabaseInfo() {
+    try {
+      log.info("🔍 Database info request");
+      
+      // Basic statistics
+      long totalExecutions = executionRepository.count();
+      
+      // Get recent executions with their creation times
+      List<Execution> recentExecutions = executionRepository.findAll()
+          .stream()
+          .sorted((e1, e2) -> e2.getCreatedAt().compareTo(e1.getCreatedAt()))
+          .limit(10)
+          .toList();
+      
+      // Time zone analysis
+      String systemTimeZone = ZoneId.systemDefault().toString();
+      LocalDateTime systemTime = LocalDateTime.now();
+      LocalDateTime utcTime = LocalDateTime.now(ZoneOffset.UTC);
+      
+      // Sample data analysis
+      Map<String, Object> sampleData = recentExecutions.stream()
+          .limit(5)
+          .collect(Collectors.toMap(
+              e -> e.getExecID().getId(),
+              e -> Map.of(
+                  "createdAt", e.getCreatedAt().toString(),
+                  "symbol", e.getSymbol(),
+                  "username", e.getUsername(),
+                  "execStatus", e.getExecStatus().toString()
+              )
+          ));
+      
+      Map<String, Object> dbInfo = Map.of(
+          "totalExecutions", totalExecutions,
+          "systemTimeZone", systemTimeZone,
+          "currentSystemTime", systemTime.toString(),
+          "currentUtcTime", utcTime.toString(),
+          "timeDifferenceHours", java.time.Duration.between(utcTime, systemTime).toHours(),
+          "recentExecutionsCount", recentExecutions.size(),
+          "oldestRecentExecution", recentExecutions.isEmpty() ? null : recentExecutions.get(recentExecutions.size()-1).getCreatedAt().toString(),
+          "newestRecentExecution", recentExecutions.isEmpty() ? null : recentExecutions.get(0).getCreatedAt().toString(),
+          "sampleExecutions", sampleData
+      );
+      
+      return ResponseEntity.ok(dbInfo);
+      
+    } catch (Exception e) {
+      log.error("Error getting database info", e);
+      return ResponseEntity.internalServerError()
+          .body("Error getting database info: " + e.getMessage());
     }
   }
 }

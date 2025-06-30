@@ -110,6 +110,11 @@ case "$1" in
     curl -s -X GET "${BASE_URL}/api/executions/debug" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
     ;;
+  "db-info")
+    echo "💽 データベース情報取得..."
+    curl -s -X GET "${BASE_URL}/api/executions/db-info" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    ;;
   "all-history")
     PAGE=${2:-"0"}
     SIZE=${3:-"10"}
@@ -125,8 +130,8 @@ case "$1" in
     ;;
   "volume")
     SYMBOL=${2:-"B_FX_BTCJPY"}
-    FROM_TIME=${3:-"2025-06-30T00:00:00"}
-    TO_TIME=${4:-"2025-06-30T23:59:59"}
+    FROM_TIME=${3:-"2025-06-29T08:00:00"}
+    TO_TIME=${4:-"2025-06-30T08:59:59"}
     echo "📊 約定量計算 (symbol: ${SYMBOL}, from: ${FROM_TIME}, to: ${TO_TIME})..."
     curl -s -X GET "${BASE_URL}/api/executions/volume?symbol=${SYMBOL}&fromTime=${FROM_TIME}&toTime=${TO_TIME}" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
@@ -173,6 +178,7 @@ case "$1" in
     echo "  $0 all-history [PAGE] [SIZE] [SYMBOL] - 全体約定履歴取得（全ユーザー）"
     echo "  $0 volume [SYMBOL] [FROM_TIME] [TO_TIME] - 約定量計算"
     echo "  $0 debug           - デバッグ情報取得"
+    echo "  $0 db-info         - データベース情報とタイムゾーン確認"
     echo "  $0 full-test       - フルテスト実行"
     ;;
 esac

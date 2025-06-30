@@ -204,8 +204,8 @@ curl -X GET "http://localhost:8080/api/executions/volume?symbol=G_FX_BTCJPY&from
 
 **Query Parameters:**
 - `symbol` (string, required): 銘柄名（"ALL"で全銘柄対象）
-- `fromTime` (string, required): 開始時刻（yyyy-MM-ddTHH:mm:ss形式）
-- `toTime` (string, required): 終了時刻（yyyy-MM-ddTHH:mm:ss形式）
+- `fromTime` (string, required): 開始時刻（yyyy-MM-ddTHH:mm:ss形式、UTC時刻）
+- `toTime` (string, required): 終了時刻（yyyy-MM-ddTHH:mm:ss形式、UTC時刻）
 
 **特徴:**
 - ✅ **時間範囲指定**: 任意の期間での約定量集計
@@ -213,6 +213,7 @@ curl -X GET "http://localhost:8080/api/executions/volume?symbol=G_FX_BTCJPY&from
 - ✅ **約定のみ対象**: `FILLED`と`PARTIAL_FILL`のみ（`NEW`は除外）
 - ✅ **MarketMaker除外**: 一般ユーザーの取引のみ集計
 - ✅ **統計情報**: 総約定量と約定回数を提供
+- ✅ **UTC時刻**: 全ての時刻はUTC基準で処理
 
 **Response:**
 ```json

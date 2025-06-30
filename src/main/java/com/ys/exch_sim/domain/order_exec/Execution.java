@@ -6,6 +6,7 @@ import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
 import com.ys.exch_sim.domain.message.field.Symbol;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import jakarta.persistence.*;
 import lombok.Value;
@@ -77,7 +78,7 @@ public class Execution {
     this.symbol = order.getSymbol().getName();
     this.lastPx = lastPx != null ? lastPx.getLongPx() : null;
     this.lastQty = lastQty != null ? (long) lastQty.getLongQty() : null;
-    this.createdAt = LocalDateTime.now();
+    this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     this.isMarketMaker = false;
     this.side = order.getSide().toString();
   }
@@ -97,7 +98,7 @@ public class Execution {
     this.symbol = order.getSymbol().getName();
     this.lastPx = lastPx != null ? lastPx.getLongPx() : null;
     this.lastQty = lastQty != null ? (long) lastQty.getLongQty() : null;
-    this.createdAt = LocalDateTime.now();
+    this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     this.isMarketMaker = false;
     this.side = order.getSide().toString();
   }
