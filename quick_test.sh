@@ -29,7 +29,7 @@ case "$1" in
       -H "Authorization: Bearer ${JWT_TOKEN}" \
       -d '{
         "symbol": "B_FX_BTCJPY",
-        "quantity": 0.01,
+        "quantity": 0.02,
         "side": "BUY",
         "ordType": "MARKET",
         "tif": "IOC"
@@ -75,6 +75,21 @@ case "$1" in
         \"price\": ${PRICE},
         \"quantity\": 0.01,
         \"side\": \"BUY\",
+        \"ordType\": \"LIMIT\",
+        \"tif\": \"GTC\"
+      }" | jq '.'
+    ;;
+  "limit-sell")
+    PRICE=${2:-"20000.0"}
+    echo "📉 指値売り注文実行 (価格: ${PRICE})..."
+    curl -s -X POST "${BASE_URL}/api/orders/new" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" \
+      -d "{
+        \"symbol\": \"B_FX_BTCJPY\",
+        \"price\": ${PRICE},
+        \"quantity\": 0.01,
+        \"side\": \"SELL\",
         \"ordType\": \"LIMIT\",
         \"tif\": \"GTC\"
       }" | jq '.'
@@ -199,6 +214,7 @@ case "$1" in
     echo "  $0 queue-size      - キューサイズ確認"
     echo "  $0 board [SYMBOL]  - マーケットボード確認"
     echo "  $0 limit-buy [PRICE] - 指値買い注文"
+    echo "  $0 limit-sell [PRICE] - 指値売り注文"
     echo "  $0 history [PAGE] [SIZE] [SYMBOL] - 約定履歴取得（FILLED/PARTIAL_FILLのみ）"
     echo "  $0 history-all [PAGE] [SIZE] [SYMBOL] - 全約定履歴取得（デバッグ用）"
     echo "  $0 all-history [PAGE] [SIZE] [SYMBOL] - 全体約定履歴取得（全ユーザー）"

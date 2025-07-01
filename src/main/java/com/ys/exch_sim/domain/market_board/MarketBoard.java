@@ -19,7 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class MarketBoard {
 
   // Maintain orders on the board
@@ -116,26 +118,62 @@ public class MarketBoard {
     }
     order = orderMap.get(order.getClOrdID());
     if (order.getSide() == Side.BUY) {
-      long qty = bidEntryBoard.get(order.getOrderPx().getLongPx());
-      qty -= order.getOrderQty().getLongQty();
-      if (qty == 0) {
+      Long currentQty = bidEntryBoard.get(order.getOrderPx().getLongPx());
+      if (currentQty == null) {
+        log.warn(
+            "No quantity found for BUY order at price {} during cancellation, order: {}",
+            order.getOrderPx().getLongPx(),
+            order.getClOrdID().getId());
+        currentQty = 0L;
+      }
+      long newQty = currentQty - order.getLeavesQty().getLongQty();
+      if (newQty < 0) {
+        log.warn(
+            "Negative quantity detected during BUY order cancellation: {} - {} = {}, resetting to"
+                + " 0",
+            currentQty,
+            order.getLeavesQty().getLongQty(),
+            newQty);
+        newQty = 0;
+      }
+      if (newQty <= 0) {
         bidEntryBoard.remove(order.getOrderPx().getLongPx());
       } else {
-        bidEntryBoard.put(order.getOrderPx().getLongPx(), qty);
+        bidEntryBoard.put(order.getOrderPx().getLongPx(), newQty);
       }
       LinkedList<Order> orders = bidOrderBoard.get(order.getOrderPx().getLongPx());
-      orders.remove(order);
+      if (orders != null) {
+        orders.remove(order);
+      }
 
     } else {
-      long qty = askEntryBoard.get(order.getOrderPx().getLongPx());
-      qty -= order.getOrderQty().getLongQty();
-      if (qty == 0) {
+      Long currentQty = askEntryBoard.get(order.getOrderPx().getLongPx());
+      if (currentQty == null) {
+        log.warn(
+            "No quantity found for SELL order at price {} during cancellation, order: {}",
+            order.getOrderPx().getLongPx(),
+            order.getClOrdID().getId());
+        currentQty = 0L;
+      }
+      long newQty = currentQty - order.getLeavesQty().getLongQty();
+      if (newQty < 0) {
+        log.warn(
+            "Negative quantity detected during SELL order cancellation: {} - {} = {}, resetting to"
+                + " 0",
+            currentQty,
+            order.getLeavesQty().getLongQty(),
+            newQty);
+        newQty = 0;
+      }
+      if (newQty <= 0) {
         askEntryBoard.remove(order.getOrderPx().getLongPx());
       } else {
-        askEntryBoard.put(order.getOrderPx().getLongPx(), qty);
+        askEntryBoard.put(order.getOrderPx().getLongPx(), newQty);
       }
       LinkedList<Order> orders = askOrderBoard.get(order.getOrderPx().getLongPx());
-      orders.remove(order);
+      if (orders != null) {
+        orders.remove(order);
+      }
     }
     Execution e =
         new Execution(order, ExecStatus.CANCELED, order.getOrderPx(), order.getOrderQty());
@@ -190,7 +228,7 @@ public class MarketBoard {
     Map<Long, LinkedList<Order>> board =
         order.getSide() == Side.BUY ? askOrderBoard : bidOrderBoard;
     Map<Long, Long> entryBoard = order.getSide() == Side.BUY ? askEntryBoard : bidEntryBoard;
-    
+
     for (Entry<Long, LinkedList<Order>> ent : board.entrySet()) {
       Long px = ent.getKey();
       LinkedList<Order> orders = ent.getValue();

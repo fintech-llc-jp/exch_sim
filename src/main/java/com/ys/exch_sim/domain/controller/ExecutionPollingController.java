@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -147,8 +148,8 @@ public class ExecutionPollingController {
   
   private Double getPxValueFromRaw(Long rawPx) {
     if (rawPx == null) return null;
-    // Assuming default multiplier of 100 for stored data
-    return rawPx.doubleValue() / 100.0;
+    // Price multiplier is 1 for all instruments in current configuration
+    return rawPx.doubleValue();
   }
   
   private Double getQtyValueFromRaw(Long rawQty) {
@@ -400,6 +401,7 @@ public class ExecutionPollingController {
   }
 
   @GetMapping("/volume")
+  @Cacheable(value = "volumeCache", key = "#symbol + '_' + #fromTime + '_' + #toTime", condition = "#symbol != null && #fromTime != null && #toTime != null")
   public ResponseEntity<?> calculateVolume(
       @RequestParam String symbol,
       @RequestParam String fromTime,
@@ -439,17 +441,13 @@ public class ExecutionPollingController {
       Long executionCount;
       try {
         if (symbol.equalsIgnoreCase("ALL")) {
-          // Calculate total volume for all symbols
-          volumeRaw = executionRepository.calculateTotalVolumeByTimeRange(ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, fromDateTime, toDateTime);
-          executionCount = executionRepository.findAll().stream()
-              .filter(e -> !e.getIsMarketMaker() && 
-                         (e.getExecStatus().toString().equals("FILLED") || e.getExecStatus().toString().equals("PARTIAL_FILL")) &&
-                         !e.getCreatedAt().isBefore(fromDateTime) && !e.getCreatedAt().isAfter(toDateTime))
-              .count();
+          // Calculate total volume for all symbols using optimized native query
+          volumeRaw = executionRepository.calculateTotalVolumeByTimeRange(fromDateTime, toDateTime);
+          executionCount = executionRepository.countTotalExecutionsByTimeRange(fromDateTime, toDateTime);
         } else {
-          // Calculate volume for specific symbol
-          volumeRaw = executionRepository.calculateVolumeBySymbolAndTimeRange(symbol.toUpperCase(), ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, fromDateTime, toDateTime);
-          executionCount = executionRepository.countExecutionsBySymbolAndTimeRange(symbol.toUpperCase(), ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, fromDateTime, toDateTime);
+          // Calculate volume for specific symbol using optimized native query
+          volumeRaw = executionRepository.calculateVolumeBySymbolAndTimeRange(symbol.toUpperCase(), fromDateTime, toDateTime);
+          executionCount = executionRepository.countExecutionsBySymbolAndTimeRange(symbol.toUpperCase(), fromDateTime, toDateTime);
         }
         
         log.info("Volume calculation result - symbol: {}, volumeRaw: {}, executionCount: {}", symbol, volumeRaw, executionCount);
