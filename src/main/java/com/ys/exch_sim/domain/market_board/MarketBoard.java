@@ -449,10 +449,14 @@ public class MarketBoard {
   // Dry Run for checking the matching order existing
   boolean checkMeetingOrder(Order order) {
     if (order.getSide() == Side.BUY) {
+      log.debug("checkMeetingOrder: BUY order, askEntryBoard.size()={}, order.getTif()={}, order.getOrdType()={}", 
+        askEntryBoard.size(), order.getTif(), order.getOrdType());
       if (askEntryBoard.size() == 0) {
+        log.debug("checkMeetingOrder: No ask orders available, returning false");
         return false;
       }
       if (order.getTif() == Tif.IOC && order.getOrdType() == OrdType.MARKET) {
+        log.debug("checkMeetingOrder: IOC MARKET order, returning true");
         return true;
       }
       if (order.getTif() == Tif.FOK && order.getOrdType() == OrdType.MARKET) {
@@ -531,5 +535,42 @@ public class MarketBoard {
   Execution createNew(Order order) {
     return new Execution(
         order, ExecStatus.NEW, new Px(order.getSymbol(), 0.0), new Qty(order.getSymbol(), 0.0));
+  }
+
+  // Methods for Redis integration to update board directly
+  public synchronized void clearBids() {
+    bidOrderBoard.clear();
+    bidEntryBoard.clear();
+  }
+
+  public synchronized void clearAsks() {
+    askOrderBoard.clear();
+    askEntryBoard.clear();
+  }
+
+  public synchronized void setBid(int index, Pair<Long, Long> priceQty) {
+    if (priceQty.getLeft() > 0 && priceQty.getRight() > 0) {
+      bidEntryBoard.put(priceQty.getLeft(), priceQty.getRight());
+    }
+  }
+
+  public synchronized void setAsk(int index, Pair<Long, Long> priceQty) {
+    if (priceQty.getLeft() > 0 && priceQty.getRight() > 0) {
+      askEntryBoard.put(priceQty.getLeft(), priceQty.getRight());
+    }
+  }
+
+  // Debug methods
+  public synchronized int getAskEntryBoardSize() {
+    return askEntryBoard.size();
+  }
+
+  public synchronized int getBidEntryBoardSize() {
+    return bidEntryBoard.size();
+  }
+
+  // Method to add market maker orders (for external data sync)
+  public synchronized void addMarketMakerOrder(Order order) {
+    addOrderToBoard(order);
   }
 }

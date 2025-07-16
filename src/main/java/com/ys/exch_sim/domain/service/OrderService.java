@@ -243,6 +243,11 @@ public class OrderService {
         });
   }
 
+  // MarketDataSyncServiceが使用するためのpublicメソッド
+  public MarketBoard getOrCreateMarketBoardForSync(String symbolName) {
+    return getOrCreateMarketBoard(symbolName);
+  }
+
   private OrderResponse convertToResponse(Order order, List<Execution> executions) {
     OrderResponse response = new OrderResponse();
     response.setClOrdID(order.getClOrdID().getId());
