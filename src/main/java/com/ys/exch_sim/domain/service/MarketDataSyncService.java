@@ -132,7 +132,12 @@ public class MarketDataSyncService {
     }
 
     private MarketBoard getOrCreateMarketBoard(String symbolName) {
-        return orderService.getOrCreateMarketBoardForSync(symbolName);
+        MarketBoard marketBoard = orderService.getMarketBoard(symbolName);
+        if (marketBoard == null) {
+            throw new RuntimeException("MarketBoard not found for symbol: " + symbolName + 
+                ". Available symbols: " + orderService.getAvailableSymbols());
+        }
+        return marketBoard;
     }
 
     private Order createMarketMakerOrder(Symbol symbol, long price, long quantity, Side side) {

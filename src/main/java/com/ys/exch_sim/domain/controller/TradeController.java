@@ -1,5 +1,7 @@
 package com.ys.exch_sim.domain.controller;
 
+import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
+import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
@@ -10,6 +12,7 @@ import com.ys.exch_sim.domain.message.field.*;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.order_exec.Order;
+import com.ys.exch_sim.domain.service.BigQueryVolumeCalculationService;
 import com.ys.exch_sim.domain.service.OrderService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -17,8 +20,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,12 +31,29 @@ import org.springframework.web.bind.annotation.*;
 @Slf4j
 @RestController
 @RequestMapping("/api/trade")
-@RequiredArgsConstructor
 public class TradeController {
 
   private final OrderService orderService;
   private final ExecutionRepository executionRepository;
   private final InstrumentConfig instrumentConfig;
+  private final BigQueryService bigQueryService;
+  private final BigQueryVolumeCalculationService volumeCalculationService;
+
+  @Value("${app.data-migration.bigquery-enabled:false}")
+  private boolean bigQueryEnabled;
+
+  public TradeController(
+      OrderService orderService,
+      ExecutionRepository executionRepository,
+      InstrumentConfig instrumentConfig,
+      @Autowired(required = false) BigQueryService bigQueryService,
+      @Autowired(required = false) BigQueryVolumeCalculationService volumeCalculationService) {
+    this.orderService = orderService;
+    this.executionRepository = executionRepository;
+    this.instrumentConfig = instrumentConfig;
+    this.bigQueryService = bigQueryService;
+    this.volumeCalculationService = volumeCalculationService;
+  }
 
   @PostMapping("/insert")
   public ResponseEntity<?> insertTrade(@RequestBody TradeInsertRequest request) {
@@ -239,6 +260,16 @@ public class TradeController {
       // Save to database
       executionRepository.save(execution);
 
+      // BigQueryにも非同期保存
+      if (bigQueryEnabled && bigQueryService != null) {
+        saveExecutionToBigQueryAsync(execution);
+      }
+
+      // 取引量を更新（BigQueryが無効でもvolumeCalculationServiceが利用可能な場合は更新）
+      if (volumeCalculationService != null) {
+        volumeCalculationService.updateVolumeOnTrade(execution);
+      }
+
       TradeInsertResponse.ExecutionSummary executionSummary =
           new TradeInsertResponse.ExecutionSummary(
               execution.getExecID().getId(), execution.getExecStatus().toString(), price, quantity);
@@ -377,6 +408,43 @@ public class TradeController {
       log.error("Error processing order through OrderService", e);
       // Don't fall back - this should work
       throw new RuntimeException("Failed to process order through OrderService", e);
+    }
+  }
+
+  // BigQuery保存メソッド（同期版）
+  private void saveExecutionToBigQuery(Execution execution) {
+    try {
+      BigQueryExecutionEntity bigQueryEntity = new BigQueryExecutionEntity(execution);
+      bigQueryService.insertExecution(bigQueryEntity);
+      log.debug("TradeInsert execution saved to BigQuery: {}", execution.getExecID());
+    } catch (Exception e) {
+      log.error("Error saving TradeInsert execution to BigQuery: " + execution.getExecID(), e);
+    }
+  }
+
+  // BigQuery非同期保存メソッド
+  private void saveExecutionToBigQueryAsync(Execution execution) {
+    try {
+      BigQueryExecutionEntity bigQueryEntity = new BigQueryExecutionEntity(execution);
+      bigQueryService
+          .insertExecutionAsync(bigQueryEntity)
+          .thenRun(
+              () ->
+                  log.debug(
+                      "TradeInsert execution saved to BigQuery (async): {}", execution.getExecID()))
+          .exceptionally(
+              throwable -> {
+                log.error(
+                    "Error saving TradeInsert execution to BigQuery (async): {}",
+                    execution.getExecID(),
+                    throwable);
+                return null;
+              });
+    } catch (Exception e) {
+      log.error(
+          "Error preparing TradeInsert execution for BigQuery (async): {}",
+          execution.getExecID(),
+          e);
     }
   }
 }

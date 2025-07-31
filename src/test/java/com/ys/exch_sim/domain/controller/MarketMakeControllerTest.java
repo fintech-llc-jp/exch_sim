@@ -5,7 +5,6 @@ import com.ys.exch_sim.domain.dto.MarketMakeOrderResponse;
 import com.ys.exch_sim.domain.service.MarketMakeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -19,7 +18,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.doReturn;
 
-@SpringBootTest
 class MarketMakeControllerTest {
 
     private MarketMakeController marketMakeController;

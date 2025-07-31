@@ -4,7 +4,7 @@ import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.service.OrderService;
-import com.ys.exch_sim.security.service.CustomUserDetailsService;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
   private final OrderService orderService;
-  private final CustomUserDetailsService userDetailsService;
+  private final UserDetailsService userDetailsService;
 
   @PostMapping("/new")
   public ResponseEntity<?> newOrder(@RequestBody NewOrderRequest request) {

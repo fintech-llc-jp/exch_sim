@@ -171,8 +171,8 @@ case "$1" in
     ;;
   "volume")
     SYMBOL=${2:-"B_FX_BTCJPY"}
-    FROM_TIME=${3:-"2025-06-29T08:00:00"}
-    TO_TIME=${4:-"2025-06-30T08:59:59"}
+    FROM_TIME=${3:-"2025-07-23T06:00:00"}
+    TO_TIME=${4:-"2025-07-25T18:59:59"}
     echo "📊 約定量計算 (symbol: ${SYMBOL}, from: ${FROM_TIME}, to: ${TO_TIME})..."
     curl -s -X GET "${BASE_URL}/api/executions/volume?symbol=${SYMBOL}&fromTime=${FROM_TIME}&toTime=${TO_TIME}" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'

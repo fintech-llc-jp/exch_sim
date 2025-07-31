@@ -9,7 +9,8 @@ import com.ys.exch_sim.domain.message.field.Qty;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
-import com.ys.exch_sim.security.service.CustomUserDetailsService;
+import com.ys.exch_sim.domain.service.BigQueryVolumeCalculationService;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -19,8 +20,8 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -37,12 +38,22 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 @RestController
 @RequestMapping("/api/executions")
-@RequiredArgsConstructor
 public class ExecutionPollingController {
 
   private final ExecutionQueueService executionQueueService;
-  private final CustomUserDetailsService userDetailsService;
+  private final UserDetailsService userDetailsService;
   private final ExecutionRepository executionRepository;
+  private final BigQueryVolumeCalculationService volumeCalculationService;
+  
+  public ExecutionPollingController(ExecutionQueueService executionQueueService, 
+                                   UserDetailsService userDetailsService,
+                                   ExecutionRepository executionRepository,
+                                   @Autowired(required = false) BigQueryVolumeCalculationService volumeCalculationService) {
+    this.executionQueueService = executionQueueService;
+    this.userDetailsService = userDetailsService;
+    this.executionRepository = executionRepository;
+    this.volumeCalculationService = volumeCalculationService;
+  }
 
   @GetMapping("/poll")
   public ResponseEntity<?> pollExecutions(@RequestParam(defaultValue = "10") int maxCount) {
@@ -401,7 +412,6 @@ public class ExecutionPollingController {
   }
 
   @GetMapping("/volume")
-  @Cacheable(value = "volumeCache", key = "#symbol + '_' + #fromTime + '_' + #toTime", condition = "#symbol != null && #fromTime != null && #toTime != null")
   public ResponseEntity<?> calculateVolume(
       @RequestParam String symbol,
       @RequestParam String fromTime,
@@ -409,63 +419,93 @@ public class ExecutionPollingController {
     try {
       log.info("📊 Volume calculation request - symbol: {}, fromTime: {}, toTime: {}", symbol, fromTime, toTime);
       
+      // BigQueryVolumeCalculationServiceが利用可能かチェック
+      if (volumeCalculationService == null) {
+        log.warn("BigQuery volume calculation service is not available, falling back to H2");
+        return calculateVolumeFromH2(symbol, fromTime, toTime);
+      }
+      
+      // デバッグ用：キャッシュの状態をログ出力
+      Map<String, Object> volumeStatus = volumeCalculationService.getVolumeStatus();
+      log.info("🔍 Volume cache status: {}", volumeStatus);
+      
+      // BigQueryベースの計算（現在は24時間固定）
+      String normalizedSymbol = symbol != null ? symbol.toUpperCase() : null;
+      log.info("🔍 Normalized symbol: '{}' (original: '{}')", normalizedSymbol, symbol);
+      
+      Long volumeRaw;
+      if (symbol == null || symbol.trim().isEmpty() || "ALL".equalsIgnoreCase(symbol.trim())) {
+        volumeRaw = volumeCalculationService.calculateTotalVolume();
+        log.info("🔍 Calculating total volume: {}", volumeRaw);
+      } else {
+        volumeRaw = volumeCalculationService.calculateVolumeBySymbol(normalizedSymbol);
+        log.info("🔍 Calculating volume for symbol '{}': {}", normalizedSymbol, volumeRaw);
+      }
+      
+      // Convert raw volume to actual value (qtyMultiplier=1000)
+      Double totalVolume = volumeRaw != null ? volumeRaw.doubleValue() / 1000.0 : 0.0;
+      
+      // 現在の実装では約定件数は取得しない（必要に応じて後で追加）
+      Long executionCount = 0L;
+      
+      String timeRangeDescription = "24-hour rolling volume (BigQuery-based)";
+
+      VolumeCalculationResponse response = new VolumeCalculationResponse(
+          symbol != null && !symbol.trim().isEmpty() ? symbol.toUpperCase() : "ALL",
+          LocalDateTime.now().minusHours(24),
+          LocalDateTime.now(),
+          totalVolume,
+          executionCount,
+          timeRangeDescription
+      );
+
+      log.info("Successfully calculated volume (BigQuery-based) for symbol: {}, total volume: {}", 
+               symbol, totalVolume);
+      return ResponseEntity.ok(response);
+
+    } catch (Exception e) {
+      log.error("Error calculating volume", e);
+      return ResponseEntity.internalServerError()
+          .body("Error calculating volume: " + e.getMessage());
+    }
+  }
+  
+  /**
+   * H2データベースを使用したフォールバック取引量計算
+   */
+  private ResponseEntity<?> calculateVolumeFromH2(String symbol, String fromTime, String toTime) {
+    try {
       // Parse time parameters (assuming UTC)
       DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
       LocalDateTime fromDateTime;
       LocalDateTime toDateTime;
       
       try {
-        // Parse as LocalDateTime but treat as UTC
         fromDateTime = LocalDateTime.parse(fromTime, formatter);
         toDateTime = LocalDateTime.parse(toTime, formatter);
-        
-        log.info("Parsed times (treated as UTC): from={}, to={}", fromDateTime, toDateTime);
-        
-        // Note: Existing data in database might be in local time (JST)
-        // For backward compatibility, we assume existing data is in JST and convert accordingly
-        // New data will be stored in UTC
       } catch (DateTimeParseException e) {
         log.error("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss (UTC)", e);
         return ResponseEntity.badRequest()
-            .body("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss (UTC time, e.g., 2025-06-30T10:00:00)");
+            .body("Invalid time format. Expected format: yyyy-MM-ddTHH:mm:ss (UTC)");
       }
-      
-      // Validate time range
-      if (fromDateTime.isAfter(toDateTime)) {
-        return ResponseEntity.badRequest()
-            .body("fromTime must be before toTime");
-      }
-      
-      // Calculate volume
+
       Long volumeRaw;
       Long executionCount;
-      try {
-        if (symbol.equalsIgnoreCase("ALL")) {
-          // Calculate total volume for all symbols using optimized native query
-          volumeRaw = executionRepository.calculateTotalVolumeByTimeRange(fromDateTime, toDateTime);
-          executionCount = executionRepository.countTotalExecutionsByTimeRange(fromDateTime, toDateTime);
-        } else {
-          // Calculate volume for specific symbol using optimized native query
-          volumeRaw = executionRepository.calculateVolumeBySymbolAndTimeRange(symbol.toUpperCase(), fromDateTime, toDateTime);
-          executionCount = executionRepository.countExecutionsBySymbolAndTimeRange(symbol.toUpperCase(), fromDateTime, toDateTime);
-        }
-        
-        log.info("Volume calculation result - symbol: {}, volumeRaw: {}, executionCount: {}", symbol, volumeRaw, executionCount);
-        
-      } catch (Exception e) {
-        log.error("Database query error for volume calculation", e);
-        return ResponseEntity.internalServerError()
-            .body("Database error: " + e.getMessage());
+      
+      if (symbol.equalsIgnoreCase("ALL")) {
+        volumeRaw = executionRepository.calculateTotalVolumeByTimeRange(fromDateTime, toDateTime);
+        executionCount = executionRepository.countTotalExecutionsByTimeRange(fromDateTime, toDateTime);
+      } else {
+        volumeRaw = executionRepository.calculateVolumeBySymbolAndTimeRange(symbol.toUpperCase(), fromDateTime, toDateTime);
+        executionCount = executionRepository.countExecutionsBySymbolAndTimeRange(symbol.toUpperCase(), fromDateTime, toDateTime);
       }
       
-      // Convert raw volume to actual value (assuming qtyMultiplier=1000 for most symbols)
       Double totalVolume = volumeRaw != null ? volumeRaw.doubleValue() / 1000.0 : 0.0;
       
-      // Create time range description
-      String timeRangeDescription = String.format("From %s to %s", 
+      String timeRangeDescription = String.format("From %s to %s (H2 fallback)", 
           fromDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
           toDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-      
+
       VolumeCalculationResponse response = new VolumeCalculationResponse(
           symbol.toUpperCase(),
           fromDateTime,
@@ -474,15 +514,13 @@ public class ExecutionPollingController {
           executionCount,
           timeRangeDescription
       );
-      
-      log.info("Successfully calculated volume for symbol: {}, total volume: {}, execution count: {}", 
-               symbol, totalVolume, executionCount);
+
       return ResponseEntity.ok(response);
       
     } catch (Exception e) {
-      log.error("Error calculating volume", e);
+      log.error("H2 volume calculation failed", e);
       return ResponseEntity.internalServerError()
-          .body("Error calculating volume: " + e.getMessage());
+          .body("H2 volume calculation failed: " + e.getMessage());
     }
   }
 
@@ -537,6 +575,60 @@ public class ExecutionPollingController {
       log.error("Error getting database info", e);
       return ResponseEntity.internalServerError()
           .body("Error getting database info: " + e.getMessage());
+    }
+  }
+  
+  @GetMapping("/volume/debug")
+  public ResponseEntity<?> getVolumeDebugInfo() {
+    try {
+      log.info("🔍 Volume debug info request");
+      
+      Map<String, Object> debugInfo = new java.util.HashMap<>();
+      
+      if (volumeCalculationService != null) {
+        Map<String, Object> volumeStatus = volumeCalculationService.getVolumeStatus();
+        debugInfo.put("volumeCalculationService", "available");
+        debugInfo.put("volumeStatus", volumeStatus);
+        debugInfo.put("totalVolume", volumeCalculationService.calculateTotalVolume());
+      } else {
+        debugInfo.put("volumeCalculationService", "not available");
+      }
+      
+      // H2データベースの統計情報
+      try {
+        long totalExecutions = executionRepository.count();
+        debugInfo.put("h2TotalExecutions", totalExecutions);
+        
+        // 最近の約定10件を取得
+        List<Execution> recentExecutions = executionRepository.findAll()
+            .stream()
+            .sorted((e1, e2) -> e2.getCreatedAt().compareTo(e1.getCreatedAt()))
+            .limit(10)
+            .collect(java.util.stream.Collectors.toList());
+            
+        List<Map<String, Object>> recentExecutionInfo = recentExecutions.stream()
+            .map(e -> {
+                Map<String, Object> execInfo = new java.util.HashMap<>();
+                execInfo.put("symbol", e.getSymbol());
+                execInfo.put("qty", e.getLastQtyRaw() != null ? e.getLastQtyRaw() : "null");
+                execInfo.put("createdAt", e.getCreatedAt().toString());
+                execInfo.put("isMarketMaker", e.getIsMarketMaker() != null ? e.getIsMarketMaker() : "null");
+                return execInfo;
+            })
+            .collect(java.util.stream.Collectors.toList());
+            
+        debugInfo.put("recentExecutions", recentExecutionInfo);
+        
+      } catch (Exception e) {
+        debugInfo.put("h2Error", e.getMessage());
+      }
+      
+      return ResponseEntity.ok(debugInfo);
+      
+    } catch (Exception e) {
+      log.error("Error getting volume debug info", e);
+      return ResponseEntity.internalServerError()
+          .body("Error getting volume debug info: " + e.getMessage());
     }
   }
 }

@@ -1,5 +1,6 @@
 package com.ys.exch_sim.integration;
 
+import com.ys.exch_sim.config.TestSecurityConfig;
 import com.ys.exch_sim.domain.message.field.*;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
@@ -8,6 +9,7 @@ import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(TestSecurityConfig.class)
 @Transactional
 class ExecutionPersistenceIntegrationTest {
 

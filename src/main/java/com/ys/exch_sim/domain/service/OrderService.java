@@ -39,6 +39,36 @@ public class OrderService {
   // 注文IDからOrderへのマッピングを管理（キャンセル用）
   private final ConcurrentHashMap<String, Order> orderMap = new ConcurrentHashMap<>();
 
+  /** 指定されたシンボルのMarketBoardを初期化する DataMigrationInitializerから呼び出される */
+  public void initializeMarketBoard(Symbol symbol) {
+    if (symbol == null || symbol.getName().trim().isEmpty()) {
+      log.warn("Cannot initialize MarketBoard for empty symbol");
+      return;
+    }
+
+    String normalizedSymbol = symbol.getName().toUpperCase();
+    MarketBoard marketBoard = new MarketBoard(symbol);
+    marketBoards.put(normalizedSymbol, marketBoard);
+
+    log.info("Initialized MarketBoard for symbol: {}", normalizedSymbol);
+  }
+
+  /** 利用可能なシンボル一覧を取得する */
+  public List<String> getAvailableSymbols() {
+    return new ArrayList<>(marketBoards.keySet());
+  }
+  
+  /**
+   * 指定されたシンボルのMarketBoardを取得する
+   * 存在しない場合はnullを返す
+   */
+  public MarketBoard getMarketBoard(String symbolName) {
+    if (symbolName == null || symbolName.trim().isEmpty()) {
+      return null;
+    }
+    return marketBoards.get(symbolName.toUpperCase());
+  }
+
   // 約定結果キューサービス
   private final ExecutionQueueService executionQueueService;
 
@@ -301,7 +331,7 @@ public class OrderService {
         // For persisted executions, get username from execution entity
         username = execution.getUsername();
       }
-      
+
       if (username != null) {
         executionQueueService.addExecution(username, execution);
 

@@ -26,9 +26,13 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-aop'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	
 	// H2 Database
 	runtimeOnly 'com.h2database:h2'
+	
+	// BigQuery
+	implementation 'com.google.cloud:google-cloud-bigquery:2.34.2'
 	
 	// JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
@@ -39,8 +43,6 @@ dependencies {
 	implementation 'com.fasterxml.jackson.core:jackson-databind'
 	implementation 'com.fasterxml.jackson.core:jackson-core'
 	implementation 'com.fasterxml.jackson.core:jackson-annotations'
-	
-	implementation 'com.google.guava:guava:32.1.1-jre'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'

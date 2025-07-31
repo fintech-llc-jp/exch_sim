@@ -21,16 +21,19 @@ public class SecurityConfig {
 
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    http.securityMatcher("/api/**")
-        .authorizeHttpRequests(
+    http.authorizeHttpRequests(
             authorize ->
                 authorize
                     .requestMatchers("/api/auth/**")
                     .permitAll()
+                    .requestMatchers("/actuator/health")
+                    .permitAll()
                     .requestMatchers("/api/orders/**")
                     .authenticated()
+                    .requestMatchers("/api/**")
+                    .authenticated()
                     .anyRequest()
-                    .authenticated())
+                    .permitAll())
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authenticationProvider(authenticationProvider)

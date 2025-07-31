@@ -10,16 +10,16 @@ import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.MarketBoardResponse;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.position.PositionManager;
+import com.ys.exch_sim.domain.position.PositionRepository;
+import com.ys.exch_sim.domain.position.TradeHistoryRepository;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.domain.service.OrderService;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.ResponseEntity;
 
-@SpringBootTest
 class MarketBoardControllerTest {
 
   private OrderService orderService;
@@ -29,7 +29,9 @@ class MarketBoardControllerTest {
   @BeforeEach
   void setUp() {
     ExecutionQueueService executionQueueService = new ExecutionQueueService();
-    PositionManager positionManager = new PositionManager();
+    PositionRepository positionRepository = mock(PositionRepository.class);
+    TradeHistoryRepository tradeHistoryRepository = mock(TradeHistoryRepository.class);
+    PositionManager positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true, false);
 
     // InstrumentConfigをモック化
     instrumentConfig = mock(InstrumentConfig.class);

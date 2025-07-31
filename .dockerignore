@@ -1,0 +1,67 @@
+# Build artifacts
+build/
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Test files
+src/test/
+test-users*.json
+
+# Log files
+*.log
+log/
+
+# Data files
+data/
+*.db
+*.h2.db
+
+# Environment files
+.env
+.env.local
+
+# Temporary files
+tmp/
+*.tmp
+*.swp
+*.swo
+
+# IDE workspace files
+.project
+.classpath
+.settings/
+
+# Maven (if any)
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# Other
+users.json
+check_bigquery_auth.sh
+migrate_users_to_bigquery.sh
+test_bigquery_local.sh
+quick_test.sh

@@ -5,6 +5,8 @@ import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -16,10 +18,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PositionManagerTest {
 
     private PositionManager positionManager;
+    
+    @Mock
+    private PositionRepository positionRepository;
+    
+    @Mock
+    private TradeHistoryRepository tradeHistoryRepository;
 
     @BeforeEach
     void setUp() {
-        positionManager = new PositionManager();
+        MockitoAnnotations.openMocks(this);
+        // Enable memory cache, disable database persistence for tests
+        positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true, false);
     }
 
     @Test

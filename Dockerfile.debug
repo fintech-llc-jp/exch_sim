@@ -1,0 +1,15 @@
+FROM openjdk:17-jdk-slim
+
+WORKDIR /app
+
+# Copy and build
+COPY . .
+RUN chmod +x gradlew
+RUN ./gradlew build -x test --no-daemon
+
+# Debug: Check what was built
+RUN echo "=== Build artifacts ===" && ls -la build/libs/
+
+# Simple startup
+EXPOSE 8080
+CMD ["sh", "-c", "echo 'Java version:' && java -version && echo 'Starting app...' && java -jar build/libs/*.jar"]

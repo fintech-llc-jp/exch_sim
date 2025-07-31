@@ -11,13 +11,12 @@ import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.position.PositionManager;
+import com.ys.exch_sim.domain.position.PositionRepository;
+import com.ys.exch_sim.domain.position.TradeHistoryRepository;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-
-@SpringBootTest
 class OrderServiceTest {
 
   private OrderService orderService;
@@ -26,7 +25,9 @@ class OrderServiceTest {
   @BeforeEach
   void setUp() {
     ExecutionQueueService executionQueueService = new ExecutionQueueService();
-    PositionManager positionManager = new PositionManager();
+    PositionRepository positionRepository = mock(PositionRepository.class);
+    TradeHistoryRepository tradeHistoryRepository = mock(TradeHistoryRepository.class);
+    PositionManager positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true, false);
 
     // InstrumentConfigをモック化
     instrumentConfig = mock(InstrumentConfig.class);
