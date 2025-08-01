@@ -57,9 +57,13 @@ public class TradeController {
 
   @PostMapping("/insert")
   public ResponseEntity<?> insertTrade(@RequestBody TradeInsertRequest request) {
+    long startTime = System.currentTimeMillis();
+    String requestId = UUID.randomUUID().toString().substring(0, 8);
+
     try {
       log.info(
-          "🔄 Trade insert request - symbol: {}, side: {}, price: {}, quantity: {}",
+          "🔄 TradeInsert API Request [{}] - symbol: {}, side: {}, price: {}, quantity: {}",
+          requestId,
           request.symbol(),
           request.side(),
           request.price(),
@@ -112,17 +116,38 @@ public class TradeController {
 
       // Check if there are matching orders on the board
       boolean hasMatchingOrders = checkForMatchingOrders(marketBoard, side, request.price());
+      log.info("🔍 TradeInsert [{}] - Matching orders check: {}", requestId, hasMatchingOrders);
 
+      ResponseEntity<?> response;
       if (hasMatchingOrders) {
         // Place order and let it match naturally
-        return placeOrder(symbol, side, request.price(), request.quantity(), username);
+        log.info("📈 TradeInsert [{}] - Processing via order matching", requestId);
+        response =
+            placeOrder(
+                symbol, side, request.price(), request.quantity(), username, requestId, startTime);
       } else {
         // Insert execution directly
-        return insertExecutionDirectly(symbol, side, request.price(), request.quantity(), username);
+        log.info("💾 TradeInsert [{}] - Processing via direct execution", requestId);
+        response =
+            insertExecutionDirectly(
+                symbol, side, request.price(), request.quantity(), username, requestId, startTime);
       }
 
+      long totalProcessingTime = System.currentTimeMillis() - startTime;
+      log.info(
+          "✅ TradeInsert API Response [{}] - totalProcessingTime: {}ms",
+          requestId,
+          totalProcessingTime);
+      return response;
+
     } catch (Exception e) {
-      log.error("Error processing trade insert", e);
+      long processingTime = System.currentTimeMillis() - startTime;
+      log.error(
+          "❌ TradeInsert API Error [{}] - processingTime: {}ms, error: {}",
+          requestId,
+          processingTime,
+          e.getMessage(),
+          e);
       return ResponseEntity.internalServerError()
           .body("Error processing trade insert: " + e.getMessage());
     }
@@ -171,10 +196,18 @@ public class TradeController {
   }
 
   private ResponseEntity<?> placeOrder(
-      Symbol symbol, Side side, Double price, Double quantity, String username) {
+      Symbol symbol,
+      Side side,
+      Double price,
+      Double quantity,
+      String username,
+      String requestId,
+      long startTime) {
     try {
       log.info(
-          "Placing order for matching - symbol: {}, side: {}, price: {}, quantity: {}",
+          "🔄 TradeInsert [{}] - Placing order for matching - symbol: {}, side: {}, price: {},"
+              + " quantity: {}",
+          requestId,
           symbol.getName(),
           side,
           price,
@@ -194,10 +227,15 @@ public class TradeController {
               username);
 
       // Process order through OrderService and ensure board updates are reflected
+      long orderProcessingStart = System.currentTimeMillis();
       List<Execution> executions = processOrderThroughOrderService(order);
+      long orderProcessingTime = System.currentTimeMillis() - orderProcessingStart;
 
-      // Force board refresh to ensure consistency
-      log.info("Forcing board refresh after order processing");
+      log.info(
+          "📊 TradeInsert [{}] - Order processing completed - executions: {}, processingTime: {}ms",
+          requestId,
+          executions.size(),
+          orderProcessingTime);
 
       List<TradeInsertResponse.ExecutionSummary> executionSummaries =
           executions.stream()
@@ -214,6 +252,17 @@ public class TradeController {
                               : null))
               .collect(Collectors.toList());
 
+      // ログ出力：約定詳細
+      for (TradeInsertResponse.ExecutionSummary exec : executionSummaries) {
+        log.info(
+            "💰 TradeInsert [{}] - Execution: id={}, status={}, price={}, quantity={}",
+            requestId,
+            exec.execId(),
+            exec.execStatus(),
+            exec.price(),
+            exec.quantity());
+      }
+
       TradeInsertResponse response =
           new TradeInsertResponse(
               "ORDER_PLACED",
@@ -224,19 +273,41 @@ public class TradeController {
               "Order placed and matched against existing orders",
               executionSummaries);
 
+      long totalProcessingTime = System.currentTimeMillis() - startTime;
+      log.info(
+          "✅ TradeInsert [{}] - Order placement completed - totalExecutions: {},"
+              + " totalProcessingTime: {}ms",
+          requestId,
+          executionSummaries.size(),
+          totalProcessingTime);
+
       return ResponseEntity.ok(response);
 
     } catch (Exception e) {
-      log.error("Error placing order", e);
+      long processingTime = System.currentTimeMillis() - startTime;
+      log.error(
+          "❌ TradeInsert [{}] - Order placement error - processingTime: {}ms, error: {}",
+          requestId,
+          processingTime,
+          e.getMessage(),
+          e);
       return ResponseEntity.internalServerError().body("Error placing order: " + e.getMessage());
     }
   }
 
   private ResponseEntity<?> insertExecutionDirectly(
-      Symbol symbol, Side side, Double price, Double quantity, String username) {
+      Symbol symbol,
+      Side side,
+      Double price,
+      Double quantity,
+      String username,
+      String requestId,
+      long startTime) {
     try {
       log.info(
-          "Inserting execution directly - symbol: {}, side: {}, price: {}, quantity: {}",
+          "💾 TradeInsert [{}] - Inserting execution directly - symbol: {}, side: {}, price: {},"
+              + " quantity: {}",
+          requestId,
           symbol.getName(),
           side,
           price,
@@ -258,21 +329,45 @@ public class TradeController {
               side.toString());
 
       // Save to database
+      long dbSaveStart = System.currentTimeMillis();
       executionRepository.save(execution);
+      long dbSaveTime = System.currentTimeMillis() - dbSaveStart;
+      log.info(
+          "💾 TradeInsert [{}] - Database save completed - saveTime: {}ms", requestId, dbSaveTime);
 
       // BigQueryにも非同期保存
       if (bigQueryEnabled && bigQueryService != null) {
+        long bigQueryStart = System.currentTimeMillis();
         saveExecutionToBigQueryAsync(execution);
+        long bigQueryTime = System.currentTimeMillis() - bigQueryStart;
+        log.info(
+            "☁️ TradeInsert [{}] - BigQuery async save initiated - initTime: {}ms",
+            requestId,
+            bigQueryTime);
       }
 
       // 取引量を更新（BigQueryが無効でもvolumeCalculationServiceが利用可能な場合は更新）
       if (volumeCalculationService != null) {
+        long volumeUpdateStart = System.currentTimeMillis();
         volumeCalculationService.updateVolumeOnTrade(execution);
+        long volumeUpdateTime = System.currentTimeMillis() - volumeUpdateStart;
+        log.info(
+            "📊 TradeInsert [{}] - Volume update completed - updateTime: {}ms",
+            requestId,
+            volumeUpdateTime);
       }
 
       TradeInsertResponse.ExecutionSummary executionSummary =
           new TradeInsertResponse.ExecutionSummary(
               execution.getExecID().getId(), execution.getExecStatus().toString(), price, quantity);
+
+      log.info(
+          "💰 TradeInsert [{}] - Direct execution created: id={}, status={}, price={}, quantity={}",
+          requestId,
+          execution.getExecID().getId(),
+          execution.getExecStatus().toString(),
+          price,
+          quantity);
 
       TradeInsertResponse response =
           new TradeInsertResponse(
@@ -284,10 +379,22 @@ public class TradeController {
               "Execution inserted directly (no matching orders found)",
               List.of(executionSummary));
 
+      long totalProcessingTime = System.currentTimeMillis() - startTime;
+      log.info(
+          "✅ TradeInsert [{}] - Direct execution completed - totalProcessingTime: {}ms",
+          requestId,
+          totalProcessingTime);
+
       return ResponseEntity.ok(response);
 
     } catch (Exception e) {
-      log.error("Error inserting execution directly", e);
+      long processingTime = System.currentTimeMillis() - startTime;
+      log.error(
+          "❌ TradeInsert [{}] - Direct execution error - processingTime: {}ms, error: {}",
+          requestId,
+          processingTime,
+          e.getMessage(),
+          e);
       return ResponseEntity.internalServerError()
           .body("Error inserting execution: " + e.getMessage());
     }

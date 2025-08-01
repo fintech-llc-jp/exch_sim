@@ -11,13 +11,13 @@ public class Px {
 
   public Px(Symbol symbol, double dblPx) {
     this.symbol = symbol;
-    log.info(
+    log.debug(
         "Px calculation: dblPx={}, pxMultiplier={}, calculation={}",
         dblPx,
         symbol.getPxMultiplier(),
         dblPx * symbol.getPxMultiplier());
     this.longPx = (long) (dblPx * symbol.getPxMultiplier());
-    log.info("Px result: longPx={}", this.longPx);
+    log.debug("Px result: longPx={}", this.longPx);
   }
 
   public Px(Symbol symbol, Long longPx) {

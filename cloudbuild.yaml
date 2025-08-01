@@ -1,0 +1,52 @@
+steps:
+  # Run tests first (with test profile to avoid production dependencies)
+  - name: 'gcr.io/cloud-builders/gradle:8.4-jdk17'
+    args: ['test', '--no-daemon', '-Dspring.profiles.active=test']
+    env:
+      - 'JAVA_TOOL_OPTIONS=-Xmx2g -XX:+UseG1GC'
+      - 'GRADLE_OPTS=-Dorg.gradle.daemon=false'
+    timeout: '600s'
+
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/exch-sim:latest', '.']
+    timeout: '1200s'
+    env:
+      - 'DOCKER_BUILDKIT=1'
+
+  # Push the image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/exch-sim:latest']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'exch-sim'
+      - '--image=gcr.io/$PROJECT_ID/exch-sim:latest'
+      - '--platform=managed'
+      - '--region=asia-northeast1'
+      - '--allow-unauthenticated'
+      - '--port=8080'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--timeout=300s'
+      - '--concurrency=1000'
+      - '--min-instances=0'
+      - '--max-instances=10'
+      - '--vpc-connector=projects/$PROJECT_ID/locations/asia-northeast1/connectors/bitcoin-market-connector'
+      - '--set-env-vars=SPRING_PROFILES_ACTIVE=prod'
+      - '--set-env-vars=REDIS_HOST=10.233.140.211'
+      - '--set-env-vars=REDIS_PORT=6379'
+      - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID'
+      - '--set-env-vars=BIGQUERY_DATASET=repository'
+
+# Images to be pushed to Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/exch-sim:latest'
+
+timeout: '2400s'
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY

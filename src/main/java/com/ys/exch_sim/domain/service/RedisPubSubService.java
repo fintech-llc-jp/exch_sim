@@ -26,9 +26,17 @@ public class RedisPubSubService {
     @Value("${redis.pubsub.trade-insert.channel-pattern:trade-insert:*}")
     private String tradeInsertChannelPattern;
 
-    @PostConstruct
-    public void subscribeToChannels() {
+    private volatile boolean initialized = false;
+
+    public void initializePubSub() {
+        if (initialized) {
+            log.debug("Redis Pub/Sub already initialized, skipping");
+            return;
+        }
+
         try {
+            log.info("Starting Redis Pub/Sub initialization...");
+            
             // Subscribe to market-make channels
             redisContainer.addMessageListener(marketMakeListener, new PatternTopic(marketMakeChannelPattern));
             log.info("Subscribed to market-make channels with pattern: {}", marketMakeChannelPattern);
@@ -37,11 +45,17 @@ public class RedisPubSubService {
             redisContainer.addMessageListener(tradeInsertListener, new PatternTopic(tradeInsertChannelPattern));
             log.info("Subscribed to trade-insert channels with pattern: {}", tradeInsertChannelPattern);
 
-            log.info("Redis Pub/Sub service initialized successfully");
+            initialized = true;
+            log.info("✅ Redis Pub/Sub service initialized successfully");
 
         } catch (Exception e) {
-            log.error("Failed to initialize Redis Pub/Sub service", e);
-            throw new RuntimeException("Redis Pub/Sub initialization failed", e);
+            log.error("❌ Failed to initialize Redis Pub/Sub service", e);
+            // Don't throw exception - allow application to continue without Pub/Sub
+            log.warn("Application will continue without Redis Pub/Sub functionality");
         }
+    }
+
+    public boolean isInitialized() {
+        return initialized;
     }
 }

@@ -234,8 +234,13 @@ public class ExecutionPollingController {
       @RequestParam(defaultValue = "20") int size,
       @RequestParam(required = false) String symbol,
       @RequestParam(defaultValue = "true") boolean filledOnly) {
+    
+    long startTime = System.currentTimeMillis();
+    String requestId = java.util.UUID.randomUUID().toString().substring(0, 8);
+    
     try {
-      log.info("✅ CORRECT API: /history endpoint called - page: {}, size: {}, symbol: {}, filledOnly: {}", page, size, symbol, filledOnly);
+      log.info("📊 ExecutionHistory API Request [{}] - page: {}, size: {}, symbol: {}, filledOnly: {}", 
+               requestId, page, size, symbol, filledOnly);
       
       // JWTから認証情報を取得
       Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -245,55 +250,54 @@ public class ExecutionPollingController {
       }
 
       String username = authentication.getName();
-      log.info("Getting execution history for user: {}", username);
+      log.info("📊 ExecutionHistory [{}] - Processing for user: {}", requestId, username);
 
       // ページネーション設定
       Pageable pageable = PageRequest.of(page, size);
-      log.info("Created pageable: page={}, size={}", page, size);
+      log.info("📊 ExecutionHistory [{}] - Pagination: page={}, size={}", requestId, page, size);
 
       // 実際のページネーション処理
       Page<Execution> executionPage;
+      long queryStart = System.currentTimeMillis();
       try {
         if (filledOnly) {
           // FILLED/PARTIAL_FILLのみを取得
           if (symbol != null && !symbol.trim().isEmpty()) {
-            log.info("Querying FILLED executions with symbol filter: {}", symbol.toUpperCase());
+            log.info("🔍 ExecutionHistory [{}] - Querying FILLED executions with symbol: {}", requestId, symbol.toUpperCase());
             executionPage = executionRepository.findFilledExecutionsByUsernameAndSymbolOrderByCreatedAtDesc(
                 username, symbol.toUpperCase(), ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, pageable);
           } else {
-            log.info("Querying FILLED executions without symbol filter for user: {}", username);
+            log.info("🔍 ExecutionHistory [{}] - Querying FILLED executions (all symbols)", requestId);
             executionPage = executionRepository.findFilledExecutionsByUsernameOrderByCreatedAtDesc(
                 username, ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, pageable);
           }
         } else {
           // 全ステータスを取得（デバッグ用）
           if (symbol != null && !symbol.trim().isEmpty()) {
-            log.info("Querying ALL executions with symbol filter: {}", symbol.toUpperCase());
+            log.info("🔍 ExecutionHistory [{}] - Querying ALL executions with symbol: {}", requestId, symbol.toUpperCase());
             executionPage = executionRepository.findByUsernameAndSymbolAndIsMarketMakerFalseOrderByCreatedAtDesc(
                 username, symbol.toUpperCase(), pageable);
           } else {
-            log.info("Querying ALL executions without symbol filter for user: {}", username);
+            log.info("🔍 ExecutionHistory [{}] - Querying ALL executions (all symbols)", requestId);
             executionPage = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(
                 username, pageable);
           }
         }
-        log.info("Found {} total executions for user: {}, page contains: {} executions", 
-                 executionPage.getTotalElements(), username, executionPage.getContent().size());
         
-        // 各executionの詳細をログ出力
-        for (Execution exec : executionPage.getContent()) {
-          log.info("Execution: id={}, username={}, symbol={}, status={}, isMarketMaker={}", 
-                   exec.getOrderID(), exec.getUsername(), exec.getSymbol(), 
-                   exec.getExecStatus(), exec.getIsMarketMaker());
-        }
+        long queryTime = System.currentTimeMillis() - queryStart;
+        log.info("📊 ExecutionHistory [{}] - Database query completed - totalRecords: {}, pageRecords: {}, queryTime: {}ms", 
+                 requestId, executionPage.getTotalElements(), executionPage.getContent().size(), queryTime);
         
       } catch (Exception e) {
-        log.error("Database query error for user: {}", username, e);
+        long processingTime = System.currentTimeMillis() - startTime;
+        log.error("❌ ExecutionHistory [{}] - Database query error - processingTime: {}ms, error: {}", 
+                  requestId, processingTime, e.getMessage(), e);
         return ResponseEntity.internalServerError()
             .body("Database error: " + e.getMessage());
       }
 
       // レスポンス用DTOに変換
+      long conversionStart = System.currentTimeMillis();
       List<ExecutionHistoryResponse.ExecutionHistoryDto> executionDtos =
           executionPage.getContent().stream()
               .map(exec -> {
@@ -310,12 +314,16 @@ public class ExecutionPollingController {
                       exec.getCreatedAt()
                   );
                 } catch (Exception e) {
-                  log.error("Error converting execution to DTO: {}", exec, e);
+                  log.error("❌ ExecutionHistory [{}] - Error converting execution to DTO: {}", requestId, exec, e);
                   return null;
                 }
               })
               .filter(dto -> dto != null)
               .collect(Collectors.toList());
+
+      long conversionTime = System.currentTimeMillis() - conversionStart;
+      log.info("📊 ExecutionHistory [{}] - DTO conversion completed - records: {}, conversionTime: {}ms", 
+               requestId, executionDtos.size(), conversionTime);
 
       ExecutionHistoryResponse response = new ExecutionHistoryResponse(
           username,
@@ -326,12 +334,17 @@ public class ExecutionPollingController {
           executionDtos
       );
 
-      log.info("Successfully retrieved {} execution history records for user: {}", 
-               executionDtos.size(), username);
+      long totalProcessingTime = System.currentTimeMillis() - startTime;
+      log.info("✅ ExecutionHistory API Response [{}] - user: {}, page: {}, size: {}, totalRecords: {}, returnedRecords: {}, totalPages: {}, processingTime: {}ms", 
+               requestId, username, page, size, executionPage.getTotalElements(), executionDtos.size(), 
+               executionPage.getTotalPages(), totalProcessingTime);
+      
       return ResponseEntity.ok(response);
 
     } catch (Exception e) {
-      log.error("Error getting execution history", e);
+      long processingTime = System.currentTimeMillis() - startTime;
+      log.error("❌ ExecutionHistory API Error [{}] - processingTime: {}ms, error: {}", 
+                requestId, processingTime, e.getMessage(), e);
       return ResponseEntity.internalServerError()
           .body("Error getting execution history: " + e.getMessage());
     }
@@ -342,33 +355,44 @@ public class ExecutionPollingController {
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size,
       @RequestParam(required = false) String symbol) {
+    
+    long startTime = System.currentTimeMillis();
+    String requestId = java.util.UUID.randomUUID().toString().substring(0, 8);
+    
     try {
-      log.info("✅ Global execution history request - page: {}, size: {}, symbol: {}", page, size, symbol);
+      log.info("📊 GlobalExecutionHistory API Request [{}] - page: {}, size: {}, symbol: {}", 
+               requestId, page, size, symbol);
       
       // ページネーション設定
       Pageable pageable = PageRequest.of(page, size);
 
       // 全ユーザーの約定を取得
       Page<Execution> executionPage;
+      long queryStart = System.currentTimeMillis();
       try {
         if (symbol != null && !symbol.trim().isEmpty()) {
-          log.info("Querying global FILLED executions with symbol filter: {}", symbol.toUpperCase());
+          log.info("🔍 GlobalExecutionHistory [{}] - Querying with symbol filter: {}", requestId, symbol.toUpperCase());
           executionPage = executionRepository.findAllFilledExecutionsBySymbolOrderByCreatedAtDesc(
               symbol.toUpperCase(), ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, pageable);
         } else {
-          log.info("Querying all global FILLED executions");
+          log.info("🔍 GlobalExecutionHistory [{}] - Querying all symbols", requestId);
           executionPage = executionRepository.findAllFilledExecutionsOrderByCreatedAtDesc(ExecStatus.FILLED, ExecStatus.PARTIAL_FILL, pageable);
         }
-        log.info("Found {} total global executions, page contains: {} executions", 
-                 executionPage.getTotalElements(), executionPage.getContent().size());
+        
+        long queryTime = System.currentTimeMillis() - queryStart;
+        log.info("📊 GlobalExecutionHistory [{}] - Database query completed - totalRecords: {}, pageRecords: {}, queryTime: {}ms", 
+                 requestId, executionPage.getTotalElements(), executionPage.getContent().size(), queryTime);
         
       } catch (Exception e) {
-        log.error("Database query error for global executions", e);
+        long processingTime = System.currentTimeMillis() - startTime;
+        log.error("❌ GlobalExecutionHistory [{}] - Database query error - processingTime: {}ms, error: {}", 
+                  requestId, processingTime, e.getMessage(), e);
         return ResponseEntity.internalServerError()
             .body("Database error: " + e.getMessage());
       }
 
       // レスポンス用DTOに変換
+      long conversionStart = System.currentTimeMillis();
       List<ExecutionHistoryResponse.ExecutionHistoryDto> executionDtos =
           executionPage.getContent().stream()
               .map(exec -> {
@@ -385,12 +409,16 @@ public class ExecutionPollingController {
                       exec.getCreatedAt()
                   );
                 } catch (Exception e) {
-                  log.error("Error converting execution to DTO: {}", exec, e);
+                  log.error("❌ GlobalExecutionHistory [{}] - Error converting execution to DTO: {}", requestId, exec, e);
                   return null;
                 }
               })
               .filter(dto -> dto != null)
               .collect(Collectors.toList());
+
+      long conversionTime = System.currentTimeMillis() - conversionStart;
+      log.info("📊 GlobalExecutionHistory [{}] - DTO conversion completed - records: {}, conversionTime: {}ms", 
+               requestId, executionDtos.size(), conversionTime);
 
       ExecutionHistoryResponse response = new ExecutionHistoryResponse(
           "ALL_USERS", // グローバル約定なので特別な値
@@ -401,11 +429,17 @@ public class ExecutionPollingController {
           executionDtos
       );
 
-      log.info("Successfully retrieved {} global execution history records", executionDtos.size());
+      long totalProcessingTime = System.currentTimeMillis() - startTime;
+      log.info("✅ GlobalExecutionHistory API Response [{}] - page: {}, size: {}, totalRecords: {}, returnedRecords: {}, totalPages: {}, processingTime: {}ms", 
+               requestId, page, size, executionPage.getTotalElements(), executionDtos.size(), 
+               executionPage.getTotalPages(), totalProcessingTime);
+      
       return ResponseEntity.ok(response);
 
     } catch (Exception e) {
-      log.error("Error getting global execution history", e);
+      long processingTime = System.currentTimeMillis() - startTime;
+      log.error("❌ GlobalExecutionHistory API Error [{}] - processingTime: {}ms, error: {}", 
+                requestId, processingTime, e.getMessage(), e);
       return ResponseEntity.internalServerError()
           .body("Error getting global execution history: " + e.getMessage());
     }

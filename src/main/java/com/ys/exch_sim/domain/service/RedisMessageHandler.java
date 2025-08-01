@@ -18,36 +18,63 @@ public class RedisMessageHandler {
     private final MarketDataSyncService marketDataSyncService;
 
     public void handleMarketMakeMessage(String message) {
+        long startTime = System.currentTimeMillis();
+        String messageId = java.util.UUID.randomUUID().toString().substring(0, 8);
+        
         try {
-            log.debug("Received market-make message: {}", message);
+            log.debug("📡 Redis MarketMake Message [{}] - Raw message received: {}", messageId, message);
             
             RedisMarketMakeMessage marketMakeMessage = objectMapper.readValue(message, RedisMarketMakeMessage.class);
             
-            log.info("Processing market-make for symbol: {} with {} bids, {} asks", 
+            log.info("📊 Redis MarketMake [{}] - Processing symbol: {} with {} bids, {} asks", 
+                messageId,
                 marketMakeMessage.symbol(), 
                 marketMakeMessage.bidLevels().size(), 
                 marketMakeMessage.askLevels().size());
             
+            long processingStart = System.currentTimeMillis();
             marketDataSyncService.updateMarketBoard(marketMakeMessage);
+            long processingTime = System.currentTimeMillis() - processingStart;
+            
+            long totalTime = System.currentTimeMillis() - startTime;
+            log.info("✅ Redis MarketMake [{}] - Completed - symbol: {}, boardUpdateTime: {}ms, totalTime: {}ms", 
+                messageId, marketMakeMessage.symbol(), processingTime, totalTime);
             
         } catch (Exception e) {
-            log.error("Error processing market-make message: {}", message, e);
+            long totalTime = System.currentTimeMillis() - startTime;
+            log.error("❌ Redis MarketMake [{}] - Error processing message - totalTime: {}ms, error: {}, message: {}", 
+                messageId, totalTime, e.getMessage(), message, e);
         }
     }
 
     public void handleTradeInsertMessage(String message) {
+        long startTime = System.currentTimeMillis();
+        String messageId = java.util.UUID.randomUUID().toString().substring(0, 8);
+        
         try {
-            log.debug("Received trade-insert message: {}", message);
+            log.debug("📡 Redis TradeInsert Message [{}] - Raw message received: {}", messageId, message);
             
             RedisTradeInsertMessage tradeMessage = objectMapper.readValue(message, RedisTradeInsertMessage.class);
             
-            log.info("Processing trade-insert for symbol: {} - side: {}, price: {}, quantity: {}", 
-                tradeMessage.symbol(), tradeMessage.side(), tradeMessage.price(), tradeMessage.quantity());
+            log.info("💰 Redis TradeInsert [{}] - Processing symbol: {} - side: {}, price: {}, quantity: {}", 
+                messageId,
+                tradeMessage.symbol(), 
+                tradeMessage.side(), 
+                tradeMessage.price(), 
+                tradeMessage.quantity());
             
+            long processingStart = System.currentTimeMillis();
             marketDataSyncService.insertTrade(tradeMessage);
+            long processingTime = System.currentTimeMillis() - processingStart;
+            
+            long totalTime = System.currentTimeMillis() - startTime;
+            log.info("✅ Redis TradeInsert [{}] - Completed - symbol: {}, side: {}, dbSaveTime: {}ms, totalTime: {}ms", 
+                messageId, tradeMessage.symbol(), tradeMessage.side(), processingTime, totalTime);
             
         } catch (Exception e) {
-            log.error("Error processing trade-insert message: {}", message, e);
+            long totalTime = System.currentTimeMillis() - startTime;
+            log.error("❌ Redis TradeInsert [{}] - Error processing message - totalTime: {}ms, error: {}, message: {}", 
+                messageId, totalTime, e.getMessage(), message, e);
         }
     }
 

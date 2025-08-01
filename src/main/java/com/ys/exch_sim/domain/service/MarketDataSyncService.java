@@ -39,10 +39,11 @@ public class MarketDataSyncService {
             String symbolName = message.symbol();
             
             if (!instrumentConfig.isValidSymbol(symbolName)) {
-                log.warn("Invalid symbol received from Redis: {}", symbolName);
+                log.warn("❌ MarketBoard Update - Invalid symbol received from Redis: {}", symbolName);
                 return;
             }
 
+            log.debug("📊 MarketBoard Update - Getting board for symbol: {}", symbolName);
             MarketBoard marketBoard = getOrCreateMarketBoard(symbolName);
             
             // Clear existing levels
@@ -80,15 +81,16 @@ public class MarketDataSyncService {
                 }
             }
             
-            log.info("Updated market board for symbol: {} with {} bids, {} asks", 
+            log.info("✅ MarketBoard Update - Updated symbol: {} with {} bids, {} asks", 
                 symbolName, message.bidLevels().size(), message.askLevels().size());
             
             // Debug: Show current board state
-            log.debug("Current askEntryBoard size: {}, bidEntryBoard size: {}", 
+            log.debug("📊 MarketBoard State - askEntryBoard size: {}, bidEntryBoard size: {}", 
                 marketBoard.getAskEntryBoardSize(), marketBoard.getBidEntryBoardSize());
             
         } catch (Exception e) {
-            log.error("Error updating market board for symbol: {}", message.symbol(), e);
+            log.error("❌ MarketBoard Update - Error updating board for symbol: {}, error: {}", 
+                message.symbol(), e.getMessage(), e);
         }
     }
 
@@ -97,9 +99,12 @@ public class MarketDataSyncService {
             String symbolName = message.symbol();
             
             if (!instrumentConfig.isValidSymbol(symbolName)) {
-                log.warn("Invalid symbol received from Redis: {}", symbolName);
+                log.warn("❌ Trade Insert - Invalid symbol received from Redis: {}", symbolName);
                 return;
             }
+
+            log.debug("💾 Trade Insert - Processing symbol: {}, side: {}, price: {}, quantity: {}",
+                symbolName, message.side(), message.price(), message.quantity());
 
             InstrumentConfig.InstrumentDefinition instrumentDef = instrumentConfig.getInstrument(symbolName);
             
@@ -123,11 +128,12 @@ public class MarketDataSyncService {
             // Save to database
             executionRepository.save(execution);
             
-            log.debug("Inserted trade execution for symbol: {} - side: {}, price: {}, quantity: {}", 
-                symbolName, message.side(), message.price(), message.quantity());
+            log.info("✅ Trade Insert - Saved execution for symbol: {} - side: {}, price: {}, quantity: {}, execId: {}", 
+                symbolName, message.side(), message.price(), message.quantity(), execution.getExecID().getId());
             
         } catch (Exception e) {
-            log.error("Error inserting trade for symbol: {}", message.symbol(), e);
+            log.error("❌ Trade Insert - Error inserting trade for symbol: {}, error: {}", 
+                message.symbol(), e.getMessage(), e);
         }
     }
 
