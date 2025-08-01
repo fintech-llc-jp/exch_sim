@@ -258,7 +258,7 @@ class DirectMarketDataServiceIntegrationTest {
   private ExternalMarketBoardData createTestMarketBoardData() {
     return new ExternalMarketBoardData(
         "BITFLYER",
-        "B_BTC_JPY",
+        "B_BTCJPY",
         List.of(
             new ExternalMarketBoardData.PriceLevel(500000.0, 1.0),
             new ExternalMarketBoardData.PriceLevel(499000.0, 2.0)),
@@ -269,7 +269,7 @@ class DirectMarketDataServiceIntegrationTest {
   }
 
   private ExternalTradeData createTestTradeData() {
-    return createTestTradeData("G_BTCJPY", 500000.0, 0.1, "BUY");
+    return createTestTradeData("BTC_JPY", 500000.0, 0.1, "BUY");
   }
 
   private ExternalTradeData createTestTradeData(
