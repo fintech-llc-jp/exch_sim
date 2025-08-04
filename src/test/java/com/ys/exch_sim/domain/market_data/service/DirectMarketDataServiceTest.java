@@ -4,8 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import java.util.Map;
+
 import com.ys.exch_sim.domain.config.InstrumentConfig;
-import com.ys.exch_sim.domain.dto.RedisMarketMakeMessage;
 import com.ys.exch_sim.domain.market_data.config.MarketDataClientConfig;
 import com.ys.exch_sim.domain.market_data.dto.ExternalMarketBoardData;
 import com.ys.exch_sim.domain.market_data.dto.ExternalTradeData;
@@ -61,7 +62,7 @@ class DirectMarketDataServiceTest {
     service.processMarketBoard(boardData);
 
     // Then
-    verify(marketDataSyncService, times(1)).updateMarketBoard(any(RedisMarketMakeMessage.class));
+    verify(marketDataSyncService, times(1)).updateMarketBoard(any(ExternalMarketBoardData.class));
     verify(clientConfig, times(1)).mapSymbol("BITFLYER", "BTC_JPY");
   }
 
@@ -79,7 +80,7 @@ class DirectMarketDataServiceTest {
     service.processMarketBoard(boardData);
 
     // Then
-    verify(marketDataSyncService, never()).updateMarketBoard(any(RedisMarketMakeMessage.class));
+    verify(marketDataSyncService, never()).updateMarketBoard(any(ExternalMarketBoardData.class));
     verify(clientConfig, times(1)).mapSymbol("BITFLYER", "UNKNOWN");
   }
 
@@ -98,7 +99,7 @@ class DirectMarketDataServiceTest {
     service.processMarketBoard(boardData);
 
     // Then
-    verify(marketDataSyncService, never()).updateMarketBoard(any(RedisMarketMakeMessage.class));
+    verify(marketDataSyncService, never()).updateMarketBoard(any(ExternalMarketBoardData.class));
   }
 
   @Test
@@ -181,7 +182,8 @@ class DirectMarketDataServiceTest {
   @Test
   void testGetServiceStats() {
     // Given
-    when(orderedTradeProcessor.getProcessingStats()).thenReturn("Test stats");
+    InstrumentConfig.InstrumentDefinition mockDef = new InstrumentConfig.InstrumentDefinition();
+    when(instrumentConfig.getInstruments()).thenReturn(Map.of("G_BTCJPY", mockDef));
 
     // When
     String stats = service.getServiceStats();
@@ -189,13 +191,15 @@ class DirectMarketDataServiceTest {
     // Then
     assertNotNull(stats);
     assertTrue(stats.contains("DirectMarketDataService"));
-    verify(orderedTradeProcessor, times(1)).getProcessingStats();
+    assertTrue(stats.contains("Active: true"));
+    assertTrue(stats.contains("Instrument count: 1"));
+    verify(instrumentConfig, atLeastOnce()).getInstruments();
   }
 
   @Test
   void testGetServiceStats_NullInstruments() {
     // Given
-    when(orderedTradeProcessor.getProcessingStats()).thenReturn("Test stats");
+    when(instrumentConfig.getInstruments()).thenReturn(null);
 
     // When
     String stats = service.getServiceStats();
@@ -203,6 +207,8 @@ class DirectMarketDataServiceTest {
     // Then
     assertNotNull(stats);
     assertTrue(stats.contains("DirectMarketDataService"));
-    verify(orderedTradeProcessor, times(1)).getProcessingStats();
+    assertTrue(stats.contains("Active: true"));
+    assertTrue(stats.contains("Instrument count: 0"));
+    verify(instrumentConfig, atLeastOnce()).getInstruments();
   }
 }

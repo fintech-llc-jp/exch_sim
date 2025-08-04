@@ -1,8 +1,6 @@
 package com.ys.exch_sim.domain.market_data.service;
 
 import com.ys.exch_sim.domain.config.InstrumentConfig;
-import com.ys.exch_sim.domain.dto.RedisMarketMakeMessage;
-import com.ys.exch_sim.domain.dto.RedisTradeInsertMessage;
 import com.ys.exch_sim.domain.market_data.config.MarketDataClientConfig;
 import com.ys.exch_sim.domain.market_data.dto.ExternalMarketBoardData;
 import com.ys.exch_sim.domain.market_data.dto.ExternalTradeData;
@@ -49,11 +47,17 @@ public class DirectMarketDataService {
           data.bids().size(),
           data.asks().size());
 
-      // 既存のRedisメッセージ形式に変換
-      RedisMarketMakeMessage message = convertToMarketMakeMessage(targetSymbol, data);
+      // ExternalMarketBoardDataを作成
+      ExternalMarketBoardData targetData = new ExternalMarketBoardData(
+          data.exchange(),
+          targetSymbol,
+          data.bids(),
+          data.asks(),
+          data.timestamp()
+      );
 
-      // 既存のMarketDataSyncServiceに処理を委譲
-      marketDataSyncService.updateMarketBoard(message);
+      // MarketDataSyncServiceに直接処理を委譲
+      marketDataSyncService.updateMarketBoard(targetData);
 
       log.info(
           "✅ MarketBoard processed for {} - BestBid: {}, BestAsk: {}",
@@ -127,33 +131,6 @@ public class DirectMarketDataService {
     return null;
   }
 
-  /** ExternalMarketBoardDataをRedisMarketMakeMessageに変換 */
-  private RedisMarketMakeMessage convertToMarketMakeMessage(
-      String symbol, ExternalMarketBoardData data) {
-    List<RedisMarketMakeMessage.PriceLevel> bidLevels = new ArrayList<>();
-    List<RedisMarketMakeMessage.PriceLevel> askLevels = new ArrayList<>();
-
-    // Bid levels変換（最大10レベル）
-    int maxLevels = Math.min(clientConfig.getBoard().getMaxLevels(), data.bids().size());
-    for (int i = 0; i < maxLevels; i++) {
-      ExternalMarketBoardData.PriceLevel bid = data.bids().get(i);
-      bidLevels.add(new RedisMarketMakeMessage.PriceLevel(bid.price(), bid.quantity()));
-    }
-
-    // Ask levels変換（最大10レベル）
-    maxLevels = Math.min(clientConfig.getBoard().getMaxLevels(), data.asks().size());
-    for (int i = 0; i < maxLevels; i++) {
-      ExternalMarketBoardData.PriceLevel ask = data.asks().get(i);
-      askLevels.add(new RedisMarketMakeMessage.PriceLevel(ask.price(), ask.quantity()));
-    }
-
-    return new RedisMarketMakeMessage(symbol, bidLevels, askLevels);
-  }
-
-  /** ExternalTradeDataをRedisTradeInsertMessageに変換 */
-  private RedisTradeInsertMessage convertToTradeMessage(String symbol, ExternalTradeData data) {
-    return new RedisTradeInsertMessage(symbol, data.price(), data.quantity(), data.side());
-  }
 
   /** サービス統計情報を取得 */
   public String getServiceStats() {

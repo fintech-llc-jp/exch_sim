@@ -11,9 +11,11 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -128,13 +130,21 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
         String method = json.get("method").asText();
         JsonNode params = json.get("params");
 
-        if (method.startsWith("lightning_board_snapshot_")) {
+        log.debug("📡 Bitflyer received method: {}", method);
+
+        if (method.equals("channelMessage")) {
+          handleChannelMessage(params);
+        } else if (method.startsWith("lightning_board_snapshot_")) {
           handleBoardSnapshotMessage(method, params);
         } else if (method.startsWith("lightning_board_")) {
           handleBoardDeltaMessage(method, params);
         } else if (method.startsWith("lightning_executions_")) {
           handleExecutionsMessage(method, params);
+        } else {
+          log.debug("📡 Bitflyer unknown method: {}", method);
         }
+      } else {
+        log.debug("📡 Bitflyer message without method/params: {}", message.length() > 200 ? message.substring(0, 200) + "..." : message);
       }
 
     } catch (Exception e) {
@@ -192,7 +202,7 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
         ExternalMarketBoardData boardData = convertBitflyerBoard(symbol, message);
         latestBoards.put(symbol, boardData);
 
-        log.debug(
+        log.info(
             "📊 Bitflyer Board Snapshot: {} - {} bids, {} asks",
             symbol,
             boardData.bids().size(),
@@ -218,13 +228,15 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
           ExternalMarketBoardData updatedBoard = applyBoardDelta(currentBoard, symbol, message);
           latestBoards.put(symbol, updatedBoard);
 
-          log.debug(
+          log.info(
               "📊 Bitflyer Board Delta: {} - {} bids, {} asks",
               symbol,
               updatedBoard.bids().size(),
               updatedBoard.asks().size());
 
           marketDataService.processMarketBoardAsync(updatedBoard);
+        } else {
+          log.warn("⚠️ Bitflyer Board Delta skipped - no existing board for symbol: {}", symbol);
         }
       }
     } catch (Exception e) {
@@ -242,7 +254,7 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
         for (JsonNode execution : message) {
           ExternalTradeData tradeData = convertBitflyerTrade(symbol, execution);
           if (tradeData != null) {
-            log.debug(
+            log.info(
                 "💰 Bitflyer Trade: {} - {} {} @ {}",
                 symbol,
                 tradeData.side(),
@@ -255,6 +267,35 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
       }
     } catch (Exception e) {
       log.error("❌ Error processing Bitflyer executions", e);
+    }
+  }
+
+  private void handleChannelMessage(JsonNode params) {
+    try {
+      JsonNode channel = params.get("channel");
+      JsonNode message = params.get("message");
+      
+      if (channel == null || message == null) {
+        log.debug("📡 Bitflyer channelMessage missing channel or message");
+        return;
+      }
+      
+      String channelName = channel.asText();
+      log.debug("📡 Bitflyer channel: {}", channelName);
+      
+      // チャンネル名に応じて適切な処理に振り分け
+      if (channelName.startsWith("lightning_board_snapshot_")) {
+        handleBoardSnapshotMessage(channelName, params);
+      } else if (channelName.startsWith("lightning_board_")) {
+        handleBoardDeltaMessage(channelName, params);
+      } else if (channelName.startsWith("lightning_executions_")) {
+        handleExecutionsMessage(channelName, params);
+      } else {
+        log.debug("📡 Bitflyer unknown channel: {}", channelName);
+      }
+      
+    } catch (Exception e) {
+      log.error("❌ Error processing Bitflyer channelMessage", e);
     }
   }
 
@@ -298,8 +339,65 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
 
   private ExternalMarketBoardData applyBoardDelta(
       ExternalMarketBoardData currentBoard, String symbol, JsonNode deltaMessage) {
-    // 簡略化：Delta更新の代わりに新しいスナップショットとして処理
-    return convertBitflyerBoard(symbol, deltaMessage);
+    
+    // TreeMapを使用して常にソート済み状態を維持（パフォーマンス最適化）
+    // Bids: 降順（高い価格が最初）
+    TreeMap<Double, Double> bidMap = new TreeMap<>(Collections.reverseOrder());
+    // Asks: 昇順（低い価格が最初）  
+    TreeMap<Double, Double> askMap = new TreeMap<>();
+    
+    // 現在のボードデータをTreeMapに変換（既にソート済みなので効率的）
+    for (ExternalMarketBoardData.PriceLevel bid : currentBoard.bids()) {
+      bidMap.put(bid.price(), bid.quantity());
+    }
+    for (ExternalMarketBoardData.PriceLevel ask : currentBoard.asks()) {
+      askMap.put(ask.price(), ask.quantity());
+    }
+    
+    // Deltaのbidsを適用（O(d log n)の計算量）
+    JsonNode deltaBids = deltaMessage.get("bids");
+    if (deltaBids != null && deltaBids.isArray()) {
+      for (JsonNode bid : deltaBids) {
+        double price = bid.get("price").asDouble();
+        double size = bid.get("size").asDouble();
+        
+        if (size == 0) {
+          // サイズが0の場合は削除
+          bidMap.remove(price);
+        } else {
+          // サイズが0以外の場合は更新または追加
+          bidMap.put(price, size);
+        }
+      }
+    }
+    
+    // Deltaのasksを適用（O(d log n)の計算量）
+    JsonNode deltaAsks = deltaMessage.get("asks");
+    if (deltaAsks != null && deltaAsks.isArray()) {
+      for (JsonNode ask : deltaAsks) {
+        double price = ask.get("price").asDouble();
+        double size = ask.get("size").asDouble();
+        
+        if (size == 0) {
+          // サイズが0の場合は削除
+          askMap.remove(price);
+        } else {
+          // サイズが0以外の場合は更新または追加
+          askMap.put(price, size);
+        }
+      }
+    }
+    
+    // TreeMapから直接リストに変換（既にソート済みなのでO(n)）
+    List<ExternalMarketBoardData.PriceLevel> updatedBids = bidMap.entrySet().stream()
+        .map(entry -> new ExternalMarketBoardData.PriceLevel(entry.getKey(), entry.getValue()))
+        .collect(java.util.stream.Collectors.toList());
+        
+    List<ExternalMarketBoardData.PriceLevel> updatedAsks = askMap.entrySet().stream()
+        .map(entry -> new ExternalMarketBoardData.PriceLevel(entry.getKey(), entry.getValue()))
+        .collect(java.util.stream.Collectors.toList());
+    
+    return new ExternalMarketBoardData(currentBoard.exchange(), symbol, updatedBids, updatedAsks, Instant.now());
   }
 
   private ExternalTradeData convertBitflyerTrade(String symbol, JsonNode execution) {

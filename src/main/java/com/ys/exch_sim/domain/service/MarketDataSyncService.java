@@ -3,8 +3,6 @@ package com.ys.exch_sim.domain.service;
 import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.config.InstrumentConfig;
-import com.ys.exch_sim.domain.dto.RedisMarketMakeMessage;
-import com.ys.exch_sim.domain.dto.RedisTradeInsertMessage;
 import com.ys.exch_sim.domain.market_board.MarketBoard;
 import com.ys.exch_sim.domain.market_data.dto.ExternalMarketBoardData;
 import com.ys.exch_sim.domain.market_data.dto.ExternalTradeData;
@@ -55,75 +53,7 @@ public class MarketDataSyncService {
     this.bigQueryService = Optional.ofNullable(bigQueryService);
   }
 
-  // 既存メソッド（Redis用）
-  public void updateMarketBoard(RedisMarketMakeMessage message) {
-    try {
-      String symbolName = message.symbol();
-
-      if (!instrumentConfig.isValidSymbol(symbolName)) {
-        log.warn("❌ MarketBoard Update - Invalid symbol received from Redis: {}", symbolName);
-        return;
-      }
-
-      log.debug("📊 MarketBoard Update - Getting board for symbol: {}", symbolName);
-      MarketBoard marketBoard = getOrCreateMarketBoard(symbolName);
-
-      // Clear existing levels
-      marketBoard.clearBids();
-      marketBoard.clearAsks();
-
-      InstrumentConfig.InstrumentDefinition instrumentDef =
-          instrumentConfig.getInstrument(symbolName);
-      Symbol symbol =
-          new Symbol(
-              symbolName.toUpperCase(),
-              instrumentDef.getPriceMultiplier(),
-              instrumentDef.getQtyMultiplier());
-
-      // Update bid levels and create corresponding orders
-      for (int i = 0; i < message.bidLevels().size() && i < 10; i++) {
-        var bidLevel = message.bidLevels().get(i);
-        if (bidLevel.price() != null && bidLevel.quantity() != null && bidLevel.quantity() > 0) {
-          long price = (long) (bidLevel.price() * instrumentDef.getPriceMultiplier());
-          long quantity = (long) (bidLevel.quantity() * instrumentDef.getQtyMultiplier());
-          marketBoard.setBid(i, new Pair<>(price, quantity));
-
-          // Create a market maker order for this price level
-          Order marketMakerOrder = createMarketMakerOrder(symbol, price, quantity, Side.BUY);
-          marketBoard.addMarketMakerOrder(marketMakerOrder);
-        }
-      }
-
-      // Update ask levels and create corresponding orders
-      for (int i = 0; i < message.askLevels().size() && i < 10; i++) {
-        var askLevel = message.askLevels().get(i);
-        if (askLevel.price() != null && askLevel.quantity() != null && askLevel.quantity() > 0) {
-          long price = (long) (askLevel.price() * instrumentDef.getPriceMultiplier());
-          long quantity = (long) (askLevel.quantity() * instrumentDef.getQtyMultiplier());
-          marketBoard.setAsk(i, new Pair<>(price, quantity));
-
-          // Create a market maker order for this price level
-          Order marketMakerOrder = createMarketMakerOrder(symbol, price, quantity, Side.SELL);
-          marketBoard.addMarketMakerOrder(marketMakerOrder);
-        }
-      }
-
-      log.info(
-          "✅ MarketBoard Update - Updated board for symbol: {} with {} bid levels, {} ask levels",
-          symbolName,
-          message.bidLevels().size(),
-          message.askLevels().size());
-
-    } catch (Exception e) {
-      log.error(
-          "❌ MarketBoard Update - Error updating market board for symbol: {}, error: {}",
-          message.symbol(),
-          e.getMessage(),
-          e);
-    }
-  }
-
-  // 新規メソッド（ExternalMarketBoardData用）
+  // MarketBoard更新メソッド
   public void updateMarketBoard(ExternalMarketBoardData data) {
     try {
       String symbolName = data.symbol();
@@ -191,86 +121,7 @@ public class MarketDataSyncService {
     }
   }
 
-  // 既存メソッド（Redis用）
-  public void insertTrade(RedisTradeInsertMessage message) {
-    try {
-      String symbolName = message.symbol();
-
-      if (!instrumentConfig.isValidSymbol(symbolName)) {
-        log.warn("❌ Trade Insert - Invalid symbol received from Redis: {}", symbolName);
-        return;
-      }
-
-      log.debug(
-          "💾 Trade Insert - Processing symbol: {}, side: {}, price: {}, quantity: {}",
-          symbolName,
-          message.side(),
-          message.price(),
-          message.quantity());
-
-      InstrumentConfig.InstrumentDefinition instrumentDef =
-          instrumentConfig.getInstrument(symbolName);
-
-      Side side = "BUY".equals(message.side()) ? Side.BUY : Side.SELL;
-
-      // Create execution record
-      Execution execution =
-          new Execution(
-              UUID.randomUUID().toString(), // execID
-              UUID.randomUUID().toString(), // orderID (fake)
-              "REDIS_FEED", // username
-              symbolName,
-              ExecStatus.FILLED,
-              (long)
-                  (message.price()
-                      * instrumentDef.getPriceMultiplier()), // Convert to internal price
-              (long)
-                  (message.quantity()
-                      * instrumentDef.getQtyMultiplier()), // Convert to internal quantity
-              "MARKET", // counterPartyUsername
-              LocalDateTime.now(ZoneOffset.UTC),
-              false, // isMarketMaker
-              side.toString());
-
-      // Save to H2 database
-      executionRepository.save(execution);
-
-      // Asynchronously save to BigQuery if enabled
-      if (bigQueryEnabled && bigQueryService.isPresent()) {
-        try {
-          BigQueryExecutionEntity bigQueryExecution = new BigQueryExecutionEntity(execution);
-          bigQueryService.get().insertExecutionAsync(bigQueryExecution);
-          log.debug(
-              "🔄 BigQuery async insert initiated for execution: {}",
-              execution.getExecID().getId());
-        } catch (Exception e) {
-          log.warn(
-              "⚠️ Failed to initiate BigQuery async insert for execution: {} - Error: {}",
-              execution.getExecID().getId(),
-              e.getMessage());
-          // Continue processing - BigQuery failure should not stop the main flow
-        }
-      }
-
-      log.info(
-          "✅ Trade Insert - Saved execution for symbol: {} - side: {}, price: {}, quantity: {},"
-              + " execId: {}",
-          symbolName,
-          message.side(),
-          message.price(),
-          message.quantity(),
-          execution.getExecID().getId());
-
-    } catch (Exception e) {
-      log.error(
-          "❌ Trade Insert - Error inserting trade for symbol: {}, error: {}",
-          message.symbol(),
-          e.getMessage(),
-          e);
-    }
-  }
-
-  // 新規メソッド（ExternalTradeData用）
+  // Trade挿入メソッド
   public void insertTrade(ExternalTradeData data) {
     try {
       String symbolName = data.symbol();

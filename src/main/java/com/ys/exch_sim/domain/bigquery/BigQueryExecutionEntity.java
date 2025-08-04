@@ -47,7 +47,13 @@ public class BigQueryExecutionEntity {
         this.createdAt = execution.getCreatedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         this.isMarketMaker = execution.getIsMarketMaker();
         this.side = execution.getSide();
-        this.clOrdId = execution.getOrder() != null ? execution.getOrder().getClOrdID().getId() : null;
+        // Order オブジェクトが利用可能な場合のみ ClOrdID を取得、そうでなければ orderID を使用
+        try {
+            this.clOrdId = execution.getOrder() != null ? execution.getOrder().getClOrdID().getId() : execution.getOrderID();
+        } catch (UnsupportedOperationException e) {
+            // Order オブジェクトが再構築できない場合（外部取引データなど）は orderID を使用
+            this.clOrdId = execution.getOrderID();
+        }
         // デフォルト値を設定（銘柄固有の値は別途実装が必要）
         this.priceMultiplier = 1;
         this.qtyMultiplier = 1000;

@@ -1,11 +1,13 @@
 package com.ys.exch_sim.domain.bigquery;
 
 import com.ys.exch_sim.domain.message.field.ExecStatus;
+import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.position.Position;
 import com.ys.exch_sim.domain.position.TradeHistory;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -178,5 +180,56 @@ class BigQueryEntityTest {
         System.out.println("   Executions table: " + BigQueryExecutionEntity.getTableId(projectId, datasetId));
         System.out.println("   Positions table: " + BigQueryPositionEntity.getTableId(projectId, datasetId));
         System.out.println("   Trade history table: " + BigQueryTradeHistoryEntity.getTableId(projectId, datasetId));
+    }
+
+    @Test
+    void testBigQueryExecutionEntityFromExternalTrade() {
+        // 外部取引データから作成されたExecutionのテスト（Order オブジェクトなし）
+        Execution externalExecution = new Execution(
+            "ext-exec-123",         // execID
+            "ext-order-456",        // orderID (fake)
+            "EXTERNAL_FEED",        // username
+            "G_BTCJPY",            // symbol
+            ExecStatus.FILLED,      // execStatus
+            10500000L,             // lastPx (105.0 * 100000)
+            1500L,                 // lastQty (1.5 * 1000)
+            "MARKET",              // counterPartyUsername
+            LocalDateTime.now(ZoneOffset.UTC), // createdAt
+            false,                 // isMarketMaker
+            "BUY"                  // side
+        );
+        
+        // BigQueryExecutionEntityに変換（例外が発生しないことを確認）
+        BigQueryExecutionEntity bigQueryEntity = new BigQueryExecutionEntity(externalExecution);
+        
+        // 基本フィールドの検証
+        assertThat(bigQueryEntity.getExecId()).isEqualTo("ext-exec-123");
+        assertThat(bigQueryEntity.getOrderId()).isEqualTo("ext-order-456");
+        assertThat(bigQueryEntity.getUsername()).isEqualTo("EXTERNAL_FEED");
+        assertThat(bigQueryEntity.getSymbol()).isEqualTo("G_BTCJPY");
+        assertThat(bigQueryEntity.getExecStatus()).isEqualTo("FILLED");
+        assertThat(bigQueryEntity.getLastPx()).isEqualTo(10500000L);
+        assertThat(bigQueryEntity.getLastQty()).isEqualTo(1500L);
+        assertThat(bigQueryEntity.getCounterPartyUsername()).isEqualTo("MARKET");
+        assertThat(bigQueryEntity.getIsMarketMaker()).isEqualTo(false);
+        assertThat(bigQueryEntity.getSide()).isEqualTo("BUY");
+        
+        // clOrdId はorderIDと同じ値になることを確認（Order オブジェクトがないため）
+        assertThat(bigQueryEntity.getClOrdId()).isEqualTo("ext-order-456");
+        
+        // BigQueryRow変換のテスト
+        Map<String, Object> row = bigQueryEntity.toBigQueryRow();
+        assertThat(row.get("exec_id")).isEqualTo("ext-exec-123");
+        assertThat(row.get("order_id")).isEqualTo("ext-order-456");
+        assertThat(row.get("cl_ord_id")).isEqualTo("ext-order-456");
+        assertThat(row.get("username")).isEqualTo("EXTERNAL_FEED");
+        assertThat(row.get("symbol")).isEqualTo("G_BTCJPY");
+        assertThat(row.get("side")).isEqualTo("BUY");
+        
+        System.out.println("✅ External trade BigQueryExecutionEntity test passed");
+        System.out.println("   Exec ID: " + bigQueryEntity.getExecId());
+        System.out.println("   Order ID: " + bigQueryEntity.getOrderId());
+        System.out.println("   ClOrd ID: " + bigQueryEntity.getClOrdId());
+        System.out.println("   Username: " + bigQueryEntity.getUsername());
     }
 }

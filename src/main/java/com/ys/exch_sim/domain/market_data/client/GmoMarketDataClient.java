@@ -133,13 +133,10 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
 
   private Flux<WebSocketMessage> createSubscriptionMessages(
       org.springframework.web.reactive.socket.WebSocketSession session) {
-    return Flux.concat(
-        // Orderbook購読
-        createOrderbookSubscription(session, SYMBOL_BTC_JPY),
-        createOrderbookSubscription(session, SYMBOL_BTC),
-        // Trades購読
-        createTradesSubscription(session, SYMBOL_BTC_JPY),
-        createTradesSubscription(session, SYMBOL_BTC));
+    return createOrderbookSubscription(session, SYMBOL_BTC_JPY)
+        .concatWith(Mono.delay(Duration.ofSeconds(2)).then(createOrderbookSubscription(session, SYMBOL_BTC)))
+        .concatWith(Mono.delay(Duration.ofSeconds(2)).then(createTradesSubscription(session, SYMBOL_BTC_JPY)))
+        .concatWith(Mono.delay(Duration.ofSeconds(2)).then(createTradesSubscription(session, SYMBOL_BTC)));
   }
 
   private Mono<WebSocketMessage> createOrderbookSubscription(
@@ -189,7 +186,7 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
       if (bidsArray != null && asksArray != null) {
         ExternalMarketBoardData boardData = convertGmoBoard(symbol, bidsArray, asksArray);
 
-        log.debug(
+        log.info(
             "📊 GMO Orderbook: {} - {} bids, {} asks",
             symbol,
             boardData.bids().size(),
