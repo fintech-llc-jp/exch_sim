@@ -63,6 +63,28 @@ curl -X POST http://localhost:8080/api/auth/signup \
   }'
 ```
 
+**Request Fields:**
+- `username` (string, required): ユーザー名（3-50文字）
+- `password` (string, required): パスワード（6文字以上）
+
+**Response:**
+```json
+{
+  "message": "User registered successfully",
+  "username": "trader001"
+}
+```
+
+**Validation Rules:**
+- ユーザー名は3-50文字の間である必要があります
+- パスワードは6文字以上である必要があります
+- 既に存在するユーザー名は使用できません
+- ユーザーは自動的に "USER" ロールが付与されます
+
+**Error Responses:**
+- `400 Bad Request`: バリデーションエラー
+- `500 Internal Server Error`: BigQuery接続エラー
+
 #### ログイン
 **POST** `/api/auth/login`
 

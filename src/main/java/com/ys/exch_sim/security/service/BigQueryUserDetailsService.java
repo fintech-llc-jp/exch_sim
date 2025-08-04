@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,41 +26,39 @@ import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "app.auth.bigquery-enabled", havingValue = "true", matchIfMissing = false)
+@ConditionalOnProperty(name = "app.data-migration.bigquery-enabled", havingValue = "true", matchIfMissing = false)
 public class BigQueryUserDetailsService implements UserDetailsService {
 
   // Cache for user details with TTL
   private final ConcurrentHashMap<String, CachedUserDetails> userCache = new ConcurrentHashMap<>();
-  
+
   // Cache TTL in minutes
-  @Value("${app.auth.cache-ttl-minutes:5}")
-  private long cacheTtlMinutes;
-  
+  private long cacheTtlMinutes = 5;
+
   // Maximum cache size
-  @Value("${app.auth.cache-max-size:1000}")
-  private int cacheMaxSize;
-  
+  private int cacheMaxSize = 1000;
+
   private static class CachedUserDetails {
     private final UserDetails userDetails;
     private final LocalDateTime cachedAt;
-    
+
     public CachedUserDetails(UserDetails userDetails) {
       this.userDetails = userDetails;
       this.cachedAt = LocalDateTime.now();
     }
-    
+
     public UserDetails getUserDetails() {
       return userDetails;
     }
-    
+
     public boolean isExpired(long ttlMinutes) {
       return ChronoUnit.MINUTES.between(cachedAt, LocalDateTime.now()) > ttlMinutes;
     }
   }
 
   private final BigQuery bigQuery;
-  
-  public BigQueryUserDetailsService(@Autowired(required = false) BigQuery bigQuery) {
+
+  public BigQueryUserDetailsService(BigQuery bigQuery) {
     this.bigQuery = bigQuery;
   }
 
@@ -79,31 +76,36 @@ public class BigQueryUserDetailsService implements UserDetailsService {
       log.debug("User loaded from cache: {}", username);
       return cached.getUserDetails();
     }
-    
+
     // Load from BigQuery if not in cache or expired
     UserDetails userDetails = loadUserFromBigQuery(username);
-    
+
     // Cache the result
     cacheUserDetails(username, userDetails);
-    
+
     return userDetails;
   }
-  
+
   private UserDetails loadUserFromBigQuery(String username) throws UsernameNotFoundException {
     if (bigQuery == null) {
       log.warn("BigQuery is not available, cannot load user: {}", username);
-      throw new UsernameNotFoundException("User not found: " + username + " (BigQuery not available)");
+      throw new UsernameNotFoundException(
+          "User not found: " + username + " (BigQuery not available)");
     }
     try {
       log.debug("Loading user from BigQuery: {}", username);
 
-      String query = String.format(
-          "SELECT username, password, roles FROM `%s.%s.users` WHERE username = @username LIMIT 1",
-          projectId, datasetName);
+      String query =
+          String.format(
+              "SELECT username, password, roles FROM `%s.%s.users` WHERE username = @username LIMIT"
+                  + " 1",
+              projectId, datasetName);
 
-      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(query)
-          .addNamedParameter("username", com.google.cloud.bigquery.QueryParameterValue.string(username))
-          .build();
+      QueryJobConfiguration queryConfig =
+          QueryJobConfiguration.newBuilder(query)
+              .addNamedParameter(
+                  "username", com.google.cloud.bigquery.QueryParameterValue.string(username))
+              .build();
 
       JobId jobId = JobId.of(UUID.randomUUID().toString());
       Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
@@ -130,7 +132,7 @@ public class BigQueryUserDetailsService implements UserDetailsService {
 
       String dbUsername = row.get("username").getStringValue();
       String password = row.get("password").getStringValue();
-      
+
       List<String> roles = new ArrayList<>();
       if (!row.get("roles").isNull()) {
         for (com.google.cloud.bigquery.FieldValue roleValue : row.get("roles").getRepeatedValue()) {
@@ -140,9 +142,8 @@ public class BigQueryUserDetailsService implements UserDetailsService {
 
       log.debug("User loaded from BigQuery: {} with roles: {}", dbUsername, roles);
 
-      List<SimpleGrantedAuthority> authorities = roles.stream()
-          .map(SimpleGrantedAuthority::new)
-          .collect(Collectors.toList());
+      List<SimpleGrantedAuthority> authorities =
+          roles.stream().map(SimpleGrantedAuthority::new).collect(Collectors.toList());
 
       return new org.springframework.security.core.userdetails.User(
           dbUsername, password, authorities);
@@ -156,34 +157,37 @@ public class BigQueryUserDetailsService implements UserDetailsService {
       throw new UsernameNotFoundException("Error loading user: " + username, e);
     }
   }
-  
+
   private void cacheUserDetails(String username, UserDetails userDetails) {
     // Remove expired entries if cache is getting too large
     if (userCache.size() >= cacheMaxSize) {
       cleanExpiredEntries();
     }
-    
+
     // Add to cache
     userCache.put(username, new CachedUserDetails(userDetails));
     log.debug("User cached: {} (cache size: {})", username, userCache.size());
   }
-  
+
   private void cleanExpiredEntries() {
-    userCache.entrySet().removeIf(entry -> {
-      boolean expired = entry.getValue().isExpired(cacheTtlMinutes);
-      if (expired) {
-        log.debug("Removing expired cache entry for user: {}", entry.getKey());
-      }
-      return expired;
-    });
+    userCache
+        .entrySet()
+        .removeIf(
+            entry -> {
+              boolean expired = entry.getValue().isExpired(cacheTtlMinutes);
+              if (expired) {
+                log.debug("Removing expired cache entry for user: {}", entry.getKey());
+              }
+              return expired;
+            });
   }
-  
+
   // Method to clear cache (useful for testing or manual cache invalidation)
   public void clearCache() {
     userCache.clear();
     log.info("User cache cleared");
   }
-  
+
   // Method to remove specific user from cache
   public void evictUser(String username) {
     userCache.remove(username);

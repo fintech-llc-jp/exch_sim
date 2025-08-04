@@ -2,6 +2,7 @@ package com.ys.exch_sim.domain.market_data.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.ys.exch_sim.config.TestSecurityConfig;
 import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.market_data.config.MarketDataClientConfig;
 import com.ys.exch_sim.domain.market_data.dto.ExternalMarketBoardData;
@@ -18,12 +19,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Phase 4統合テスト Direct Market Data処理の動作確認 */
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(TestSecurityConfig.class)
 class DirectMarketDataServiceIntegrationTest {
 
   @Autowired private DirectMarketDataService directMarketDataService;
