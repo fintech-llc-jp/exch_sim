@@ -22,6 +22,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.socket.WebSocketMessage;
 import org.springframework.web.reactive.socket.client.WebSocketClient;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
@@ -44,6 +45,21 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
   private final AtomicLong retryEvents = new AtomicLong(0);
   private volatile Instant lastConnectionAttempt;
   private volatile Instant lastSuccessfulConnection;
+  
+  // Keepalive mechanism
+  private Disposable keepaliveScheduler;
+  private final AtomicLong keepaliveId = new AtomicLong(1);
+  private final AtomicLong keepaliveSent = new AtomicLong(0);
+  private final AtomicLong keepaliveReceived = new AtomicLong(0);
+  private volatile Instant lastKeepaliveResponse;
+  private volatile org.springframework.web.reactive.socket.WebSocketSession currentSession;
+  private static final long KEEPALIVE_INTERVAL_SECONDS = 180; // 3分間隔
+  private static final long KEEPALIVE_TIMEOUT_SECONDS = 60; // 1分タイムアウト
+  
+  // Stream monitoring
+  private final AtomicLong lastMessageTime = new AtomicLong(System.currentTimeMillis());
+  private Disposable streamMonitor;
+  private static final long STREAM_TIMEOUT_SECONDS = 300; // 5分間隔
 
   // Bitflyer WebSocket チャンネル名
   private static final String CHANNEL_BOARD_SNAPSHOT_PREFIX = "lightning_board_snapshot_";
@@ -91,6 +107,8 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
 
   @PreDestroy
   public void cleanup() {
+    stopKeepalive();
+    stopStreamMonitoring();
     disconnect();
   }
 
@@ -117,9 +135,14 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
                   // 接続成功時の処理
                   successfulConnections.incrementAndGet();
                   lastSuccessfulConnection = Instant.now();
+                  currentSession = session;
                   log.info("✅ Bitflyer WebSocket session established (success: {}/{}, rate: {:.1f}%)", 
                       successfulConnections.get(), connectionAttempts.get(), getSuccessRate());
                   onConnectionEstablished();
+                  
+                  // Keepaliveとストリーム監視を開始
+                  startKeepalive();
+                  startStreamMonitoring();
                   
                   // 購読メッセージの作成と送信
                   Flux<WebSocketMessage> subscriptionMessages = createSubscriptionMessages(session);
@@ -144,6 +167,9 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
             })
             .doOnCancel(() -> {
                 log.warn("🛑 Bitflyer WebSocket connection cancelled");
+                stopKeepalive();
+                stopStreamMonitoring();
+                currentSession = null;
                 onConnectionClosed();
             })
             .retryWhen(
@@ -197,6 +223,9 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
                 error -> {
                     log.error("❌ Bitflyer WebSocket final subscription error (after all retries): {}", error.getMessage());
                     // Mark as disconnected since retries are exhausted
+                    stopKeepalive();
+                    stopStreamMonitoring();
+                    currentSession = null;
                     isConnected.set(false);
                     shouldReconnect.set(false);
                     onConnectionClosed();
@@ -209,11 +238,24 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
       // 基底クラスのメッセージカウンターを更新
       incrementMessageCount();
       
+      // ストリーム監視用のメッセージ時刻更新
+      lastMessageTime.set(System.currentTimeMillis());
+      
       JsonNode json = objectMapper.readTree(message);
 
       // JSON-RPC応答の処理
       if (json.has("id")) {
-        log.debug("📡 Bitflyer JSON-RPC response: {}", json.get("id"));
+        long responseId = json.get("id").asLong();
+        log.debug("📡 Bitflyer JSON-RPC response: {}", responseId);
+        
+        // Keepalive応答の処理
+        if (responseId >= 1000000) { // Keepalive IDは1000000以上
+          keepaliveReceived.incrementAndGet();
+          lastKeepaliveResponse = Instant.now();
+          log.debug("💚 Bitflyer keepalive response received: {} (sent: {}, received: {})", 
+              responseId, keepaliveSent.get(), keepaliveReceived.get());
+        }
+        
         // JSON-RPC応答も活動として記録
         updateActivityTime();
         return;
@@ -552,11 +594,139 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
     }
   }
   
+  /**
+   * Keepaliveメカニズムを開始
+   */
+  private void startKeepalive() {
+    stopKeepalive();
+    
+    keepaliveScheduler = reactor.core.publisher.Flux.interval(Duration.ofSeconds(KEEPALIVE_INTERVAL_SECONDS))
+        .subscribe(
+            tick -> {
+                if (currentSession != null && isConnected.get()) {
+                    sendKeepalive();
+                } else {
+                    log.debug("💔 Bitflyer keepalive skipped - not connected");
+                }
+            },
+            error -> log.error("❌ Bitflyer keepalive scheduler error", error)
+        );
+    
+    log.info("💚 Bitflyer keepalive started ({}s interval)", KEEPALIVE_INTERVAL_SECONDS);
+  }
+  
+  /**
+   * Keepaliveメカニズムを停止
+   */
+  private void stopKeepalive() {
+    if (keepaliveScheduler != null && !keepaliveScheduler.isDisposed()) {
+      keepaliveScheduler.dispose();
+      keepaliveScheduler = null;
+      log.debug("💔 Bitflyer keepalive stopped");
+    }
+  }
+  
+  /**
+   * JSON-RPC keepaliveメッセージを送信
+   */
+  private void sendKeepalive() {
+    if (currentSession == null || !isConnected.get()) {
+      return;
+    }
+    
+    try {
+      long id = 1000000 + keepaliveId.getAndIncrement();
+      Map<String, Object> keepaliveRequest = Map.of(
+          "jsonrpc", "2.0",
+          "method", "ping", // Bitflyerは'ping'メソッドをサポートしていないが、送信できる
+          "id", id
+      );
+      
+      String requestJson = objectMapper.writeValueAsString(keepaliveRequest);
+      
+      currentSession.send(Mono.just(currentSession.textMessage(requestJson)))
+          .doOnSuccess(result -> {
+              keepaliveSent.incrementAndGet();
+              log.debug("💚 Bitflyer keepalive sent: {} (total: {})", id, keepaliveSent.get());
+          })
+          .doOnError(error -> {
+              log.warn("⚠️ Bitflyer keepalive send failed: {}", error.getMessage());
+              // Keepalive送信失敗は接続問題の可能性
+              if (isConnected.get()) {
+                  log.warn("🔄 Bitflyer keepalive failure suggests connection issues, triggering reconnection");
+                  handleConnectionError(error);
+              }
+          })
+          .subscribe();
+          
+    } catch (Exception e) {
+      log.error("❌ Bitflyer keepalive creation error", e);
+    }
+  }
+  
+  /**
+   * ストリーム監視を開始
+   */
+  private void startStreamMonitoring() {
+    stopStreamMonitoring();
+    
+    streamMonitor = reactor.core.publisher.Flux.interval(Duration.ofSeconds(60)) // 1分間隔でチェック
+        .subscribe(
+            tick -> {
+                if (isConnected.get()) {
+                    long timeSinceLastMessage = System.currentTimeMillis() - lastMessageTime.get();
+                    long secondsSinceLastMessage = timeSinceLastMessage / 1000;
+                    
+                    if (secondsSinceLastMessage > STREAM_TIMEOUT_SECONDS) {
+                        log.warn("⚠️ Bitflyer stream timeout: {} seconds since last message (limit: {}s)", 
+                            secondsSinceLastMessage, STREAM_TIMEOUT_SECONDS);
+                        log.warn("🔄 Bitflyer proactive reconnection due to stream timeout");
+                        
+                        // プロアクティブな再接続をトリガー
+                        handleConnectionError(new RuntimeException("Stream timeout - no messages for " + secondsSinceLastMessage + "s"));
+                    } else if (secondsSinceLastMessage > 120) { // 2分以上の場合は警告
+                        log.debug("🔍 Bitflyer stream monitoring: {} seconds since last message", secondsSinceLastMessage);
+                    }
+                    
+                    // Keepaliveタイムアウトチェック
+                    if (lastKeepaliveResponse != null) {
+                        long keepaliveAge = Duration.between(lastKeepaliveResponse, Instant.now()).toSeconds();
+                        if (keepaliveSent.get() > keepaliveReceived.get() && keepaliveAge > KEEPALIVE_TIMEOUT_SECONDS) {
+                            log.warn("⚠️ Bitflyer keepalive timeout: {} seconds since last response (sent: {}, received: {})", 
+                                keepaliveAge, keepaliveSent.get(), keepaliveReceived.get());
+                            log.warn("🔄 Bitflyer proactive reconnection due to keepalive timeout");
+                            
+                            handleConnectionError(new RuntimeException("Keepalive timeout - no response for " + keepaliveAge + "s"));
+                        }
+                    }
+                }
+            },
+            error -> log.error("❌ Bitflyer stream monitor error", error)
+        );
+    
+    log.info("🔍 Bitflyer stream monitoring started ({}s timeout)", STREAM_TIMEOUT_SECONDS);
+  }
+  
+  /**
+   * ストリーム監視を停止
+   */
+  private void stopStreamMonitoring() {
+    if (streamMonitor != null && !streamMonitor.isDisposed()) {
+      streamMonitor.dispose();
+      streamMonitor = null;
+      log.debug("🔍 Bitflyer stream monitoring stopped");
+    }
+  }
+  
   @Override
   public String getClientInfo() {
     String baseInfo = super.getClientInfo();
-    return baseInfo + String.format(" [Connections: %d/%d (%.1f%%), Retries: %d, Last Attempt: %s, Last Success: %s]",
+    long streamAge = (System.currentTimeMillis() - lastMessageTime.get()) / 1000;
+    String keepaliveInfo = String.format("Keepalive: %d/%d, Stream Age: %ds", 
+        keepaliveReceived.get(), keepaliveSent.get(), streamAge);
+    return baseInfo + String.format(" [Connections: %d/%d (%.1f%%), Retries: %d, %s, Last Attempt: %s, Last Success: %s]",
         successfulConnections.get(), connectionAttempts.get(), getSuccessRate(), retryEvents.get(),
+        keepaliveInfo,
         lastConnectionAttempt != null ? lastConnectionAttempt.toString() : "Never",
         lastSuccessfulConnection != null ? lastSuccessfulConnection.toString() : "Never");
   }

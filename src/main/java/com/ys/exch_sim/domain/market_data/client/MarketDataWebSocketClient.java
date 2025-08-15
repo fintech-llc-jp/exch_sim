@@ -38,7 +38,7 @@ public abstract class MarketDataWebSocketClient {
     
     // 接続監視用
     protected Disposable connectionMonitor;
-    protected static final long CONNECTION_TIMEOUT_SECONDS = 1200; // 20分 (Cloud Run適応)
+    protected static final long CONNECTION_TIMEOUT_SECONDS = 900; // 15分 (Bitflyer適応)
     protected static final long MONITORING_INTERVAL_SECONDS = 30; // 30秒間隔で監視
     
     // 接続品質統計
@@ -299,23 +299,28 @@ public abstract class MarketDataWebSocketClient {
                         Duration timeSinceLastActivity = Duration.between(lastActivityTime, now);
                         long inactiveSeconds = timeSinceLastActivity.getSeconds();
                         
-                        // Cloud Run friendly timeout: 20分以上非活性の場合のみタイムアウト判定
+                        // Bitflyer用最適化: 15分以上非活性の場合のみタイムアウト判定
                         if (inactiveSeconds > CONNECTION_TIMEOUT_SECONDS) {
                             long currentMessageCount = totalMessageCount.get();
                             
                             log.warn("⚠️ {} WebSocket connection inactive for {} seconds ({}min). Messages: {}, Errors: {}", 
                                 exchange, inactiveSeconds, inactiveSeconds/60, currentMessageCount, totalErrorCount.get());
                             
-                            // Bitflyerの場合は、Reactorのretry機能に任せるため、
-                            // 基底クラスからの強制再接続は行わない
+                            // Bitflyerは独自のkeepaliveとstream monitoringで処理するため、
+                            // ここではフォールバック的な監視のみ行う
                             if (!"Bitflyer".equals(exchange)) {
                                 handleConnectionError(new RuntimeException("Connection timeout - no activity for " + inactiveSeconds + "s"));
                             } else {
-                                log.info("🔄 {} Letting Reactor retry handle reconnection for extended inactivity", exchange);
+                                log.info("🔄 {} Base class monitoring detected extended inactivity - relying on application-level keepalive", exchange);
                             }
                         } else if (inactiveSeconds > 300) { // 5分以上非活性の場合は警告ログのみ
-                            log.debug("🔍 {} WebSocket connection inactive for {} seconds. Messages: {}", 
-                                exchange, inactiveSeconds, totalMessageCount.get());
+                            if ("Bitflyer".equals(exchange)) {
+                                log.debug("🔍 {} WebSocket connection inactive for {} seconds - application-level monitoring active. Messages: {}", 
+                                    exchange, inactiveSeconds, totalMessageCount.get());
+                            } else {
+                                log.debug("🔍 {} WebSocket connection inactive for {} seconds. Messages: {}", 
+                                    exchange, inactiveSeconds, totalMessageCount.get());
+                            }
                         }
                     }
                 },
