@@ -181,10 +181,16 @@ public class MarketDataClientManager {
                 if (connectedClients < totalClients) {
                     log.warn("⚠️ MarketData client status: {}/{} connected", connectedClients, totalClients);
                     
-                    // 切断されたクライアントの詳細ログ
+                    // 切断されたクライアントの詳細ログと再接続
                     for (MarketDataWebSocketClient client : clients) {
                         if (!client.isConnected()) {
                             log.warn("🔌 Disconnected MarketData client: {}", client.getClientInfo());
+                            try {
+                                log.info("🔄 Reconnecting disconnected client: {}", client.getClientInfo());
+                                client.connect(); // 再接続処理を呼び出す
+                            } catch (Exception e) {
+                                log.error("❌ Failed to reconnect client: {} - {}", client.getClientInfo(), e.getMessage(), e);
+                            }
                         }
                     }
                 } else {
