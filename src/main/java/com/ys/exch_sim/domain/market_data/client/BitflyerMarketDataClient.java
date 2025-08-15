@@ -32,11 +32,18 @@ import reactor.util.retry.Retry;
 @ConditionalOnProperty(
     name = "market-data.bitflyer.enabled",
     havingValue = "true",
-    matchIfMissing = false)
+    matchIfMissing = true)
 public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
 
   private final WebSocketClient webSocketClient;
   private final AtomicLong jsonRpcId = new AtomicLong(1);
+  
+  // Connection quality metrics
+  private final AtomicLong connectionAttempts = new AtomicLong(0);
+  private final AtomicLong successfulConnections = new AtomicLong(0);
+  private final AtomicLong retryEvents = new AtomicLong(0);
+  private volatile Instant lastConnectionAttempt;
+  private volatile Instant lastSuccessfulConnection;
 
   // Bitflyer WebSocket チャンネル名
   private static final String CHANNEL_BOARD_SNAPSHOT_PREFIX = "lightning_board_snapshot_";
@@ -49,6 +56,7 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
 
   // 最新のマーケットボードデータを保持
   private final Map<String, ExternalMarketBoardData> latestBoards = new HashMap<>();
+
 
   public BitflyerMarketDataClient(
       DirectMarketDataService marketDataService,
@@ -66,8 +74,19 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
 
   @PostConstruct
   public void autoConnect() {
-    log.info("🚀 Bitflyer WebSocket client auto-connecting...");
-    connect();
+    log.info("🚀 Bitflyer WebSocket client initializing...");
+    log.info("🔧 Configuration - enabled: {}, wsUrl: {}, maxReconnectAttempts: {}", 
+        true, wsUrl, maxReconnectAttempts);
+    log.info("🔧 WebSocket client: {}", webSocketClient != null ? webSocketClient.getClass().getSimpleName() : "NULL");
+    
+    try {
+      log.info("🔌 Starting Bitflyer WebSocket connection...");
+      connect();
+      log.info("✅ Bitflyer WebSocket client initialization completed");
+    } catch (Exception e) {
+      log.error("❌ Failed to initialize Bitflyer WebSocket client", e);
+      throw e;
+    }
   }
 
   @PreDestroy
@@ -82,13 +101,26 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
       return;
     }
 
-    log.info("🔌 Connecting to Bitflyer WebSocket: {}", wsUrl);
+    // Update connection metrics
+    connectionAttempts.incrementAndGet();
+    lastConnectionAttempt = Instant.now();
+    
+    log.info("🔌 Connecting to Bitflyer WebSocket: {} (attempt: {}, success rate: {:.1f}%)", 
+        wsUrl, connectionAttempts.get(), getSuccessRate());
+    log.debug("🔧 WebSocket client details: {}", webSocketClient.getClass().getSimpleName());
 
     connection =
         webSocketClient
             .execute(
                 URI.create(wsUrl),
                 session -> {
+                  // 接続成功時の処理
+                  successfulConnections.incrementAndGet();
+                  lastSuccessfulConnection = Instant.now();
+                  log.info("✅ Bitflyer WebSocket session established (success: {}/{}, rate: {:.1f}%)", 
+                      successfulConnections.get(), connectionAttempts.get(), getSuccessRate());
+                  onConnectionEstablished();
+                  
                   // 購読メッセージの作成と送信
                   Flux<WebSocketMessage> subscriptionMessages = createSubscriptionMessages(session);
 
@@ -98,30 +130,92 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
                           .receive()
                           .map(WebSocketMessage::getPayloadAsText)
                           .doOnNext(this::processMessage)
-                          .doOnError(this::handleConnectionError);
+                          .doOnError(error -> {
+                              // Log processing errors but don't trigger reconnection
+                              log.warn("⚠️ Bitflyer message processing error: {}", error.getMessage());
+                              incrementMessageCount(); // Count as activity to prevent timeout
+                          });
 
                   return session.send(subscriptionMessages).thenMany(messageFlux).then();
                 })
+            .doOnError(error -> {
+                log.error("❌ Bitflyer WebSocket connection error: {}", error.getMessage());
+                // Let retryWhen handle reconnection, just log here
+            })
+            .doOnCancel(() -> {
+                log.warn("🛑 Bitflyer WebSocket connection cancelled");
+                onConnectionClosed();
+            })
             .retryWhen(
                 Retry.backoff(maxReconnectAttempts, Duration.ofMillis(reconnectDelay))
+                    .maxBackoff(Duration.ofSeconds(30))
+                    .jitter(0.1)
+                    .filter(throwable -> {
+                        // Only filter out truly non-recoverable errors
+                        String message = throwable.getMessage();
+                        boolean isNonRetryable = message != null && (
+                            message.contains("401") ||  // Unauthorized
+                            message.contains("403") ||  // Forbidden
+                            message.contains("invalid credentials") ||
+                            message.contains("authentication failed")
+                        );
+                        
+                        if (isNonRetryable) {
+                            log.error("🚫 Bitflyer non-retryable authentication error: {}", message);
+                            return false;
+                        } else {
+                            // Log all retryable errors for analysis
+                            log.info("🔄 Bitflyer connection error (will retry): {}", message);
+                            return true;
+                        }
+                    })
                     .doBeforeRetry(
-                        retrySignal ->
+                        retrySignal -> {
+                            retryEvents.incrementAndGet();
+                            int attempt = (int) retrySignal.totalRetries() + 1;
+                            Throwable error = retrySignal.failure();
+                            long delayMs = retrySignal.totalRetriesInARow() == 0 ? reconnectDelay : 
+                                Math.min(reconnectDelay * (long) Math.pow(2, retrySignal.totalRetriesInARow()), 30000);
+                            
+                            // Detailed error categorization for analysis
+                            String errorCategory = categorizeError(error);
                             log.warn(
-                                "🔄 Bitflyer WebSocket retry attempt: {}",
-                                retrySignal.totalRetries())))
-            .doOnError(this::handleConnectionError)
-            .doOnCancel(this::onConnectionClosed)
-            .subscribe(result -> onConnectionEstablished(), error -> handleConnectionError(error));
+                                "🔄 Bitflyer WebSocket retry attempt: {}/{} in {}ms - Category: {} - Error: {}",
+                                attempt, maxReconnectAttempts, delayMs, errorCategory, error.getMessage());
+                        })
+                    .onRetryExhaustedThrow((retryBackoffSpec, retrySignal) -> {
+                        log.error("💥 Bitflyer WebSocket max retry attempts ({}) exceeded. Last error: {}", 
+                            maxReconnectAttempts, retrySignal.failure().getMessage());
+                        return new RuntimeException("Max retry attempts exceeded after " + maxReconnectAttempts + " attempts", 
+                            retrySignal.failure());
+                    }))
+            .subscribe(
+                result -> {
+                    log.info("🔚 Bitflyer WebSocket stream completed");
+                    onConnectionClosed();
+                }, 
+                error -> {
+                    log.error("❌ Bitflyer WebSocket final subscription error (after all retries): {}", error.getMessage());
+                    // Mark as disconnected since retries are exhausted
+                    isConnected.set(false);
+                    shouldReconnect.set(false);
+                    onConnectionClosed();
+                });
   }
 
   @Override
   protected void processMessage(String message) {
     try {
+      // 基底クラスのメッセージカウンターを更新
+      incrementMessageCount();
+      
       JsonNode json = objectMapper.readTree(message);
 
       // JSON-RPC応答の処理
       if (json.has("id")) {
         log.debug("📡 Bitflyer JSON-RPC response: {}", json.get("id"));
+        // JSON-RPC応答も活動として記録
+        updateActivityTime();
         return;
       }
 
@@ -151,6 +245,7 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
       handleMessageError(message, e);
     }
   }
+
 
   private Flux<WebSocketMessage> createSubscriptionMessages(
       org.springframework.web.reactive.socket.WebSocketSession session) {
@@ -236,7 +331,17 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
 
           marketDataService.processMarketBoardAsync(updatedBoard);
         } else {
-          log.warn("⚠️ Bitflyer Board Delta skipped - no existing board for symbol: {}", symbol);
+          log.warn("⚠️ Bitflyer Board Delta skipped - no existing board for symbol: {}. " +
+              "Snapshot may not have been received yet. Available boards: {}", 
+              symbol, latestBoards.keySet());
+          
+          // 初回のスナップショットが来ていない場合は、Deltaメッセージを基にボードを作成
+          if (!latestBoards.containsKey(symbol)) {
+            log.info("🔄 Creating initial board from Delta for symbol: {}", symbol);
+            ExternalMarketBoardData initialBoard = convertBitflyerBoard(symbol, message);
+            latestBoards.put(symbol, initialBoard);
+            marketDataService.processMarketBoardAsync(initialBoard);
+          }
         }
       }
     } catch (Exception e) {
@@ -411,5 +516,48 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
       log.error("❌ Error converting Bitflyer trade: {}", execution, e);
       return null;
     }
+  }
+  
+  private double getSuccessRate() {
+    long attempts = connectionAttempts.get();
+    if (attempts == 0) return 0.0;
+    return (successfulConnections.get() * 100.0) / attempts;
+  }
+  
+  private String categorizeError(Throwable error) {
+    if (error == null || error.getMessage() == null) {
+      return "UNKNOWN";
+    }
+    
+    String message = error.getMessage().toLowerCase();
+    
+    if (message.contains("handshake")) {
+      return "HANDSHAKE";
+    } else if (message.contains("timeout") || message.contains("timed out")) {
+      return "TIMEOUT";
+    } else if (message.contains("connection reset") || message.contains("reset by peer")) {
+      return "CONNECTION_RESET";
+    } else if (message.contains("prematurely closed")) {
+      return "PREMATURE_CLOSE";
+    } else if (message.contains("network") || message.contains("host")) {
+      return "NETWORK";
+    } else if (message.contains("ssl") || message.contains("tls")) {
+      return "SSL_TLS";
+    } else if (message.contains("401") || message.contains("403") || message.contains("unauthorized")) {
+      return "AUTH";
+    } else if (message.contains("websocket")) {
+      return "WEBSOCKET";
+    } else {
+      return "OTHER";
+    }
+  }
+  
+  @Override
+  public String getClientInfo() {
+    String baseInfo = super.getClientInfo();
+    return baseInfo + String.format(" [Connections: %d/%d (%.1f%%), Retries: %d, Last Attempt: %s, Last Success: %s]",
+        successfulConnections.get(), connectionAttempts.get(), getSuccessRate(), retryEvents.get(),
+        lastConnectionAttempt != null ? lastConnectionAttempt.toString() : "Never",
+        lastSuccessfulConnection != null ? lastSuccessfulConnection.toString() : "Never");
   }
 }

@@ -14,6 +14,7 @@ import com.ys.exch_sim.domain.position.PositionRepository;
 import com.ys.exch_sim.domain.position.TradeHistoryRepository;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.domain.service.OrderService;
+import com.ys.exch_sim.domain.market_data.service.MarketDataClientManager;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +26,7 @@ class MarketBoardControllerTest {
   private OrderService orderService;
   private MarketBoardController marketBoardController;
   private InstrumentConfig instrumentConfig;
+  private MarketDataClientManager clientManager;
 
   @BeforeEach
   void setUp() {
@@ -50,7 +52,11 @@ class MarketBoardControllerTest {
     when(instrumentConfig.getInstrument("BTCJPY")).thenReturn(btcjpy);
 
     orderService = new OrderService(executionQueueService, instrumentConfig, positionManager);
-    marketBoardController = new MarketBoardController(orderService);
+    clientManager = mock(MarketDataClientManager.class);
+    when(clientManager.getAllClientsStatus()).thenReturn("Test clients status");
+    when(clientManager.getConnectedClientCount()).thenReturn(2);
+    
+    marketBoardController = new MarketBoardController(orderService, clientManager);
   }
 
   @Test

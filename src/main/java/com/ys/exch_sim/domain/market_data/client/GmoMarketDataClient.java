@@ -35,6 +35,13 @@ import reactor.util.retry.Retry;
 public class GmoMarketDataClient extends MarketDataWebSocketClient {
 
   private final WebSocketClient webSocketClient;
+  
+  // データ品質監視用
+  private final java.util.concurrent.atomic.AtomicLong askMissingCount = new java.util.concurrent.atomic.AtomicLong(0);
+  private final java.util.concurrent.atomic.AtomicLong bidMissingCount = new java.util.concurrent.atomic.AtomicLong(0);
+  private final java.util.concurrent.atomic.AtomicLong totalOrderbookCount = new java.util.concurrent.atomic.AtomicLong(0);
+  private volatile Instant lastAskMissingTime;
+  private volatile Instant lastBidMissingTime;
 
   // GMO対象シンボル
   private static final String SYMBOL_BTC_JPY = "BTC_JPY";
@@ -57,6 +64,7 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
   @PostConstruct
   public void autoConnect() {
     log.info("🚀 GMO WebSocket client auto-connecting...");
+    logSymbolMappingInfo();
     connect();
   }
 
@@ -79,6 +87,10 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
             .execute(
                 URI.create(wsUrl),
                 session -> {
+                  // 接続成功時の処理
+                  log.info("✅ GMO WebSocket session established");
+                  onConnectionEstablished();
+                  
                   // 購読メッセージの送信
                   Flux<WebSocketMessage> subscriptionMessages = createSubscriptionMessages(session);
 
@@ -100,12 +112,23 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
                                 "🔄 GMO WebSocket retry attempt: {}", retrySignal.totalRetries())))
             .doOnError(this::handleConnectionError)
             .doOnCancel(this::onConnectionClosed)
-            .subscribe(result -> onConnectionEstablished(), error -> handleConnectionError(error));
+            .subscribe(
+                result -> {
+                    log.info("🔚 GMO WebSocket stream completed");
+                    onConnectionClosed();
+                }, 
+                error -> {
+                    log.error("❌ GMO WebSocket subscription error: {}", error.getMessage(), error);
+                    handleConnectionError(error);
+                });
   }
 
   @Override
   protected void processMessage(String message) {
     try {
+      // 基底クラスのメッセージカウンターを更新
+      incrementMessageCount();
+      
       JsonNode json = objectMapper.readTree(message);
 
       // 通常のレスポンスメッセージ
@@ -179,20 +202,58 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
 
   private void handleOrderbookMessage(JsonNode message) {
     try {
+      totalOrderbookCount.incrementAndGet();
       String symbol = message.get("symbol").asText();
       JsonNode bidsArray = message.get("bids");
       JsonNode asksArray = message.get("asks");
+      
+      // 詳細ログ：受信データの状態を記録
+      boolean hasBids = bidsArray != null && bidsArray.isArray() && bidsArray.size() > 0;
+      boolean hasAsks = asksArray != null && asksArray.isArray() && asksArray.size() > 0;
+      
+      log.debug("📡 GMO Raw orderbook for {}: bids={} ({}), asks={} ({}), message: {}",
+          symbol, 
+          hasBids ? bidsArray.size() : "null/empty",
+          hasBids,
+          hasAsks ? asksArray.size() : "null/empty", 
+          hasAsks,
+          message.toPrettyString().length() > 500 ? message.toPrettyString().substring(0, 500) + "..." : message.toPrettyString());
+      
+      // データ品質監視
+      if (!hasBids) {
+        bidMissingCount.incrementAndGet();
+        lastBidMissingTime = Instant.now();
+        log.warn("⚠️ GMO {} BID data missing or empty (total missing: {})", symbol, bidMissingCount.get());
+      }
+      
+      if (!hasAsks) {
+        askMissingCount.incrementAndGet();
+        lastAskMissingTime = Instant.now();
+        log.warn("⚠️ GMO {} ASK data missing or empty (total missing: {})", symbol, askMissingCount.get());
+      }
 
       if (bidsArray != null && asksArray != null) {
         ExternalMarketBoardData boardData = convertGmoBoard(symbol, bidsArray, asksArray);
+        
+        // データ品質警告
+        if (boardData.bids().isEmpty() && boardData.asks().isEmpty()) {
+          log.warn("🚨 GMO {} Both BID and ASK are empty after processing!", symbol);
+        } else if (boardData.asks().isEmpty()) {
+          log.warn("🚨 GMO {} ASK is empty after processing (BID count: {})", symbol, boardData.bids().size());
+        } else if (boardData.bids().isEmpty()) {
+          log.warn("🚨 GMO {} BID is empty after processing (ASK count: {})", symbol, boardData.asks().size());
+        }
 
         log.info(
-            "📊 GMO Orderbook: {} - {} bids, {} asks",
+            "📊 GMO Orderbook: {} - {} bids, {} asks (Quality: {:.1f}% success)",
             symbol,
             boardData.bids().size(),
-            boardData.asks().size());
+            boardData.asks().size(),
+            getDataQualityRate());
 
         marketDataService.processMarketBoardAsync(boardData);
+      } else {
+        log.warn("⚠️ GMO {} Skipping orderbook processing - missing bids or asks arrays", symbol);
       }
     } catch (Exception e) {
       log.error("❌ Error processing GMO orderbook message", e);
@@ -228,27 +289,51 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
       String symbol, JsonNode bidsArray, JsonNode asksArray) {
     List<ExternalMarketBoardData.PriceLevel> bids = new ArrayList<>();
     List<ExternalMarketBoardData.PriceLevel> asks = new ArrayList<>();
+    
+    int bidCount = 0, askCount = 0;
+    int bidFiltered = 0, askFiltered = 0;
 
     // Bids処理
     if (bidsArray.isArray()) {
+      bidCount = bidsArray.size();
       for (JsonNode bid : bidsArray) {
         double price = Double.parseDouble(bid.get("price").asText());
         double size = Double.parseDouble(bid.get("size").asText());
         if (size > 0) {
           bids.add(new ExternalMarketBoardData.PriceLevel(price, size));
+        } else {
+          bidFiltered++;
         }
       }
     }
 
     // Asks処理
     if (asksArray.isArray()) {
+      askCount = asksArray.size();
       for (JsonNode ask : asksArray) {
         double price = Double.parseDouble(ask.get("price").asText());
         double size = Double.parseDouble(ask.get("size").asText());
         if (size > 0) {
           asks.add(new ExternalMarketBoardData.PriceLevel(price, size));
+        } else {
+          askFiltered++;
         }
       }
+    }
+    
+    // フィルタリング結果のログ
+    if (bidFiltered > 0 || askFiltered > 0) {
+      log.debug("🔍 GMO {} Filtering results: BID {}/{} kept, ASK {}/{} kept (filtered out zero-size entries)",
+          symbol, bids.size(), bidCount, asks.size(), askCount);
+    }
+    
+    // 価格範囲の情報をログ
+    if (!bids.isEmpty() && !asks.isEmpty()) {
+      double bestBid = bids.get(0).price();
+      double bestAsk = asks.get(0).price();
+      double spread = bestAsk - bestBid;
+      log.debug("💰 GMO {} Price info: Best BID={}, Best ASK={}, Spread={}", 
+          symbol, bestBid, bestAsk, spread);
     }
 
     return new ExternalMarketBoardData("GMO", symbol, bids, asks, Instant.now());
@@ -278,5 +363,38 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
       log.error("❌ Error converting GMO trade: {}", trade, e);
       return null;
     }
+  }
+  
+  /**
+   * データ品質率を取得
+   */
+  private double getDataQualityRate() {
+    long total = totalOrderbookCount.get();
+    if (total == 0) return 100.0;
+    
+    long totalMissing = askMissingCount.get() + bidMissingCount.get();
+    return ((total * 2 - totalMissing) * 100.0) / (total * 2);
+  }
+  
+  /**
+   * シンボルマッピングの検証ログ
+   */
+  private void logSymbolMappingInfo() {
+    log.info("🔍 GMO Symbol Mapping Verification:");
+    log.info("  - BTC_JPY (受信) → G_FX_BTCJPY (内部) - Expected: 現物 or FX?");
+    log.info("  - BTC (受信) → G_BTCJPY (内部) - Expected: FX or 現物?");
+    log.info("  - 注意: GMOの実際のAPI仕様と一致しているか確認が必要");
+  }
+  
+  @Override
+  public String getClientInfo() {
+    String baseInfo = super.getClientInfo();
+    return baseInfo + String.format(" [Data Quality: %.1f%%, ASK Missing: %d, BID Missing: %d, Total Orderbooks: %d, Last ASK Missing: %s, Last BID Missing: %s]",
+        getDataQualityRate(),
+        askMissingCount.get(), 
+        bidMissingCount.get(),
+        totalOrderbookCount.get(),
+        lastAskMissingTime != null ? lastAskMissingTime.toString() : "Never",
+        lastBidMissingTime != null ? lastBidMissingTime.toString() : "Never");
   }
 }

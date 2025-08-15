@@ -36,8 +36,16 @@ public class MarketDataClientManager {
     public void initializeClients() {
         log.info("🚀 Initializing MarketData client manager with {} clients", clients.size());
         
+        if (clients.isEmpty()) {
+            log.error("❌ NO MARKET DATA CLIENTS FOUND! Check @ConditionalOnProperty settings:");
+            log.error("   - market-data.bitflyer.enabled should be 'true'");
+            log.error("   - market-data.gmo.enabled should be 'true'");
+            return;
+        }
+        
         for (MarketDataWebSocketClient client : clients) {
             log.info("📋 Registered client: {}", client.getClientInfo());
+            log.info("📋 Client class: {}", client.getClass().getSimpleName());
         }
         
         // 定期的な接続状態監視を開始
@@ -68,10 +76,10 @@ public class MarketDataClientManager {
         for (MarketDataWebSocketClient client : clients) {
             try {
                 if (!client.isConnected()) {
-                    log.info("🔌 Starting client: {}", client.getClientInfo());
+                    log.info("🔌 Starting MarketData client: {}", client.getClientInfo());
                     client.connect();
                 } else {
-                    log.debug("✅ Client already connected: {}", client.getClientInfo());
+                    log.debug("✅ MarketData client already connected: {}", client.getClientInfo());
                 }
             } catch (Exception e) {
                 log.error("❌ Failed to start client: {} - {}", client.getClientInfo(), e.getMessage(), e);
@@ -90,10 +98,10 @@ public class MarketDataClientManager {
         for (MarketDataWebSocketClient client : clients) {
             try {
                 if (client.isConnected()) {
-                    log.info("🔌 Stopping client: {}", client.getClientInfo());
+                    log.info("🔌 Stopping MarketData client: {}", client.getClientInfo());
                     client.disconnect();
                 } else {
-                    log.debug("⏹️ Client already disconnected: {}", client.getClientInfo());
+                    log.debug("⏹️ MarketData client already disconnected: {}", client.getClientInfo());
                 }
             } catch (Exception e) {
                 log.error("❌ Failed to stop client: {} - {}", client.getClientInfo(), e.getMessage(), e);
@@ -152,7 +160,7 @@ public class MarketDataClientManager {
         for (MarketDataWebSocketClient client : clients) {
             if (!client.isConnected()) {
                 try {
-                    log.info("🔄 Reconnecting disconnected client: {}", client.getClientInfo());
+                    log.info("🔄 Reconnecting disconnected MarketData client: {}", client.getClientInfo());
                     client.connect();
                 } catch (Exception e) {
                     log.error("❌ Failed to reconnect client: {} - {}", client.getClientInfo(), e.getMessage(), e);
@@ -176,19 +184,26 @@ public class MarketDataClientManager {
                     // 切断されたクライアントの詳細ログ
                     for (MarketDataWebSocketClient client : clients) {
                         if (!client.isConnected()) {
-                            log.warn("🔌 Disconnected client: {}", client.getClientInfo());
+                            log.warn("🔌 Disconnected MarketData client: {}", client.getClientInfo());
                         }
                     }
                 } else {
-                    log.debug("✅ All MarketData clients connected: {}/{}", connectedClients, totalClients);
+                    log.info("✅ All MarketData clients connected: {}/{}", connectedClients, totalClients);
+                    
+                    // 接続中クライアントの詳細情報を定期的にログ出力（データ品質監視含む）
+                    for (MarketDataWebSocketClient client : clients) {
+                        if (client.isConnected()) {
+                            log.info("📊 Connected MarketData client details: {}", client.getClientInfo());
+                        }
+                    }
                 }
                 
             } catch (Exception e) {
                 log.error("❌ Error during MarketData client monitoring", e);
             }
-        }, 30, 30, TimeUnit.SECONDS); // 30秒間隔で監視
+        }, 30, 60, TimeUnit.SECONDS); // 30秒後に開始、1分間隔で監視
         
-        log.info("👁️ MarketData client monitoring started (30s interval)");
+        log.info("👁️ MarketData client monitoring started (60s interval with detailed logging)");
     }
 
     /**

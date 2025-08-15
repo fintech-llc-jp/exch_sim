@@ -36,8 +36,8 @@ USER app
 # Expose port
 EXPOSE 8080
 
-# Environment variables
-ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom" \
+# Environment variables optimized for Cloud Run
+ENV JAVA_OPTS="-Xmx768m -Xms256m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
     SPRING_PROFILES_ACTIVE=prod \
     SERVER_PORT=8080
 

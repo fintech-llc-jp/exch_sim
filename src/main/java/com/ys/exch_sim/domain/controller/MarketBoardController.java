@@ -2,6 +2,7 @@ package com.ys.exch_sim.domain.controller;
 
 import com.ys.exch_sim.domain.dto.MarketBoardResponse;
 import com.ys.exch_sim.domain.service.OrderService;
+import com.ys.exch_sim.domain.market_data.service.MarketDataClientManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.Map;
+import java.util.HashMap;
 
 @Slf4j
 @RestController
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MarketBoardController {
 
   private final OrderService orderService;
+  private final MarketDataClientManager clientManager;
 
   @GetMapping("/board/{symbol}")
   public ResponseEntity<?> getMarketBoard(
@@ -55,16 +59,16 @@ public class MarketBoardController {
       // ベストBid/Askの詳細ログ
       if (!response.getBids().isEmpty()) {
         var bestBid = response.getBids().get(0);
-        log.info("📈 Best BID - price: {}, quantity: {}", bestBid.getPrice(), bestBid.getQuantity());
+        log.info("📈 {} Best BID - price: {}, quantity: {}", normalizedSymbol, bestBid.getPrice(), bestBid.getQuantity());
       } else {
-        log.info("📈 Best BID - none available");
+        log.info("📈 {} Best BID - none available", normalizedSymbol);
       }
 
       if (!response.getAsks().isEmpty()) {
         var bestAsk = response.getAsks().get(0);
-        log.info("📉 Best ASK - price: {}, quantity: {}", bestAsk.getPrice(), bestAsk.getQuantity());
+        log.info("📉 {} Best ASK - price: {}, quantity: {}", normalizedSymbol, bestAsk.getPrice(), bestAsk.getQuantity());
       } else {
-        log.info("📉 Best ASK - none available");
+        log.info("📉 {} Best ASK - none available", normalizedSymbol);
       }
 
       return ResponseEntity.ok(response);
@@ -101,5 +105,67 @@ public class MarketBoardController {
       return ResponseEntity.internalServerError()
           .body("Error getting market board: " + e.getMessage());
     }
+  }
+
+  @GetMapping("/connection-status")
+  public ResponseEntity<Map<String, Object>> getConnectionStatus() {
+    long startTime = System.currentTimeMillis();
+    
+    try {
+      log.info("📡 Connection Status API Request");
+      
+      Map<String, Object> status = new HashMap<>();
+      status.put("timestamp", java.time.Instant.now().toString());
+      status.put("clients", clientManager.getAllClientsStatus());
+      status.put("summary", createStatusSummary());
+      
+      long processingTime = System.currentTimeMillis() - startTime;
+      status.put("processingTimeMs", processingTime);
+      
+      log.info("✅ Connection Status API Response - processingTime: {}ms", processingTime);
+      
+      return ResponseEntity.ok(status);
+      
+    } catch (Exception e) {
+      long processingTime = System.currentTimeMillis() - startTime;
+      log.error("❌ Connection Status API Error - processingTime: {}ms, error: {}", 
+                processingTime, e.getMessage(), e);
+      
+      Map<String, Object> errorResponse = new HashMap<>();
+      errorResponse.put("error", "Failed to get connection status: " + e.getMessage());
+      errorResponse.put("timestamp", java.time.Instant.now().toString());
+      errorResponse.put("processingTimeMs", processingTime);
+      
+      return ResponseEntity.internalServerError().body(errorResponse);
+    }
+  }
+
+  private Map<String, Object> createStatusSummary() {
+    Map<String, Object> summary = new HashMap<>();
+    
+    // Use a simple count by iterating through all clients
+    int totalClients = 0;
+    int connectedCount = 0;
+    
+    // Manually count by checking client status
+    String statusString = clientManager.getAllClientsStatus();
+    String[] lines = statusString.split("\n");
+    for (String line : lines) {
+      if (line.contains("WebSocket Client")) {
+        totalClients++;
+        if (line.contains("Connected: true")) {
+          connectedCount++;
+        }
+      }
+    }
+    int disconnectedClients = totalClients - connectedCount;
+    
+    summary.put("totalClients", totalClients);
+    summary.put("connectedClients", connectedCount);
+    summary.put("disconnectedClients", disconnectedClients);
+    summary.put("connectionRate", totalClients > 0 ? 
+        String.format("%.1f%%", (connectedCount * 100.0 / totalClients)) : "0.0%");
+    
+    return summary;
   }
 }
