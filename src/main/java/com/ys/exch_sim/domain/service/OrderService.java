@@ -104,7 +104,7 @@ public class OrderService {
         if (instrument.isCash() && "SELL".equalsIgnoreCase(request.getSide())) {
           // Cash商品の場合、売り注文前に十分なポジションがあるかチェック
           Position currentPosition = positionManager.getPosition(username, request.getSymbol());
-          long availableQty = currentPosition != null ? currentPosition.getNetQty() : 0L;
+          double availableQty = currentPosition != null ? currentPosition.getNetQty() : 0.0;
 
           if (availableQty < request.getQuantity()) {
             log.warn(

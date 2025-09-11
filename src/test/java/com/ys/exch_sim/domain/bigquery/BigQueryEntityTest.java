@@ -53,8 +53,8 @@ class BigQueryEntityTest {
     void testBigQueryPositionEntityCreation() {
         // Positionドメインオブジェクトを作成
         Position position = new Position("test-user", "BTCJPY");
-        position.addBuyTrade(1000L, 100.0); // 1.0 BTC at 100.0
-        position.addSellTrade(500L, 110.0);  // 0.5 BTC at 110.0
+        position.addBuyTrade(1.0, 100.0); // 1.0 BTC at 100.0
+        position.addSellTrade(0.5, 110.0);  // 0.5 BTC at 110.0
         
         // BigQueryPositionEntityに変換
         BigQueryPositionEntity positionEntity = new BigQueryPositionEntity(position);
@@ -65,12 +65,12 @@ class BigQueryEntityTest {
         // id field was removed from BigQuery positions table schema
         assertThat(row.get("username")).isEqualTo("test-user");
         assertThat(row.get("symbol")).isEqualTo("BTCJPY");
-        assertThat(row.get("total_buy_qty")).isEqualTo(1000L);
-        assertThat(row.get("total_buy_amount")).isEqualTo(100000.0);
-        assertThat(row.get("total_sell_qty")).isEqualTo(500L);
-        assertThat(row.get("total_sell_amount")).isEqualTo(55000.0);
-        assertThat(row.get("net_qty")).isEqualTo(500L);
-        assertThat(row.get("realized_pnl")).isEqualTo(5000.0); // (110-100) * 500
+        assertThat(row.get("total_buy_qty")).isEqualTo(1000L); // 1.0 * 1000 multiplier
+        assertThat(row.get("total_buy_amount")).isEqualTo(100.0); // 1.0 * 100.0 price
+        assertThat(row.get("total_sell_qty")).isEqualTo(500L); // 0.5 * 1000 multiplier
+        assertThat(row.get("total_sell_amount")).isEqualTo(55.0); // 0.5 * 110.0 price
+        assertThat(row.get("net_qty")).isEqualTo(500L); // (1.0 - 0.5) * 1000 multiplier
+        assertThat(row.get("realized_pnl")).isEqualTo(5.0); // (110-100) * 0.5
         
         System.out.println("✅ BigQueryPositionEntity test passed");
         System.out.println("   Position Username: " + positionEntity.getUsername());
@@ -87,7 +87,7 @@ class BigQueryEntityTest {
             "test-trader",
             "BTCJPY", 
             "BUY",
-            1500.0, // quantity
+            1.5, // quantity (1.5 BTC)
             95.0,   // price
             "market-maker-001",
             "test-order-789"
@@ -103,9 +103,9 @@ class BigQueryEntityTest {
         assertThat(row.get("username")).isEqualTo("test-trader");
         assertThat(row.get("symbol")).isEqualTo("BTCJPY");
         assertThat(row.get("side")).isEqualTo("BUY");
-        assertThat(row.get("quantity")).isEqualTo(1500.0);
+        assertThat(row.get("quantity")).isEqualTo(1500.0); // 1.5 * 1000 multiplier for storage
         assertThat(row.get("price")).isEqualTo(95.0);
-        assertThat(row.get("amount")).isEqualTo(142500.0); // 1500 * 95
+        assertThat(row.get("amount")).isEqualTo(142.5); // 1.5 * 95
         assertThat(row.get("counter_party_username")).isEqualTo("market-maker-001");
         assertThat(row.get("cl_ord_id")).isEqualTo("test-order-789");
         assertThat(row.get("is_market_maker")).isEqualTo(false);
@@ -121,19 +121,20 @@ class BigQueryEntityTest {
         
         // 1. Position round trip
         Position originalPosition = new Position("round-trip-user", "ETHJPY");
-        originalPosition.addBuyTrade(2000L, 200.0);
-        originalPosition.addSellTrade(1000L, 220.0);
+        originalPosition.addBuyTrade(2.0, 200.0);
+        originalPosition.addSellTrade(1.0, 220.0);
         
         BigQueryPositionEntity positionEntity = new BigQueryPositionEntity(originalPosition);
         Map<String, Object> positionRow = positionEntity.toBigQueryRow();
         
         // BigQuery row から復元
         BigQueryPositionEntity restoredPositionEntity = BigQueryPositionEntity.fromBigQueryRow(positionRow);
+        Position restoredPosition = restoredPositionEntity.toPosition();
         
-        assertThat(restoredPositionEntity.getUsername()).isEqualTo(originalPosition.getUsername());
-        assertThat(restoredPositionEntity.getSymbol()).isEqualTo(originalPosition.getSymbol());
-        assertThat(restoredPositionEntity.getNetQty()).isEqualTo(originalPosition.getNetQty());
-        assertThat(restoredPositionEntity.getRealizedPnL()).isEqualTo(originalPosition.getRealizedPnL());
+        assertThat(restoredPosition.getUsername()).isEqualTo(originalPosition.getUsername());
+        assertThat(restoredPosition.getSymbol()).isEqualTo(originalPosition.getSymbol());
+        assertThat(restoredPosition.getNetQty()).isEqualTo(originalPosition.getNetQty());
+        assertThat(restoredPosition.getRealizedPnL()).isEqualTo(originalPosition.getRealizedPnL());
         
         System.out.println("✅ Position round-trip conversion test passed");
         
@@ -143,7 +144,7 @@ class BigQueryEntityTest {
             "round-trip-user",
             "ETHJPY",
             "SELL", 
-            800.0,
+            0.8,
             230.0,
             "round-trip-mm",
             "round-trip-order"
@@ -154,11 +155,12 @@ class BigQueryEntityTest {
         
         // BigQuery row から復元
         BigQueryTradeHistoryEntity restoredTradeEntity = BigQueryTradeHistoryEntity.fromBigQueryRow(tradeRow);
+        TradeHistory restoredTrade = restoredTradeEntity.toTradeHistory();
         
-        assertThat(restoredTradeEntity.getExecId()).isEqualTo(originalTrade.getExecID());
-        assertThat(restoredTradeEntity.getQuantity()).isEqualTo(originalTrade.getQuantity());
-        assertThat(restoredTradeEntity.getPrice()).isEqualTo(originalTrade.getPrice());
-        assertThat(restoredTradeEntity.getAmount()).isEqualTo(originalTrade.getAmount());
+        assertThat(restoredTrade.getExecID()).isEqualTo(originalTrade.getExecID());
+        assertThat(restoredTrade.getQuantity()).isEqualTo(originalTrade.getQuantity());
+        assertThat(restoredTrade.getPrice()).isEqualTo(originalTrade.getPrice());
+        assertThat(restoredTrade.getAmount()).isEqualTo(originalTrade.getAmount());
         
         System.out.println("✅ TradeHistory round-trip conversion test passed");
     }
