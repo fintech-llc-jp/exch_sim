@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -183,7 +184,21 @@ public class BigQueryPositionEntity {
         position.setAverageSellPrice(averageSellPrice != null ? averageSellPrice : 0.0);
         position.setRealizedPnL(realizedPnL != null ? realizedPnL : 0.0);
         if (lastUpdated != null) {
-            position.setLastUpdated(LocalDateTime.parse(lastUpdated, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            try {
+                // Try parsing as ISO format first
+                position.setLastUpdated(LocalDateTime.parse(lastUpdated, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            } catch (DateTimeParseException e) {
+                try {
+                    // If that fails, try parsing as Unix timestamp (seconds)
+                    double timestamp = Double.parseDouble(lastUpdated);
+                    position.setLastUpdated(LocalDateTime.ofEpochSecond((long) timestamp, 
+                        (int) ((timestamp % 1) * 1_000_000_000), 
+                        java.time.ZoneOffset.UTC).atZone(java.time.ZoneOffset.UTC).toLocalDateTime());
+                } catch (Exception ex) {
+                    // If all parsing fails, use current time
+                    position.setLastUpdated(LocalDateTime.now());
+                }
+            }
         } else {
             position.setLastUpdated(LocalDateTime.now());
         }

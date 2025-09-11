@@ -86,9 +86,35 @@ public class BigQueryTradeHistoryEntity {
         entity.username = (String) row.get("username");
         entity.symbol = (String) row.get("symbol");
         entity.side = (String) row.get("side");
-        entity.quantity = row.get("quantity") != null ? ((Number) row.get("quantity")).doubleValue() : null;
-        entity.price = row.get("price") != null ? ((Number) row.get("price")).doubleValue() : null;
-        entity.amount = row.get("amount") != null ? ((Number) row.get("amount")).doubleValue() : null;
+        // Safe conversion for quantity
+        Object quantityObj = row.get("quantity");
+        if (quantityObj != null) {
+            if (quantityObj instanceof Number) {
+                entity.quantity = ((Number) quantityObj).doubleValue();
+            } else if (quantityObj instanceof String) {
+                entity.quantity = Double.parseDouble((String) quantityObj);
+            }
+        }
+        
+        // Safe conversion for price
+        Object priceObj = row.get("price");
+        if (priceObj != null) {
+            if (priceObj instanceof Number) {
+                entity.price = ((Number) priceObj).doubleValue();
+            } else if (priceObj instanceof String) {
+                entity.price = Double.parseDouble((String) priceObj);
+            }
+        }
+        
+        // Safe conversion for amount
+        Object amountObj = row.get("amount");
+        if (amountObj != null) {
+            if (amountObj instanceof Number) {
+                entity.amount = ((Number) amountObj).doubleValue();
+            } else if (amountObj instanceof String) {
+                entity.amount = Double.parseDouble((String) amountObj);
+            }
+        }
         entity.counterPartyUsername = (String) row.get("counter_party_username");
         entity.timestamp = (String) row.get("timestamp");
         entity.clOrdId = (String) row.get("cl_ord_id");
