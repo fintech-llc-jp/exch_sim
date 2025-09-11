@@ -25,11 +25,13 @@ public class PositionController {
   private final PositionManager positionManager;
   private final OrderService orderService;
 
-  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final ObjectMapper objectMapper;
 
-  public PositionController(PositionManager positionManager, OrderService orderService) {
+  public PositionController(
+      PositionManager positionManager, OrderService orderService, ObjectMapper objectMapper) {
     this.positionManager = positionManager;
     this.orderService = orderService;
+    this.objectMapper = objectMapper;
   }
 
   @GetMapping("/summary")

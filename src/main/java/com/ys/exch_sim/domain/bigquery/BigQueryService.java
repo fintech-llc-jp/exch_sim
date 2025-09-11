@@ -3,6 +3,8 @@ package com.ys.exch_sim.domain.bigquery;
 import com.google.cloud.bigquery.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -207,6 +209,245 @@ public class BigQueryService {
       log.error(
           "Error inserting trade history to BigQuery (async): {}", tradeHistory.getExecId(), e);
       return CompletableFuture.failedFuture(e);
+    }
+  }
+
+  /** Query position by username and symbol from BigQuery */
+  public BigQueryPositionEntity queryPosition(String username, String symbol) {
+    try {
+      String query = String.format(
+        "SELECT * FROM `%s.%s.positions` WHERE username = @username AND symbol = @symbol ORDER BY last_updated DESC LIMIT 1",
+        projectId, datasetName);
+      
+      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(query)
+        .addNamedParameter("username", com.google.cloud.bigquery.QueryParameterValue.string(username))
+        .addNamedParameter("symbol", com.google.cloud.bigquery.QueryParameterValue.string(symbol))
+        .build();
+      
+      JobId jobId = JobId.of(java.util.UUID.randomUUID().toString());
+      Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
+      
+      queryJob = queryJob.waitFor();
+      
+      if (queryJob == null) {
+        log.error("❌ BigQuery job was null when querying position for user: {} symbol: {}", username, symbol);
+        return null;
+      }
+      
+      if (queryJob.getStatus().getError() != null) {
+        log.error("❌ BigQuery job failed when querying position for user: {} symbol: {} - Error: {}", 
+                  username, symbol, queryJob.getStatus().getError().getMessage());
+        return null;
+      }
+      
+      TableResult result = queryJob.getQueryResults();
+      if (result.getTotalRows() == 0) {
+        log.info("📊 No position found in BigQuery for user: {} symbol: {}", username, symbol);
+        return null;
+      }
+      
+      com.google.cloud.bigquery.FieldValueList row = result.iterateAll().iterator().next();
+      Map<String, Object> rowMap = new HashMap<>();
+      for (com.google.cloud.bigquery.Field field : result.getSchema().getFields()) {
+        String fieldName = field.getName();
+        com.google.cloud.bigquery.FieldValue fieldValue = row.get(fieldName);
+        if (!fieldValue.isNull()) {
+          rowMap.put(fieldName, fieldValue.getValue());
+        }
+      }
+      
+      BigQueryPositionEntity position = BigQueryPositionEntity.fromBigQueryRow(rowMap);
+      log.info("📊 Found position in BigQuery for user: {} symbol: {} - NetQty: {}", username, symbol, position.getNetQty());
+      return position;
+      
+    } catch (Exception e) {
+      log.error("❌ Failed to query position from BigQuery for user: {} symbol: {} - Error: {}", username, symbol, e.getMessage(), e);
+      return null;
+    }
+  }
+
+  /** Query all positions by username from BigQuery */
+  public List<BigQueryPositionEntity> queryAllPositions(String username) {
+    try {
+      String query = String.format(
+        "SELECT * FROM `%s.%s.positions` WHERE username = @username ORDER BY last_updated DESC",
+        projectId, datasetName);
+      
+      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(query)
+        .addNamedParameter("username", com.google.cloud.bigquery.QueryParameterValue.string(username))
+        .build();
+      
+      JobId jobId = JobId.of(java.util.UUID.randomUUID().toString());
+      Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
+      
+      queryJob = queryJob.waitFor();
+      
+      if (queryJob == null) {
+        log.error("BigQuery job was null when querying positions for user: {}", username);
+        return List.of();
+      }
+      
+      if (queryJob.getStatus().getError() != null) {
+        log.error("BigQuery job failed when querying positions for user: {} - Error: {}", 
+                  username, queryJob.getStatus().getError().getMessage());
+        return List.of();
+      }
+      
+      TableResult result = queryJob.getQueryResults();
+      List<BigQueryPositionEntity> positions = new ArrayList<>();
+      
+      for (com.google.cloud.bigquery.FieldValueList row : result.iterateAll()) {
+        Map<String, Object> rowMap = new HashMap<>();
+        for (com.google.cloud.bigquery.Field field : result.getSchema().getFields()) {
+          String fieldName = field.getName();
+          com.google.cloud.bigquery.FieldValue fieldValue = row.get(fieldName);
+          if (!fieldValue.isNull()) {
+            rowMap.put(fieldName, fieldValue.getValue());
+          }
+        }
+        positions.add(BigQueryPositionEntity.fromBigQueryRow(rowMap));
+      }
+      
+      log.info("📊 BigQuery positions query completed for user: {} - Found {} positions", username, positions.size());
+      return positions;
+      
+    } catch (Exception e) {
+      log.error("❌ Failed to query positions from BigQuery for user: {} - Error: {}", username, e.getMessage(), e);
+      return List.of();
+    }
+  }
+
+  /** Query trade history by username from BigQuery */
+  public List<BigQueryTradeHistoryEntity> queryTradeHistory(String username) {
+    try {
+      String query = String.format(
+        "SELECT * FROM `%s.%s.trade_history` WHERE username = @username ORDER BY timestamp DESC",
+        projectId, datasetName);
+      
+      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(query)
+        .addNamedParameter("username", com.google.cloud.bigquery.QueryParameterValue.string(username))
+        .build();
+      
+      JobId jobId = JobId.of(java.util.UUID.randomUUID().toString());
+      Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
+      
+      queryJob = queryJob.waitFor();
+      
+      if (queryJob == null || queryJob.getStatus().getError() != null) {
+        log.error("Error querying trade history from BigQuery for user: {}", username);
+        return List.of();
+      }
+      
+      TableResult result = queryJob.getQueryResults();
+      List<BigQueryTradeHistoryEntity> tradeHistories = new ArrayList<>();
+      
+      for (com.google.cloud.bigquery.FieldValueList row : result.iterateAll()) {
+        Map<String, Object> rowMap = new HashMap<>();
+        for (com.google.cloud.bigquery.Field field : result.getSchema().getFields()) {
+          String fieldName = field.getName();
+          com.google.cloud.bigquery.FieldValue fieldValue = row.get(fieldName);
+          if (!fieldValue.isNull()) {
+            rowMap.put(fieldName, fieldValue.getValue());
+          }
+        }
+        tradeHistories.add(BigQueryTradeHistoryEntity.fromBigQueryRow(rowMap));
+      }
+      
+      return tradeHistories;
+      
+    } catch (Exception e) {
+      log.error("Error querying trade history from BigQuery for user: {}", username, e);
+      return List.of();
+    }
+  }
+
+  /** Query trade history by username and symbol from BigQuery */
+  public List<BigQueryTradeHistoryEntity> queryTradeHistory(String username, String symbol) {
+    try {
+      String query = String.format(
+        "SELECT * FROM `%s.%s.trade_history` WHERE username = @username AND symbol = @symbol ORDER BY timestamp DESC",
+        projectId, datasetName);
+      
+      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(query)
+        .addNamedParameter("username", com.google.cloud.bigquery.QueryParameterValue.string(username))
+        .addNamedParameter("symbol", com.google.cloud.bigquery.QueryParameterValue.string(symbol))
+        .build();
+      
+      JobId jobId = JobId.of(java.util.UUID.randomUUID().toString());
+      Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
+      
+      queryJob = queryJob.waitFor();
+      
+      if (queryJob == null || queryJob.getStatus().getError() != null) {
+        log.error("Error querying trade history from BigQuery for user: {} symbol: {}", username, symbol);
+        return List.of();
+      }
+      
+      TableResult result = queryJob.getQueryResults();
+      List<BigQueryTradeHistoryEntity> tradeHistories = new ArrayList<>();
+      
+      for (com.google.cloud.bigquery.FieldValueList row : result.iterateAll()) {
+        Map<String, Object> rowMap = new HashMap<>();
+        for (com.google.cloud.bigquery.Field field : result.getSchema().getFields()) {
+          String fieldName = field.getName();
+          com.google.cloud.bigquery.FieldValue fieldValue = row.get(fieldName);
+          if (!fieldValue.isNull()) {
+            rowMap.put(fieldName, fieldValue.getValue());
+          }
+        }
+        tradeHistories.add(BigQueryTradeHistoryEntity.fromBigQueryRow(rowMap));
+      }
+      
+      return tradeHistories;
+      
+    } catch (Exception e) {
+      log.error("Error querying trade history from BigQuery for user: {} symbol: {}", username, symbol, e);
+      return List.of();
+    }
+  }
+
+  /** Query trade history by username with limit from BigQuery */
+  public List<BigQueryTradeHistoryEntity> queryTradeHistory(String username, int limit) {
+    try {
+      String query = String.format(
+        "SELECT * FROM `%s.%s.trade_history` WHERE username = @username ORDER BY timestamp DESC LIMIT @limit",
+        projectId, datasetName);
+      
+      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(query)
+        .addNamedParameter("username", com.google.cloud.bigquery.QueryParameterValue.string(username))
+        .addNamedParameter("limit", com.google.cloud.bigquery.QueryParameterValue.int64(limit))
+        .build();
+      
+      JobId jobId = JobId.of(java.util.UUID.randomUUID().toString());
+      Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
+      
+      queryJob = queryJob.waitFor();
+      
+      if (queryJob == null || queryJob.getStatus().getError() != null) {
+        log.error("Error querying trade history from BigQuery for user: {} with limit: {}", username, limit);
+        return List.of();
+      }
+      
+      TableResult result = queryJob.getQueryResults();
+      List<BigQueryTradeHistoryEntity> tradeHistories = new ArrayList<>();
+      
+      for (com.google.cloud.bigquery.FieldValueList row : result.iterateAll()) {
+        Map<String, Object> rowMap = new HashMap<>();
+        for (com.google.cloud.bigquery.Field field : result.getSchema().getFields()) {
+          String fieldName = field.getName();
+          com.google.cloud.bigquery.FieldValue fieldValue = row.get(fieldName);
+          if (!fieldValue.isNull()) {
+            rowMap.put(fieldName, fieldValue.getValue());
+          }
+        }
+        tradeHistories.add(BigQueryTradeHistoryEntity.fromBigQueryRow(rowMap));
+      }
+      
+      return tradeHistories;
+      
+    } catch (Exception e) {
+      log.error("Error querying trade history from BigQuery for user: {} with limit: {}", username, limit, e);
+      return List.of();
     }
   }
 
