@@ -7,9 +7,9 @@ steps:
       - 'GRADLE_OPTS=-Dorg.gradle.daemon=false'
     timeout: '600s'
 
-  # Build the Docker image
+  # Build the Docker image (with no-cache to ensure fresh build)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/exch-sim:latest', '.']
+    args: ['build', '--no-cache', '-t', 'gcr.io/$PROJECT_ID/exch-sim:latest', '.']
     timeout: '1200s'
     env:
       - 'DOCKER_BUILDKIT=1'

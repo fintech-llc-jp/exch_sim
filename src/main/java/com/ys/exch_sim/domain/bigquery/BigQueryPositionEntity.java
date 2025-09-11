@@ -50,11 +50,12 @@ public class BigQueryPositionEntity {
     public BigQueryPositionEntity(Position position) {
         this.username = position.getUsername();
         this.symbol = position.getSymbol();
-        this.totalBuyQty = position.getTotalBuyQty();
+        // Convert double to long (multiply by 1000 for storage)
+        this.totalBuyQty = (long) (position.getTotalBuyQty() * 1000);
         this.totalBuyAmount = position.getTotalBuyAmount();
-        this.totalSellQty = position.getTotalSellQty();
+        this.totalSellQty = (long) (position.getTotalSellQty() * 1000);
         this.totalSellAmount = position.getTotalSellAmount();
-        this.netQty = position.getNetQty();
+        this.netQty = (long) (position.getNetQty() * 1000);
         this.averageBuyPrice = position.getAverageBuyPrice();
         this.averageSellPrice = position.getAverageSellPrice();
         this.realizedPnL = position.getRealizedPnL();
@@ -64,6 +65,7 @@ public class BigQueryPositionEntity {
     // Convert to BigQuery row data
     public Map<String, Object> toBigQueryRow() {
         Map<String, Object> row = new HashMap<>();
+        row.put("id", username + "_" + symbol); // Composite key for BigQuery
         row.put("username", username);
         row.put("symbol", symbol);
         row.put("total_buy_qty", totalBuyQty);
@@ -83,16 +85,109 @@ public class BigQueryPositionEntity {
         BigQueryPositionEntity entity = new BigQueryPositionEntity();
         entity.username = (String) row.get("username");
         entity.symbol = (String) row.get("symbol");
-        entity.totalBuyQty = row.get("total_buy_qty") != null ? ((Number) row.get("total_buy_qty")).longValue() : null;
-        entity.totalBuyAmount = row.get("total_buy_amount") != null ? ((Number) row.get("total_buy_amount")).doubleValue() : null;
-        entity.totalSellQty = row.get("total_sell_qty") != null ? ((Number) row.get("total_sell_qty")).longValue() : null;
-        entity.totalSellAmount = row.get("total_sell_amount") != null ? ((Number) row.get("total_sell_amount")).doubleValue() : null;
-        entity.netQty = row.get("net_qty") != null ? ((Number) row.get("net_qty")).longValue() : null;
-        entity.averageBuyPrice = row.get("average_buy_price") != null ? ((Number) row.get("average_buy_price")).doubleValue() : null;
-        entity.averageSellPrice = row.get("average_sell_price") != null ? ((Number) row.get("average_sell_price")).doubleValue() : null;
-        entity.realizedPnL = row.get("realized_pnl") != null ? ((Number) row.get("realized_pnl")).doubleValue() : null;
+        
+        // Safe conversion for totalBuyQty
+        Object totalBuyQtyObj = row.get("total_buy_qty");
+        if (totalBuyQtyObj != null) {
+            if (totalBuyQtyObj instanceof Number) {
+                entity.totalBuyQty = ((Number) totalBuyQtyObj).longValue();
+            } else if (totalBuyQtyObj instanceof String) {
+                entity.totalBuyQty = Long.parseLong((String) totalBuyQtyObj);
+            }
+        }
+        
+        // Safe conversion for totalBuyAmount
+        Object totalBuyAmountObj = row.get("total_buy_amount");
+        if (totalBuyAmountObj != null) {
+            if (totalBuyAmountObj instanceof Number) {
+                entity.totalBuyAmount = ((Number) totalBuyAmountObj).doubleValue();
+            } else if (totalBuyAmountObj instanceof String) {
+                entity.totalBuyAmount = Double.parseDouble((String) totalBuyAmountObj);
+            }
+        }
+        
+        // Safe conversion for totalSellQty
+        Object totalSellQtyObj = row.get("total_sell_qty");
+        if (totalSellQtyObj != null) {
+            if (totalSellQtyObj instanceof Number) {
+                entity.totalSellQty = ((Number) totalSellQtyObj).longValue();
+            } else if (totalSellQtyObj instanceof String) {
+                entity.totalSellQty = Long.parseLong((String) totalSellQtyObj);
+            }
+        }
+        
+        // Safe conversion for totalSellAmount
+        Object totalSellAmountObj = row.get("total_sell_amount");
+        if (totalSellAmountObj != null) {
+            if (totalSellAmountObj instanceof Number) {
+                entity.totalSellAmount = ((Number) totalSellAmountObj).doubleValue();
+            } else if (totalSellAmountObj instanceof String) {
+                entity.totalSellAmount = Double.parseDouble((String) totalSellAmountObj);
+            }
+        }
+        
+        // Safe conversion for netQty
+        Object netQtyObj = row.get("net_qty");
+        if (netQtyObj != null) {
+            if (netQtyObj instanceof Number) {
+                entity.netQty = ((Number) netQtyObj).longValue();
+            } else if (netQtyObj instanceof String) {
+                entity.netQty = Long.parseLong((String) netQtyObj);
+            }
+        }
+        
+        // Safe conversion for averageBuyPrice
+        Object averageBuyPriceObj = row.get("average_buy_price");
+        if (averageBuyPriceObj != null) {
+            if (averageBuyPriceObj instanceof Number) {
+                entity.averageBuyPrice = ((Number) averageBuyPriceObj).doubleValue();
+            } else if (averageBuyPriceObj instanceof String) {
+                entity.averageBuyPrice = Double.parseDouble((String) averageBuyPriceObj);
+            }
+        }
+        
+        // Safe conversion for averageSellPrice
+        Object averageSellPriceObj = row.get("average_sell_price");
+        if (averageSellPriceObj != null) {
+            if (averageSellPriceObj instanceof Number) {
+                entity.averageSellPrice = ((Number) averageSellPriceObj).doubleValue();
+            } else if (averageSellPriceObj instanceof String) {
+                entity.averageSellPrice = Double.parseDouble((String) averageSellPriceObj);
+            }
+        }
+        
+        // Safe conversion for realizedPnL
+        Object realizedPnLObj = row.get("realized_pnl");
+        if (realizedPnLObj != null) {
+            if (realizedPnLObj instanceof Number) {
+                entity.realizedPnL = ((Number) realizedPnLObj).doubleValue();
+            } else if (realizedPnLObj instanceof String) {
+                entity.realizedPnL = Double.parseDouble((String) realizedPnLObj);
+            }
+        }
+        
         entity.lastUpdated = (String) row.get("last_updated");
         return entity;
+    }
+    
+    // Convert to domain Position
+    public Position toPosition() {
+        Position position = new Position(username, symbol);
+        // Convert long to double (divide by 1000 from storage)
+        position.setTotalBuyQty(totalBuyQty != null ? totalBuyQty / 1000.0 : 0.0);
+        position.setTotalBuyAmount(totalBuyAmount != null ? totalBuyAmount : 0.0);
+        position.setTotalSellQty(totalSellQty != null ? totalSellQty / 1000.0 : 0.0);
+        position.setTotalSellAmount(totalSellAmount != null ? totalSellAmount : 0.0);
+        position.setNetQty(netQty != null ? netQty / 1000.0 : 0.0);
+        position.setAverageBuyPrice(averageBuyPrice != null ? averageBuyPrice : 0.0);
+        position.setAverageSellPrice(averageSellPrice != null ? averageSellPrice : 0.0);
+        position.setRealizedPnL(realizedPnL != null ? realizedPnL : 0.0);
+        if (lastUpdated != null) {
+            position.setLastUpdated(LocalDateTime.parse(lastUpdated, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        } else {
+            position.setLastUpdated(LocalDateTime.now());
+        }
+        return position;
     }
     
     // Get BigQuery table ID

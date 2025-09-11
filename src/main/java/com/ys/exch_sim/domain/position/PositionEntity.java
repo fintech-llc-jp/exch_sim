@@ -60,11 +60,12 @@ public class PositionEntity {
         this.id = createId(position.getUsername(), position.getSymbol());
         this.username = position.getUsername();
         this.symbol = position.getSymbol();
-        this.totalBuyQty = position.getTotalBuyQty();
+        // Convert double to long (multiply by 1000 for storage)
+        this.totalBuyQty = (long) (position.getTotalBuyQty() * 1000);
         this.totalBuyAmount = position.getTotalBuyAmount();
-        this.totalSellQty = position.getTotalSellQty();
+        this.totalSellQty = (long) (position.getTotalSellQty() * 1000);
         this.totalSellAmount = position.getTotalSellAmount();
-        this.netQty = position.getNetQty();
+        this.netQty = (long) (position.getNetQty() * 1000);
         this.averageBuyPrice = position.getAverageBuyPrice();
         this.averageSellPrice = position.getAverageSellPrice();
         this.realizedPnL = position.getRealizedPnL();
@@ -74,15 +75,16 @@ public class PositionEntity {
     // Convert to Position domain object
     public Position toPosition() {
         Position position = new Position(this.username, this.symbol);
-        position.setTotalBuyQty(this.totalBuyQty);
-        position.setTotalBuyAmount(this.totalBuyAmount);
-        position.setTotalSellQty(this.totalSellQty);
-        position.setTotalSellAmount(this.totalSellAmount);
-        position.setNetQty(this.netQty);
-        position.setAverageBuyPrice(this.averageBuyPrice);
-        position.setAverageSellPrice(this.averageSellPrice);
-        position.setRealizedPnL(this.realizedPnL);
-        position.setLastUpdated(this.lastUpdated);
+        // Convert long to double (divide by 1000 from storage)
+        position.setTotalBuyQty(this.totalBuyQty != null ? this.totalBuyQty / 1000.0 : 0.0);
+        position.setTotalBuyAmount(this.totalBuyAmount != null ? this.totalBuyAmount : 0.0);
+        position.setTotalSellQty(this.totalSellQty != null ? this.totalSellQty / 1000.0 : 0.0);
+        position.setTotalSellAmount(this.totalSellAmount != null ? this.totalSellAmount : 0.0);
+        position.setNetQty(this.netQty != null ? this.netQty / 1000.0 : 0.0);
+        position.setAverageBuyPrice(this.averageBuyPrice != null ? this.averageBuyPrice : 0.0);
+        position.setAverageSellPrice(this.averageSellPrice != null ? this.averageSellPrice : 0.0);
+        position.setRealizedPnL(this.realizedPnL != null ? this.realizedPnL : 0.0);
+        position.setLastUpdated(this.lastUpdated != null ? this.lastUpdated : java.time.LocalDateTime.now());
         return position;
     }
 }

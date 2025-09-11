@@ -7,11 +7,11 @@ import java.time.LocalDateTime;
 public class Position {
     private String username;
     private String symbol;
-    private long totalBuyQty;         // 総買い数量
+    private double totalBuyQty;       // 総買い数量
     private double totalBuyAmount;    // 総買い金額
-    private long totalSellQty;        // 総売り数量
+    private double totalSellQty;      // 総売り数量
     private double totalSellAmount;   // 総売り金額
-    private long netQty;              // ネットポジション（買い - 売り）
+    private double netQty;            // ネットポジション（買い - 売り）
     private double averageBuyPrice;   // 平均買い単価
     private double averageSellPrice;  // 平均売り単価
     private double realizedPnL;       // 実現損益
@@ -20,18 +20,18 @@ public class Position {
     public Position(String username, String symbol) {
         this.username = username;
         this.symbol = symbol;
-        this.totalBuyQty = 0L;
+        this.totalBuyQty = 0.0;
         this.totalBuyAmount = 0.0;
-        this.totalSellQty = 0L;
+        this.totalSellQty = 0.0;
         this.totalSellAmount = 0.0;
-        this.netQty = 0L;
+        this.netQty = 0.0;
         this.averageBuyPrice = 0.0;
         this.averageSellPrice = 0.0;
         this.realizedPnL = 0.0;
         this.lastUpdated = LocalDateTime.now();
     }
 
-    public void addBuyTrade(long quantity, double price) {
+    public void addBuyTrade(double quantity, double price) {
         if (quantity <= 0 || price <= 0) {
             throw new IllegalArgumentException("Quantity and price must be positive");
         }
@@ -45,7 +45,7 @@ public class Position {
         this.lastUpdated = LocalDateTime.now();
     }
 
-    public void addSellTrade(long quantity, double price) {
+    public void addSellTrade(double quantity, double price) {
         if (quantity <= 0 || price <= 0) {
             throw new IllegalArgumentException("Quantity and price must be positive");
         }
@@ -57,7 +57,7 @@ public class Position {
         
         // 実現損益の計算（売りの場合、既存の買いポジションがあれば実現）
         if (this.netQty > 0) {
-            long realizedQty = Math.min(quantity, this.netQty);
+            double realizedQty = Math.min(quantity, this.netQty);
             this.realizedPnL += realizedQty * (price - this.averageBuyPrice);
         }
         

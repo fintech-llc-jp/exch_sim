@@ -54,7 +54,8 @@ public class TradeHistoryEntity {
         this.username = tradeHistory.getUsername();
         this.symbol = tradeHistory.getSymbol();
         this.side = tradeHistory.getSide();
-        this.quantity = tradeHistory.getQuantity();
+        // Convert actual quantity to storage format (multiply by 1000)
+        this.quantity = tradeHistory.getQuantity() * 1000.0;
         this.price = tradeHistory.getPrice();
         this.amount = tradeHistory.getAmount();
         this.counterPartyUsername = tradeHistory.getCounterPartyUsername();
@@ -65,12 +66,15 @@ public class TradeHistoryEntity {
     
     // Convert to TradeHistory domain object
     public TradeHistory toTradeHistory() {
+        // Convert stored quantity (may be 1000x) to actual quantity
+        double actualQuantity = this.quantity != null ? this.quantity / 1000.0 : 0.0;
+        
         TradeHistory tradeHistory = new TradeHistory(
             this.execId,
             this.username,
             this.symbol,
             this.side,
-            this.quantity,
+            actualQuantity,
             this.price,
             this.counterPartyUsername,
             this.clOrdId

@@ -52,7 +52,8 @@ public class BigQueryTradeHistoryEntity {
         this.username = tradeHistory.getUsername();
         this.symbol = tradeHistory.getSymbol();
         this.side = tradeHistory.getSide();
-        this.quantity = tradeHistory.getQuantity();
+        // Convert actual quantity to storage format (multiply by 1000)
+        this.quantity = tradeHistory.getQuantity() * 1000.0;
         this.price = tradeHistory.getPrice();
         this.amount = tradeHistory.getAmount();
         this.counterPartyUsername = tradeHistory.getCounterPartyUsername();
@@ -93,6 +94,27 @@ public class BigQueryTradeHistoryEntity {
         entity.clOrdId = (String) row.get("cl_ord_id");
         entity.isMarketMaker = (Boolean) row.get("is_market_maker");
         return entity;
+    }
+    
+    // Convert to domain TradeHistory
+    public TradeHistory toTradeHistory() {
+        // Convert stored quantity (may be 1000x) to actual quantity
+        double actualQuantity = quantity != null ? quantity / 1000.0 : 0.0;
+        
+        TradeHistory tradeHistory = new TradeHistory(
+            execId,
+            username,
+            symbol,
+            side,
+            actualQuantity,
+            price != null ? price : 0.0,
+            counterPartyUsername,
+            clOrdId
+        );
+        if (timestamp != null) {
+            tradeHistory.setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        }
+        return tradeHistory;
     }
     
     // Get BigQuery table ID

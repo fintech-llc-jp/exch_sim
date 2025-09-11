@@ -69,7 +69,7 @@ public class PositionManager {
         String username = execution.getOrder().getUsername();
         String symbol = execution.getOrder().getSymbol().getName();
         Side side = execution.getOrder().getSide();
-        long quantity = execution.getLastQty().getLongQty();
+        double quantity = (double) execution.getLastQty().getLongQty() / execution.getLastQty().getSymbol().getQtyMultiplier();
         double price = (double) execution.getLastPx().getLongPx() / execution.getLastPx().getSymbol().getPxMultiplier();
         
         // 相手方のユーザー名を取得（約定相手）
@@ -131,6 +131,13 @@ public class PositionManager {
             }
         }
         
+        if (bigQueryEnabled && bigQueryService != null) {
+            BigQueryPositionEntity bigQueryPosition = bigQueryService.queryPosition(username, symbol.toUpperCase());
+            if (bigQueryPosition != null) {
+                return bigQueryPosition.toPosition();
+            }
+        }
+        
         if (databasePersistenceEnabled) {
             return positionRepository.findByUsernameAndSymbol(username, symbol.toUpperCase())
                     .map(PositionEntity::toPosition)
@@ -143,20 +150,54 @@ public class PositionManager {
     public List<Position> getAllPositions(String username) {
         List<Position> positions = new ArrayList<>();
         
+        log.debug("Getting positions for user: {} - bigQueryEnabled: {}, memoryCacheEnabled: {}, databasePersistenceEnabled: {}", 
+                  username, bigQueryEnabled, memoryCacheEnabled, databasePersistenceEnabled);
+        
         if (memoryCacheEnabled) {
             ConcurrentHashMap<String, Position> userPositions = positionsCache.get(username);
             if (userPositions != null) {
                 positions.addAll(userPositions.values());
+                log.debug("Found {} positions in memory cache for user: {}", positions.size(), username);
+            }
+        }
+        
+        if (bigQueryService != null && positions.isEmpty()) {
+            log.debug("Querying BigQuery for positions for user: {}", username);
+            List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
+            log.debug("Found {} positions in BigQuery for user: {}", bigQueryPositions.size(), username);
+            positions = bigQueryPositions.stream()
+                    .map(BigQueryPositionEntity::toPosition)
+                    .collect(Collectors.toList());
+            
+            // BigQueryから読み込んだデータをメモリキャッシュに保存
+            if (memoryCacheEnabled && !positions.isEmpty()) {
+                ConcurrentHashMap<String, Position> userPositions = positionsCache.computeIfAbsent(username, k -> new ConcurrentHashMap<>());
+                for (Position position : positions) {
+                    userPositions.put(position.getSymbol(), position);
+                    log.debug("Cached position from BigQuery: {}_{}", position.getUsername(), position.getSymbol());
+                }
             }
         }
         
         if (databasePersistenceEnabled && positions.isEmpty()) {
+            log.debug("Querying H2 database for positions for user: {}", username);
             positions = positionRepository.findByUsername(username)
                     .stream()
                     .map(PositionEntity::toPosition)
                     .collect(Collectors.toList());
+            log.debug("Found {} positions in H2 database for user: {}", positions.size(), username);
+            
+            // H2から読み込んだデータをメモリキャッシュに保存
+            if (memoryCacheEnabled && !positions.isEmpty()) {
+                ConcurrentHashMap<String, Position> userPositions = positionsCache.computeIfAbsent(username, k -> new ConcurrentHashMap<>());
+                for (Position position : positions) {
+                    userPositions.put(position.getSymbol(), position);
+                    log.debug("Cached position from H2: {}_{}", position.getUsername(), position.getSymbol());
+                }
+            }
         }
         
+        log.info("Total positions returned for user {}: {}", username, positions.size());
         return positions;
     }
 
@@ -165,6 +206,13 @@ public class PositionManager {
             return tradeHistoriesCache.stream()
                     .filter(history -> username.equals(history.getUsername()))
                     .sorted((h1, h2) -> h2.getTimestamp().compareTo(h1.getTimestamp())) // 新しい順
+                    .collect(Collectors.toList());
+        }
+        
+        if (bigQueryEnabled && bigQueryService != null) {
+            List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username);
+            return bigQueryTradeHistories.stream()
+                    .map(BigQueryTradeHistoryEntity::toTradeHistory)
                     .collect(Collectors.toList());
         }
         
@@ -187,6 +235,13 @@ public class PositionManager {
                     .collect(Collectors.toList());
         }
         
+        if (bigQueryEnabled && bigQueryService != null) {
+            List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username, symbol);
+            return bigQueryTradeHistories.stream()
+                    .map(BigQueryTradeHistoryEntity::toTradeHistory)
+                    .collect(Collectors.toList());
+        }
+        
         if (databasePersistenceEnabled) {
             return tradeHistoryRepository.findByUsernameAndSymbolOrderByTimestampDesc(username, symbol)
                     .stream()
@@ -203,6 +258,13 @@ public class PositionManager {
                     .filter(history -> username.equals(history.getUsername()))
                     .sorted((h1, h2) -> h2.getTimestamp().compareTo(h1.getTimestamp())) // 新しい順
                     .limit(limit)
+                    .collect(Collectors.toList());
+        }
+        
+        if (bigQueryEnabled && bigQueryService != null) {
+            List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username, limit);
+            return bigQueryTradeHistories.stream()
+                    .map(BigQueryTradeHistoryEntity::toTradeHistory)
                     .collect(Collectors.toList());
         }
         
@@ -227,6 +289,13 @@ public class PositionManager {
             }
         }
         
+        if (bigQueryEnabled && bigQueryService != null) {
+            List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
+            return bigQueryPositions.stream()
+                    .mapToDouble(position -> position.getRealizedPnL() != null ? position.getRealizedPnL() : 0.0)
+                    .sum();
+        }
+        
         if (databasePersistenceEnabled) {
             return positionRepository.findByUsername(username)
                     .stream()
@@ -248,6 +317,17 @@ public class PositionManager {
                         })
                         .sum();
             }
+        }
+        
+        if (bigQueryEnabled && bigQueryService != null) {
+            List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
+            return bigQueryPositions.stream()
+                    .map(BigQueryPositionEntity::toPosition)
+                    .mapToDouble(position -> {
+                        Double currentPrice = currentPrices.get(position.getSymbol());
+                        return currentPrice != null ? position.getUnrealizedPnL(currentPrice) : 0.0;
+                    })
+                    .sum();
         }
         
         if (databasePersistenceEnabled) {
@@ -299,6 +379,11 @@ public class PositionManager {
                     .count();
         }
         
+        if (bigQueryEnabled && bigQueryService != null) {
+            List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username);
+            return bigQueryTradeHistories.size();
+        }
+        
         if (databasePersistenceEnabled) {
             Long count = tradeHistoryRepository.countByUsername(username);
             return count != null ? count.intValue() : 0;
@@ -312,6 +397,13 @@ public class PositionManager {
             return tradeHistoriesCache.stream()
                     .filter(history -> username.equals(history.getUsername()))
                     .mapToDouble(TradeHistory::getAmount)
+                    .sum();
+        }
+        
+        if (bigQueryEnabled && bigQueryService != null) {
+            List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username);
+            return bigQueryTradeHistories.stream()
+                    .mapToDouble(trade -> trade.getAmount() != null ? trade.getAmount() : 0.0)
                     .sum();
         }
         
@@ -329,6 +421,15 @@ public class PositionManager {
                     .filter(history -> username.equals(history.getUsername()))
                     .collect(Collectors.groupingBy(
                         TradeHistory::getSymbol,
+                        Collectors.counting()
+                    ));
+        }
+        
+        if (bigQueryEnabled && bigQueryService != null) {
+            List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username);
+            return bigQueryTradeHistories.stream()
+                    .collect(Collectors.groupingBy(
+                        BigQueryTradeHistoryEntity::getSymbol,
                         Collectors.counting()
                     ));
         }
