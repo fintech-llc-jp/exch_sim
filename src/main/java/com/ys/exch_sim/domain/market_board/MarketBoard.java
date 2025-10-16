@@ -13,12 +13,12 @@ import com.ys.exch_sim.domain.order_exec.Order;
 import com.ys.exch_sim.infra.Pair;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -45,7 +45,7 @@ public class MarketBoard {
             }
           });
 
-  Map<ClOrdID, Order> orderMap = new HashMap<>();
+  Map<ClOrdID, Order> orderMap = new ConcurrentHashMap<>();
 
   public synchronized Pair<Long, Long> getAsk(long index) {
     int cnt = 0;
@@ -111,12 +111,23 @@ public class MarketBoard {
 
   public synchronized List<Execution> cancelOrder(Order order) {
     List<Execution> executions = new ArrayList<Execution>();
-    if (orderMap.get(order.getClOrdID()) == null) {
+
+    // orderMapから同じClOrdIDを持つ注文を検索
+    Order orderInMap = null;
+    for (Map.Entry<ClOrdID, Order> entry : orderMap.entrySet()) {
+      if (entry.getKey().getId().equals(order.getClOrdID().getId())) {
+        orderInMap = entry.getValue();
+        break;
+      }
+    }
+
+    if (orderInMap == null) {
+      log.warn("Order not found in orderMap for cancellation: {}", order.getClOrdID().getId());
       Execution e = createReject(order);
       executions.add(e);
       return executions;
     }
-    order = orderMap.get(order.getClOrdID());
+    order = orderInMap;
     if (order.getSide() == Side.BUY) {
       Long currentQty = bidEntryBoard.get(order.getOrderPx().getLongPx());
       if (currentQty == null) {
@@ -175,6 +186,9 @@ public class MarketBoard {
         orders.remove(order);
       }
     }
+    // orderMapからも削除
+    orderMap.remove(order.getClOrdID());
+
     Execution e =
         new Execution(order, ExecStatus.CANCELED, order.getOrderPx(), order.getOrderQty());
     executions.add(e);
@@ -539,13 +553,53 @@ public class MarketBoard {
 
   // Methods for Redis integration to update board directly
   public synchronized void clearBids() {
-    bidOrderBoard.clear();
+    // Only clear market maker orders, preserve user orders
+    for (Map.Entry<Long, LinkedList<Order>> entry : bidOrderBoard.entrySet()) {
+      LinkedList<Order> orders = entry.getValue();
+      orders.removeIf(order -> order.getUsername().equals("MARKET_MAKER"));
+    }
+    // Remove empty price levels
+    bidOrderBoard.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+
+    // Rebuild bidEntryBoard from remaining user orders
     bidEntryBoard.clear();
+    for (Map.Entry<Long, LinkedList<Order>> entry : bidOrderBoard.entrySet()) {
+      Long price = entry.getKey();
+      LinkedList<Order> orders = entry.getValue();
+      long totalQty = 0;
+      for (Order order : orders) {
+        totalQty += order.getLeavesQty().getLongQty();
+      }
+      if (totalQty > 0) {
+        bidEntryBoard.put(price, totalQty);
+      }
+    }
+    log.debug("clearBids: Rebuilt bidEntryBoard with {} user order price levels", bidEntryBoard.size());
   }
 
   public synchronized void clearAsks() {
-    askOrderBoard.clear();
+    // Only clear market maker orders, preserve user orders
+    for (Map.Entry<Long, LinkedList<Order>> entry : askOrderBoard.entrySet()) {
+      LinkedList<Order> orders = entry.getValue();
+      orders.removeIf(order -> order.getUsername().equals("MARKET_MAKER"));
+    }
+    // Remove empty price levels
+    askOrderBoard.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+
+    // Rebuild askEntryBoard from remaining user orders
     askEntryBoard.clear();
+    for (Map.Entry<Long, LinkedList<Order>> entry : askOrderBoard.entrySet()) {
+      Long price = entry.getKey();
+      LinkedList<Order> orders = entry.getValue();
+      long totalQty = 0;
+      for (Order order : orders) {
+        totalQty += order.getLeavesQty().getLongQty();
+      }
+      if (totalQty > 0) {
+        askEntryBoard.put(price, totalQty);
+      }
+    }
+    log.debug("clearAsks: Rebuilt askEntryBoard with {} user order price levels", askEntryBoard.size());
   }
 
   public synchronized void setBid(int index, Pair<Long, Long> priceQty) {
@@ -570,7 +624,8 @@ public class MarketBoard {
   }
 
   // Method to add market maker orders (for external data sync)
-  public synchronized void addMarketMakerOrder(Order order) {
-    addOrderToBoard(order);
+  // This simply delegates to newOrder to ensure proper matching logic
+  public synchronized List<Execution> addMarketMakerOrder(Order order) {
+    return newOrder(order);
   }
 }

@@ -12,10 +12,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -71,7 +71,7 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
   private static final String SYMBOL_BTC_FX = "FX_BTC_JPY";
 
   // 最新のマーケットボードデータを保持
-  private final Map<String, ExternalMarketBoardData> latestBoards = new HashMap<>();
+  private final Map<String, ExternalMarketBoardData> latestBoards = new ConcurrentHashMap<>();
 
 
   public BitflyerMarketDataClient(
@@ -631,9 +631,10 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
    */
   private void sendKeepalive() {
     if (currentSession == null || !isConnected.get()) {
+      log.debug("💔 Bitflyer keepalive skipped - session unavailable or not connected");
       return;
     }
-    
+
     try {
       long id = 1000000 + keepaliveId.getAndIncrement();
       Map<String, Object> keepaliveRequest = Map.of(
@@ -641,9 +642,9 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
           "method", "ping", // Bitflyerは'ping'メソッドをサポートしていないが、送信できる
           "id", id
       );
-      
+
       String requestJson = objectMapper.writeValueAsString(keepaliveRequest);
-      
+
       currentSession.send(Mono.just(currentSession.textMessage(requestJson)))
           .doOnSuccess(result -> {
               keepaliveSent.incrementAndGet();
@@ -651,16 +652,20 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
           })
           .doOnError(error -> {
               log.warn("⚠️ Bitflyer keepalive send failed: {}", error.getMessage());
-              // Keepalive送信失敗は接続問題の可能性
-              if (isConnected.get()) {
-                  log.warn("🔄 Bitflyer keepalive failure suggests connection issues, triggering reconnection");
-                  handleConnectionError(error);
-              }
+              // Keepalive送信失敗は接続問題の可能性が高い - 再接続をトリガー
+              triggerReconnection("Keepalive send failed: " + error.getMessage());
           })
-          .subscribe();
-          
+          .subscribe(
+              result -> {}, // onNext (not used for send)
+              error -> {
+                  // Error already handled in doOnError, but add subscriber to prevent onErrorDropped
+                  log.debug("💔 Bitflyer keepalive error handled in subscriber: {}", error.getMessage());
+              }
+          );
+
     } catch (Exception e) {
       log.error("❌ Bitflyer keepalive creation error", e);
+      stopKeepalive(); // Stop keepalive on error to prevent further issues
     }
   }
   
@@ -678,25 +683,25 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
                     long secondsSinceLastMessage = timeSinceLastMessage / 1000;
                     
                     if (secondsSinceLastMessage > STREAM_TIMEOUT_SECONDS) {
-                        log.warn("⚠️ Bitflyer stream timeout: {} seconds since last message (limit: {}s)", 
+                        log.warn("⚠️ Bitflyer stream timeout: {} seconds since last message (limit: {}s)",
                             secondsSinceLastMessage, STREAM_TIMEOUT_SECONDS);
                         log.warn("🔄 Bitflyer proactive reconnection due to stream timeout");
-                        
+
                         // プロアクティブな再接続をトリガー
-                        handleConnectionError(new RuntimeException("Stream timeout - no messages for " + secondsSinceLastMessage + "s"));
+                        triggerReconnection("Stream timeout - no messages for " + secondsSinceLastMessage + "s");
                     } else if (secondsSinceLastMessage > 120) { // 2分以上の場合は警告
                         log.debug("🔍 Bitflyer stream monitoring: {} seconds since last message", secondsSinceLastMessage);
                     }
-                    
+
                     // Keepaliveタイムアウトチェック
                     if (lastKeepaliveResponse != null) {
                         long keepaliveAge = Duration.between(lastKeepaliveResponse, Instant.now()).toSeconds();
                         if (keepaliveSent.get() > keepaliveReceived.get() && keepaliveAge > KEEPALIVE_TIMEOUT_SECONDS) {
-                            log.warn("⚠️ Bitflyer keepalive timeout: {} seconds since last response (sent: {}, received: {})", 
+                            log.warn("⚠️ Bitflyer keepalive timeout: {} seconds since last response (sent: {}, received: {})",
                                 keepaliveAge, keepaliveSent.get(), keepaliveReceived.get());
                             log.warn("🔄 Bitflyer proactive reconnection due to keepalive timeout");
-                            
-                            handleConnectionError(new RuntimeException("Keepalive timeout - no response for " + keepaliveAge + "s"));
+
+                            triggerReconnection("Keepalive timeout - no response for " + keepaliveAge + "s");
                         }
                     }
                 }
@@ -716,6 +721,39 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
       streamMonitor = null;
       log.debug("🔍 Bitflyer stream monitoring stopped");
     }
+  }
+
+  /**
+   * 再接続をトリガー（keepaliveやstream monitoringから呼ばれる）
+   */
+  private void triggerReconnection(String reason) {
+    if (!isConnected.get()) {
+      log.debug("🔄 Bitflyer reconnection skipped - already disconnected");
+      return;
+    }
+
+    log.warn("🔄 Bitflyer triggering reconnection due to: {}", reason);
+
+    // クリーンアップ
+    stopKeepalive();
+    stopStreamMonitoring();
+    isConnected.set(false);
+    currentSession = null;
+
+    // 現在の接続を破棄
+    if (connection != null && !connection.isDisposed()) {
+      connection.dispose();
+    }
+
+    // 再接続をスケジュール（5秒後）
+    reactor.core.publisher.Mono.delay(Duration.ofSeconds(5))
+        .subscribe(
+            tick -> {
+              log.info("🔄 Bitflyer reconnecting after: {}", reason);
+              connect();
+            },
+            error -> log.error("❌ Bitflyer reconnection scheduling error", error)
+        );
   }
   
   @Override

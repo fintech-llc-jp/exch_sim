@@ -2,6 +2,7 @@ package com.ys.exch_sim.domain.controller;
 
 import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
+import com.ys.exch_sim.domain.dto.OrderListResponse;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.service.OrderService;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -11,9 +12,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
@@ -144,6 +147,45 @@ public class OrderController {
     } catch (Exception e) {
       log.error("Error cancelling order", e);
       return ResponseEntity.internalServerError().body("Error cancelling order: " + e.getMessage());
+    }
+  }
+
+  @GetMapping("/list")
+  public ResponseEntity<?> getOrderList(@RequestParam(required = false) String symbol) {
+    try {
+      // JWTから認証情報を取得
+      Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+      if (authentication == null || !authentication.isAuthenticated()) {
+        log.warn("Unauthenticated request for order list");
+        return ResponseEntity.status(401).body("Authentication required");
+      }
+
+      String username = authentication.getName();
+      log.info("Getting order list for user: {}, symbol: {}", username, symbol);
+
+      // ユーザーが存在するかチェック
+      try {
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        if (userDetails == null) {
+          log.warn("User not found: {}", username);
+          return ResponseEntity.status(404).body("User not found");
+        }
+      } catch (Exception e) {
+        log.warn("Error validating user: {}", username, e);
+        return ResponseEntity.status(404).body("User not found");
+      }
+
+      // 注文リストを取得
+      OrderListResponse response = orderService.getOrderList(username, symbol);
+
+      log.info(
+          "Retrieved {} orders for user: {}", response.getTotalOrders(), username);
+
+      return ResponseEntity.ok(response);
+
+    } catch (Exception e) {
+      log.error("Error getting order list", e);
+      return ResponseEntity.internalServerError().body("Error getting order list: " + e.getMessage());
     }
   }
 }

@@ -7,6 +7,8 @@ import java.util.Map;
 @Data
 public class PortfolioSummaryResponse {
     private String username;
+    private double cashBalance;
+    private double totalValue;  // 総資産 (現金 + ポジション評価額)
     private double totalRealizedPnL;
     private double totalUnrealizedPnL;
     private double totalPnL;
@@ -15,10 +17,13 @@ public class PortfolioSummaryResponse {
     private List<PositionResponse> positions;
     private Map<String, Long> symbolTradeCounts;
 
-    public PortfolioSummaryResponse(String username, double totalRealizedPnL, double totalUnrealizedPnL,
+    public PortfolioSummaryResponse(String username, double cashBalance, double totalValue,
+                                   double totalRealizedPnL, double totalUnrealizedPnL,
                                    double totalPnL, int totalTradeCount, double totalTradingVolume,
                                    List<PositionResponse> positions, Map<String, Long> symbolTradeCounts) {
         this.username = username;
+        this.cashBalance = cashBalance;
+        this.totalValue = totalValue;
         this.totalRealizedPnL = totalRealizedPnL;
         this.totalUnrealizedPnL = totalUnrealizedPnL;
         this.totalPnL = totalPnL;

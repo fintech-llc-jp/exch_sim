@@ -60,9 +60,24 @@ public class PositionController {
                       convertToPositionResponse(position, currentPrices.get(position.getSymbol())))
               .collect(Collectors.toList());
 
+      // 現金残高を取得
+      double cashBalance = positionManager.getCashBalance(username);
+      
+      // 総資産を計算（現金 + ポジション評価額）
+      double positionsValue = positionResponses.stream()
+          .mapToDouble(pos -> {
+            String symbol = pos.getSymbol();
+            Double currentPrice = currentPrices.get(symbol);
+            return pos.getNetQty() * (currentPrice != null ? currentPrice : 0.0);
+          })
+          .sum();
+      double totalValue = cashBalance + positionsValue;
+
       PortfolioSummaryResponse response =
           new PortfolioSummaryResponse(
               username,
+              cashBalance,
+              totalValue,
               totalRealizedPnL,
               totalUnrealizedPnL,
               totalPnL,
@@ -99,7 +114,7 @@ public class PositionController {
       if (position == null) {
         return ResponseEntity.ok(
             new PositionResponse(
-                username, symbol.toUpperCase(), 0, 0.0, 0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, null));
+                username, symbol.toUpperCase(), "UNIT", 0, 0.0, 0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, null));
       }
 
       // 現在価格を取得
@@ -183,6 +198,7 @@ public class PositionController {
     return new PositionResponse(
         position.getUsername(),
         position.getSymbol(),
+        position.getUnit(),
         position.getTotalBuyQty(),
         position.getTotalBuyAmount(),
         position.getTotalSellQty(),

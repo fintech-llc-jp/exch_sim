@@ -96,55 +96,118 @@ public class BigQueryService {
     }
   }
 
-  /** Insert position data into BigQuery (synchronous version) */
+  /** Upsert position data into BigQuery (synchronous version) */
   public void insertPosition(BigQueryPositionEntity position) {
     try {
+      // First try a simple insert for new positions
       TableId tableId = BigQueryPositionEntity.getTableId(projectId, datasetName);
       Map<String, Object> row = position.toBigQueryRow();
 
       InsertAllRequest insertRequest = InsertAllRequest.newBuilder(tableId).addRow(row).build();
-
       InsertAllResponse response = bigQuery.insertAll(insertRequest);
 
-      if (response.hasErrors()) {
-        log.error("Error inserting position to BigQuery: {}", response.getInsertErrors());
-        throw new RuntimeException("Failed to insert position to BigQuery");
+      if (!response.hasErrors()) {
+        log.debug("Successfully inserted new position to BigQuery: {}_{}", 
+                  position.getUsername(), position.getSymbol());
+        return;
       }
 
-      log.debug(
-          "Successfully inserted position to BigQuery: {}_{}",
-          position.getUsername(),
-          position.getSymbol());
+      // If insert fails (likely due to duplicate key), use MERGE to update
+      log.debug("Insert failed, attempting upsert for position: {}_{}", 
+                position.getUsername(), position.getSymbol());
+      
+      String mergeQuery = String.format(
+        """
+        MERGE `%s.%s.positions` AS target
+        USING (
+          SELECT 
+            @username AS username,
+            @symbol AS symbol,
+            @total_buy_qty AS total_buy_qty,
+            @total_buy_amount AS total_buy_amount,
+            @total_sell_qty AS total_sell_qty,
+            @total_sell_amount AS total_sell_amount,
+            @net_qty AS net_qty,
+            @average_buy_price AS average_buy_price,
+            @average_sell_price AS average_sell_price,
+            @realized_pnl AS realized_pnl,
+            @last_updated AS last_updated
+        ) AS source
+        ON target.username = source.username AND target.symbol = source.symbol
+        WHEN MATCHED THEN
+          UPDATE SET 
+            total_buy_qty = source.total_buy_qty,
+            total_buy_amount = source.total_buy_amount,
+            total_sell_qty = source.total_sell_qty,
+            total_sell_amount = source.total_sell_amount,
+            net_qty = source.net_qty,
+            average_buy_price = source.average_buy_price,
+            average_sell_price = source.average_sell_price,
+            realized_pnl = source.realized_pnl,
+            last_updated = source.last_updated
+        WHEN NOT MATCHED THEN
+          INSERT (username, symbol, total_buy_qty, total_buy_amount, total_sell_qty, 
+                  total_sell_amount, net_qty, average_buy_price, average_sell_price, 
+                  realized_pnl, last_updated)
+          VALUES (source.username, source.symbol, source.total_buy_qty, 
+                  source.total_buy_amount, source.total_sell_qty, source.total_sell_amount, 
+                  source.net_qty, source.average_buy_price, source.average_sell_price, 
+                  source.realized_pnl, source.last_updated)
+        """,
+        projectId, datasetName);
+      
+      // Convert timestamp from seconds (double) to microseconds (long) for BigQuery
+      Double lastUpdatedSeconds = (Double) row.get("last_updated");
+      Long lastUpdatedMicros = (long) (lastUpdatedSeconds * 1_000_000);
+
+      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(mergeQuery)
+        .addNamedParameter("username", com.google.cloud.bigquery.QueryParameterValue.string((String) row.get("username")))
+        .addNamedParameter("symbol", com.google.cloud.bigquery.QueryParameterValue.string((String) row.get("symbol")))
+        .addNamedParameter("total_buy_qty", com.google.cloud.bigquery.QueryParameterValue.int64((Long) row.get("total_buy_qty")))
+        .addNamedParameter("total_buy_amount", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("total_buy_amount")))
+        .addNamedParameter("total_sell_qty", com.google.cloud.bigquery.QueryParameterValue.int64((Long) row.get("total_sell_qty")))
+        .addNamedParameter("total_sell_amount", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("total_sell_amount")))
+        .addNamedParameter("net_qty", com.google.cloud.bigquery.QueryParameterValue.int64((Long) row.get("net_qty")))
+        .addNamedParameter("average_buy_price", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("average_buy_price")))
+        .addNamedParameter("average_sell_price", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("average_sell_price")))
+        .addNamedParameter("realized_pnl", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("realized_pnl")))
+        .addNamedParameter("last_updated", com.google.cloud.bigquery.QueryParameterValue.timestamp(lastUpdatedMicros))
+        .build();
+
+      JobId jobId = JobId.of(java.util.UUID.randomUUID().toString());
+      Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
+      
+      queryJob = queryJob.waitFor();
+      
+      if (queryJob == null || queryJob.getStatus().getError() != null) {
+        String error = queryJob != null ? queryJob.getStatus().getError().toString() : "Unknown error";
+        log.error("Error upserting position to BigQuery: {}", error);
+        throw new RuntimeException("Failed to upsert position to BigQuery: " + error);
+      }
+
+      log.debug("Successfully upserted position to BigQuery: {}_{}", 
+                position.getUsername(), position.getSymbol());
+                
     } catch (Exception e) {
-      log.error("Error inserting position to BigQuery", e);
-      throw new RuntimeException("Failed to insert position to BigQuery", e);
+      log.error("Error saving position to BigQuery", e);
+      throw new RuntimeException("Failed to save position to BigQuery", e);
     }
   }
 
-  /** Insert position data into BigQuery asynchronously */
+  /** Upsert position data into BigQuery asynchronously */
   @Async("bigQueryAsyncExecutor")
   public CompletableFuture<Void> insertPositionAsync(BigQueryPositionEntity position) {
     try {
       log.debug(
-          "Starting async BigQuery position insert: {}_{}",
+          "Starting async BigQuery position upsert: {}_{}",
           position.getUsername(),
           position.getSymbol());
 
-      TableId tableId = BigQueryPositionEntity.getTableId(projectId, datasetName);
-      Map<String, Object> row = position.toBigQueryRow();
-
-      InsertAllRequest insertRequest = InsertAllRequest.newBuilder(tableId).addRow(row).build();
-
-      InsertAllResponse response = bigQuery.insertAll(insertRequest);
-
-      if (response.hasErrors()) {
-        log.error("Error inserting position to BigQuery (async): {}", response.getInsertErrors());
-        return CompletableFuture.failedFuture(
-            new RuntimeException("Failed to insert position to BigQuery"));
-      }
-
+      // Call the synchronous upsert method
+      insertPosition(position);
+      
       log.debug(
-          "Successfully inserted position to BigQuery (async): {}_{}",
+          "Successfully upserted position to BigQuery (async): {}_{}",
           position.getUsername(),
           position.getSymbol());
       return CompletableFuture.completedFuture(null);
@@ -539,7 +602,7 @@ public class BigQueryService {
             Field.of("last_px", StandardSQLTypeName.INT64),
             Field.of("last_qty", StandardSQLTypeName.INT64),
             Field.of("counter_party_username", StandardSQLTypeName.STRING),
-            Field.of("created_at", StandardSQLTypeName.STRING),
+            Field.of("created_at", StandardSQLTypeName.TIMESTAMP),
             Field.of("is_market_maker", StandardSQLTypeName.BOOL),
             Field.of("side", StandardSQLTypeName.STRING));
 
@@ -562,7 +625,7 @@ public class BigQueryService {
             Field.of("average_buy_price", StandardSQLTypeName.FLOAT64),
             Field.of("average_sell_price", StandardSQLTypeName.FLOAT64),
             Field.of("realized_pnl", StandardSQLTypeName.FLOAT64),
-            Field.of("last_updated", StandardSQLTypeName.STRING));
+            Field.of("last_updated", StandardSQLTypeName.TIMESTAMP));
 
     createTableIfNotExists(tableId, schema);
   }
@@ -580,7 +643,7 @@ public class BigQueryService {
             Field.of("price", StandardSQLTypeName.FLOAT64),
             Field.of("amount", StandardSQLTypeName.FLOAT64),
             Field.of("counter_party_username", StandardSQLTypeName.STRING),
-            Field.of("timestamp", StandardSQLTypeName.STRING),
+            Field.of("timestamp", StandardSQLTypeName.TIMESTAMP),
             Field.of("cl_ord_id", StandardSQLTypeName.STRING),
             Field.of("is_market_maker", StandardSQLTypeName.BOOL));
 

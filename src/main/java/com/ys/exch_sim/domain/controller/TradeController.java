@@ -10,7 +10,6 @@ import com.ys.exch_sim.domain.dto.TradeInsertResponse;
 import com.ys.exch_sim.domain.market_board.MarketBoard;
 import com.ys.exch_sim.domain.message.field.*;
 import com.ys.exch_sim.domain.order_exec.Execution;
-import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.order_exec.Order;
 import com.ys.exch_sim.domain.service.BigQueryVolumeCalculationService;
 import com.ys.exch_sim.domain.service.OrderService;
@@ -34,7 +33,6 @@ import org.springframework.web.bind.annotation.*;
 public class TradeController {
 
   private final OrderService orderService;
-  private final ExecutionRepository executionRepository;
   private final InstrumentConfig instrumentConfig;
   private final BigQueryService bigQueryService;
   private final BigQueryVolumeCalculationService volumeCalculationService;
@@ -44,12 +42,10 @@ public class TradeController {
 
   public TradeController(
       OrderService orderService,
-      ExecutionRepository executionRepository,
       InstrumentConfig instrumentConfig,
       @Autowired(required = false) BigQueryService bigQueryService,
       @Autowired(required = false) BigQueryVolumeCalculationService volumeCalculationService) {
     this.orderService = orderService;
-    this.executionRepository = executionRepository;
     this.instrumentConfig = instrumentConfig;
     this.bigQueryService = bigQueryService;
     this.volumeCalculationService = volumeCalculationService;
@@ -328,14 +324,7 @@ public class TradeController {
               false, // isMarketMaker
               side.toString());
 
-      // Save to database
-      long dbSaveStart = System.currentTimeMillis();
-      executionRepository.save(execution);
-      long dbSaveTime = System.currentTimeMillis() - dbSaveStart;
-      log.info(
-          "💾 TradeInsert [{}] - Database save completed - saveTime: {}ms", requestId, dbSaveTime);
-
-      // BigQueryにも非同期保存
+      // BigQueryに非同期保存
       if (bigQueryEnabled && bigQueryService != null) {
         long bigQueryStart = System.currentTimeMillis();
         saveExecutionToBigQueryAsync(execution);

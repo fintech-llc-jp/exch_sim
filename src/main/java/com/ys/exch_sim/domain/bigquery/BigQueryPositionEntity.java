@@ -22,6 +22,7 @@ public class BigQueryPositionEntity {
     
     private String username;
     private String symbol;
+    private String unit;
     private Long totalBuyQty;
     private Double totalBuyAmount;
     private Long totalSellQty;
@@ -36,6 +37,7 @@ public class BigQueryPositionEntity {
     public BigQueryPositionEntity(PositionEntity positionEntity) {
         this.username = positionEntity.getUsername();
         this.symbol = positionEntity.getSymbol();
+        this.unit = positionEntity.getUnit();
         this.totalBuyQty = positionEntity.getTotalBuyQty();
         this.totalBuyAmount = positionEntity.getTotalBuyAmount();
         this.totalSellQty = positionEntity.getTotalSellQty();
@@ -51,6 +53,7 @@ public class BigQueryPositionEntity {
     public BigQueryPositionEntity(Position position) {
         this.username = position.getUsername();
         this.symbol = position.getSymbol();
+        this.unit = position.getUnit();
         // Convert double to long (multiply by 1000 for storage)
         this.totalBuyQty = (long) (position.getTotalBuyQty() * 1000);
         this.totalBuyAmount = position.getTotalBuyAmount();
@@ -66,9 +69,9 @@ public class BigQueryPositionEntity {
     // Convert to BigQuery row data
     public Map<String, Object> toBigQueryRow() {
         Map<String, Object> row = new HashMap<>();
-        row.put("id", username + "_" + symbol); // Composite key for BigQuery
         row.put("username", username);
         row.put("symbol", symbol);
+        row.put("unit", unit);
         row.put("total_buy_qty", totalBuyQty);
         row.put("total_buy_amount", totalBuyAmount);
         row.put("total_sell_qty", totalSellQty);
@@ -77,7 +80,23 @@ public class BigQueryPositionEntity {
         row.put("average_buy_price", averageBuyPrice);
         row.put("average_sell_price", averageSellPrice);
         row.put("realized_pnl", realizedPnL);
-        row.put("last_updated", lastUpdated);
+
+        // Convert ISO string to BigQuery TIMESTAMP format (seconds.microseconds since epoch)
+        if (lastUpdated != null) {
+            try {
+                LocalDateTime dateTime = LocalDateTime.parse(lastUpdated, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                // Convert to seconds since epoch (BigQuery TIMESTAMP format)
+                double timestamp = dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant().getEpochSecond()
+                    + dateTime.getNano() / 1_000_000_000.0;
+                row.put("last_updated", timestamp);
+            } catch (DateTimeParseException e) {
+                // If parsing fails, use current timestamp
+                row.put("last_updated", System.currentTimeMillis() / 1000.0);
+            }
+        } else {
+            row.put("last_updated", System.currentTimeMillis() / 1000.0);
+        }
+
         return row;
     }
     
@@ -86,6 +105,7 @@ public class BigQueryPositionEntity {
         BigQueryPositionEntity entity = new BigQueryPositionEntity();
         entity.username = (String) row.get("username");
         entity.symbol = (String) row.get("symbol");
+        entity.unit = (String) row.get("unit");
         
         // Safe conversion for totalBuyQty
         Object totalBuyQtyObj = row.get("total_buy_qty");
@@ -175,13 +195,36 @@ public class BigQueryPositionEntity {
     public Position toPosition() {
         Position position = new Position(username, symbol);
         // Convert long to double (divide by 1000 from storage)
-        position.setTotalBuyQty(totalBuyQty != null ? totalBuyQty / 1000.0 : 0.0);
+        double actualTotalBuyQty = totalBuyQty != null ? totalBuyQty / 1000.0 : 0.0;
+        double actualTotalSellQty = totalSellQty != null ? totalSellQty / 1000.0 : 0.0;
+        double actualNetQty = netQty != null ? netQty / 1000.0 : 0.0;
+        
+        position.setTotalBuyQty(actualTotalBuyQty);
         position.setTotalBuyAmount(totalBuyAmount != null ? totalBuyAmount : 0.0);
-        position.setTotalSellQty(totalSellQty != null ? totalSellQty / 1000.0 : 0.0);
+        position.setTotalSellQty(actualTotalSellQty);
         position.setTotalSellAmount(totalSellAmount != null ? totalSellAmount : 0.0);
-        position.setNetQty(netQty != null ? netQty / 1000.0 : 0.0);
-        position.setAverageBuyPrice(averageBuyPrice != null ? averageBuyPrice : 0.0);
-        position.setAverageSellPrice(averageSellPrice != null ? averageSellPrice : 0.0);
+        position.setNetQty(actualNetQty);
+        
+        // Set unit (use stored unit if available, otherwise determine from symbol)
+        if (unit != null && !unit.isEmpty()) {
+            position.setUnit(unit);
+        } else {
+            position.setUnit(determineUnit(symbol));
+        }
+        
+        // Recalculate average prices to ensure consistency
+        if (actualTotalBuyQty > 0 && totalBuyAmount != null && totalBuyAmount > 0) {
+            position.setAverageBuyPrice(totalBuyAmount / actualTotalBuyQty);
+        } else {
+            position.setAverageBuyPrice(0.0);
+        }
+        
+        if (actualTotalSellQty > 0 && totalSellAmount != null && totalSellAmount > 0) {
+            position.setAverageSellPrice(totalSellAmount / actualTotalSellQty);
+        } else {
+            position.setAverageSellPrice(0.0);
+        }
+        
         position.setRealizedPnL(realizedPnL != null ? realizedPnL : 0.0);
         if (lastUpdated != null) {
             try {
@@ -203,6 +246,19 @@ public class BigQueryPositionEntity {
             position.setLastUpdated(LocalDateTime.now());
         }
         return position;
+    }
+    
+    // Helper method to determine unit from symbol
+    private String determineUnit(String symbol) {
+        if ("JPY".equals(symbol)) {
+            return "JPY";
+        } else if (symbol.contains("BTC")) {
+            return "BTC";
+        } else if (symbol.contains("ETH")) {
+            return "ETH";
+        } else {
+            return "UNIT"; // デフォルト
+        }
     }
     
     // Get BigQuery table ID

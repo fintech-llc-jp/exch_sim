@@ -25,6 +25,7 @@ public class DataMigrationInitializer implements CommandLineRunner {
   private final PasswordEncoder passwordEncoder;
 
   @Autowired private OrderService orderService;
+  @Autowired private com.ys.exch_sim.domain.position.PositionManager positionManager;
 
   public DataMigrationInitializer(ObjectMapper objectMapper, PasswordEncoder passwordEncoder) {
     this.objectMapper = objectMapper;
@@ -145,6 +146,9 @@ public class DataMigrationInitializer implements CommandLineRunner {
 
     // Initialize MarketBoards for all instruments
     initializeMarketBoards();
+    
+    // Initialize default users with cash balances
+    initializeDefaultUsersCashBalance();
 
     log.info("Data migration initialization completed successfully");
   }
@@ -204,5 +208,37 @@ public class DataMigrationInitializer implements CommandLineRunner {
 
     log.info("MarketBoards initialization completed for {} symbols", symbols.size());
     log.info("Available symbols: {}", orderService.getAvailableSymbols());
+  }
+  
+  /**
+   * デフォルトユーザーに初期現金残高を設定
+   */
+  private void initializeDefaultUsersCashBalance() {
+    log.info("Initializing default users with cash balances...");
+    
+    // デフォルトユーザー一覧（BigQueryに存在するユーザー）
+    String[] defaultUsers = {"admin", "trader001", "marketmaker1", "yukio001", "trader002",
+                           "trader003", "testuser", "yukio002", "newuser001", "testuser2",
+                           "test01", "test02", "yukio003"};
+    
+    double initialCashBalance = 1000000.0; // 100万円
+    
+    for (String username : defaultUsers) {
+      try {
+        // 既に現金ポジションが存在するかチェック
+        com.ys.exch_sim.domain.position.Position cashPosition = positionManager.getPosition(username, "JPY");
+        if (cashPosition == null) {
+          // 現金ポジションが存在しない場合のみ初期化
+          positionManager.initializeUserWithCash(username, initialCashBalance);
+          log.info("Initialized cash balance for user: {} - Amount: {}", username, initialCashBalance);
+        } else {
+          log.info("User {} already has cash balance: {}", username, cashPosition.getTotalBuyAmount());
+        }
+      } catch (Exception e) {
+        log.warn("Failed to initialize cash balance for user: {} - {}", username, e.getMessage());
+      }
+    }
+    
+    log.info("Default users cash balance initialization completed");
   }
 }

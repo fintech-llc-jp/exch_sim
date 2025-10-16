@@ -23,6 +23,9 @@ public class PositionEntity {
     @Column(name = "symbol", nullable = false)
     private String symbol;
     
+    @Column(name = "unit", nullable = false)
+    private String unit;
+    
     @Column(name = "total_buy_qty", nullable = false)
     private Long totalBuyQty;
     
@@ -60,6 +63,7 @@ public class PositionEntity {
         this.id = createId(position.getUsername(), position.getSymbol());
         this.username = position.getUsername();
         this.symbol = position.getSymbol();
+        this.unit = determineUnit(position.getSymbol());
         // Convert double to long (multiply by 1000 for storage)
         this.totalBuyQty = (long) (position.getTotalBuyQty() * 1000);
         this.totalBuyAmount = position.getTotalBuyAmount();
@@ -70,6 +74,19 @@ public class PositionEntity {
         this.averageSellPrice = position.getAverageSellPrice();
         this.realizedPnL = position.getRealizedPnL();
         this.lastUpdated = position.getLastUpdated();
+    }
+    
+    // Helper method to determine unit from symbol
+    private String determineUnit(String symbol) {
+        if ("JPY".equals(symbol)) {
+            return "JPY";
+        } else if (symbol.contains("BTC")) {
+            return "BTC";
+        } else if (symbol.contains("ETH")) {
+            return "ETH";
+        } else {
+            return "UNIT"; // デフォルト
+        }
     }
     
     // Convert to Position domain object

@@ -7,7 +7,6 @@ import com.ys.exch_sim.domain.market_data.dto.ExternalTradeData;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.message.field.Side;
 import com.ys.exch_sim.domain.order_exec.Execution;
-import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.service.MarketDataSyncService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -21,13 +20,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-/** 順序保証取引処理サービス シンボル別に専用スレッドで取引を順序処理 H2への同期保存とBigQueryへの非同期保存を分離 */
+/** 順序保証取引処理サービス シンボル別に専用スレッドで取引を順序処理 外部市場データは保存しない */
 @Slf4j
 @Service
 public class OrderedTradeProcessor {
 
   private final MarketDataSyncService marketDataSyncService;
-  private final ExecutionRepository executionRepository;
   private final InstrumentConfig instrumentConfig;
   private final Map<String, SingleThreadExecutor> symbolExecutors = new ConcurrentHashMap<>();
 
@@ -38,11 +36,9 @@ public class OrderedTradeProcessor {
 
   public OrderedTradeProcessor(
       @Autowired MarketDataSyncService marketDataSyncService,
-      @Autowired ExecutionRepository executionRepository,
       @Autowired InstrumentConfig instrumentConfig,
       @Autowired(required = false) BigQueryService bigQueryService) {
     this.marketDataSyncService = marketDataSyncService;
-    this.executionRepository = executionRepository;
     this.instrumentConfig = instrumentConfig;
     this.bigQueryService = bigQueryService;
     log.info("🔄 OrderedTradeProcessor initialized with BigQuery enabled: {}", bigQueryEnabled);
@@ -71,7 +67,7 @@ public class OrderedTradeProcessor {
     log.debug("📤 Trade submitted for ordered processing: {} - {}", symbol, tradeData.side());
   }
 
-  /** 同期的にトレードを処理（シンボル専用スレッド内で実行） H2への同期保存とBigQueryへの非同期保存を分離 */
+  /** 同期的にトレードを処理（シンボル専用スレッド内で実行） 外部市場データは保存しない */
   private void processTradeSynchronously(String symbol, ExternalTradeData tradeData) {
     try {
       log.debug(
@@ -81,71 +77,27 @@ public class OrderedTradeProcessor {
           tradeData.price(),
           tradeData.quantity());
 
-      // 1. H2への同期保存（順序保証のため）
-      Execution execution = createExecutionFromTradeData(symbol, tradeData);
-      executionRepository.save(execution);
-
+      // NOTE: External market data (EXTERNAL_FEED) is NOT saved anywhere
+      // Only user executions (from OrderService/TradeController) are saved to BigQuery
       log.debug(
-          "✅ H2 database saved for symbol: {} - execId: {}", symbol, execution.getExecID().getId());
-
-      // 2. BigQueryへの非同期保存（パフォーマンス重視）
-      if (bigQueryEnabled && bigQueryService != null) {
-        CompletableFuture.runAsync(
-            () -> {
-              try {
-                BigQueryExecutionEntity bigQueryEntity = new BigQueryExecutionEntity(execution);
-                bigQueryService.insertExecutionAsync(bigQueryEntity);
-                log.debug(
-                    "🔄 BigQuery async save initiated for symbol: {} - execId: {}",
-                    symbol,
-                    execution.getExecID().getId());
-              } catch (Exception e) {
-                log.error(
-                    "❌ BigQuery async save failed for symbol: {} - execId: {} - Error: {}",
-                    symbol,
-                    execution.getExecID().getId(),
-                    e.getMessage(),
-                    e);
-              }
-            });
-      }
-
-      log.info(
-          "✅ Trade processed successfully for symbol: {} - side: {}, price: {}, quantity: {},"
-              + " execId: {}",
+          "ℹ️ External market data NOT persisted (EXTERNAL_FEED data is not stored) - symbol: {} - side: {}, price: {}, quantity: {}",
           symbol,
           tradeData.side(),
           tradeData.price(),
-          tradeData.quantity(),
-          execution.getExecID().getId());
+          tradeData.quantity());
+
+      log.info(
+          "✅ Trade processed successfully for symbol: {} - side: {}, price: {}, quantity: {}",
+          symbol,
+          tradeData.side(),
+          tradeData.price(),
+          tradeData.quantity());
 
     } catch (Exception e) {
       log.error(
           "❌ Synchronous trade processing failed for symbol: {}, trade: {}", symbol, tradeData, e);
       throw e; // Re-throw to ensure error handling in submit thread
     }
-  }
-
-  /** ExternalTradeDataからExecutionエンティティを作成 */
-  private Execution createExecutionFromTradeData(String symbol, ExternalTradeData tradeData) {
-    InstrumentConfig.InstrumentDefinition instrumentDef = instrumentConfig.getInstrument(symbol);
-    Side side = "BUY".equals(tradeData.side()) ? Side.BUY : Side.SELL;
-
-    return new Execution(
-        UUID.randomUUID().toString(), // execID
-        UUID.randomUUID().toString(), // orderID (fake)
-        "EXTERNAL_FEED", // username
-        symbol,
-        ExecStatus.FILLED,
-        (long)
-            (tradeData.price() * instrumentDef.getPriceMultiplier()), // Convert to internal price
-        (long)
-            (tradeData.quantity()
-                * instrumentDef.getQtyMultiplier()), // Convert to internal quantity
-        "MARKET", // counterPartyUsername
-        LocalDateTime.now(ZoneOffset.UTC),
-        false, // isMarketMaker
-        side.toString());
   }
 
   /** 特定シンボルの処理統計情報を取得 */

@@ -3,8 +3,7 @@ package com.ys.exch_sim.domain.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.MarketBoardResponse;
@@ -27,13 +26,14 @@ class MarketBoardControllerTest {
   private MarketBoardController marketBoardController;
   private InstrumentConfig instrumentConfig;
   private MarketDataClientManager clientManager;
+  private PositionManager positionManager;
 
   @BeforeEach
   void setUp() {
-    ExecutionQueueService executionQueueService = new ExecutionQueueService();
+    ExecutionQueueService executionQueueService = mock(ExecutionQueueService.class);
     PositionRepository positionRepository = mock(PositionRepository.class);
     TradeHistoryRepository tradeHistoryRepository = mock(TradeHistoryRepository.class);
-    PositionManager positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true, false);
+    positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true);
 
     // InstrumentConfigをモック化
     instrumentConfig = mock(InstrumentConfig.class);
@@ -57,6 +57,19 @@ class MarketBoardControllerTest {
     when(clientManager.getConnectedClientCount()).thenReturn(2);
     
     marketBoardController = new MarketBoardController(orderService, clientManager);
+    
+    // テストユーザーに初期現金残高を設定
+    initializeTestUserCash("testuser", 1000000.0);
+    for (int i = 0; i <= 10; i++) {
+      initializeTestUserCash("user" + i, 1000000.0);
+    }
+  }
+  
+  /**
+   * テストユーザーに初期現金残高を設定するヘルパーメソッド
+   */
+  private void initializeTestUserCash(String username, double initialCash) {
+    positionManager.initializeUserWithCash(username, initialCash);
   }
 
   @Test

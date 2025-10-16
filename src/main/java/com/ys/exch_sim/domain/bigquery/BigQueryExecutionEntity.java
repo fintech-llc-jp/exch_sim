@@ -70,7 +70,23 @@ public class BigQueryExecutionEntity {
         row.put("last_px", lastPx);
         row.put("last_qty", lastQty);
         row.put("counter_party_username", counterPartyUsername);
-        row.put("created_at", createdAt);
+
+        // Convert ISO string to BigQuery TIMESTAMP format (seconds.microseconds since epoch)
+        if (createdAt != null) {
+            try {
+                LocalDateTime dateTime = LocalDateTime.parse(createdAt, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                // Convert to seconds since epoch (BigQuery TIMESTAMP format)
+                double ts = dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant().getEpochSecond()
+                    + dateTime.getNano() / 1_000_000_000.0;
+                row.put("created_at", ts);
+            } catch (Exception e) {
+                // If parsing fails, use current timestamp
+                row.put("created_at", System.currentTimeMillis() / 1000.0);
+            }
+        } else {
+            row.put("created_at", System.currentTimeMillis() / 1000.0);
+        }
+
         row.put("is_market_maker", isMarketMaker);
         row.put("side", side);
         row.put("cl_ord_id", clOrdId);

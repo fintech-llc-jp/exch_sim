@@ -17,17 +17,21 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.*;
 class OrderServiceTest {
 
   private OrderService orderService;
   private InstrumentConfig instrumentConfig;
+  private PositionManager positionManager;
 
   @BeforeEach
   void setUp() {
-    ExecutionQueueService executionQueueService = new ExecutionQueueService();
+    // ExecutionQueueServiceをモック化
+    ExecutionQueueService executionQueueService = mock(ExecutionQueueService.class);
+    
     PositionRepository positionRepository = mock(PositionRepository.class);
     TradeHistoryRepository tradeHistoryRepository = mock(TradeHistoryRepository.class);
-    PositionManager positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true, false);
+    positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true);
 
     // InstrumentConfigをモック化
     instrumentConfig = mock(InstrumentConfig.class);
@@ -66,6 +70,16 @@ class OrderServiceTest {
     when(instrumentConfig.getInstrument("USDJPY")).thenReturn(usdjpy);
 
     orderService = new OrderService(executionQueueService, instrumentConfig, positionManager);
+    
+    // テストユーザーに初期現金残高を設定 (100万円)
+    initializeTestUserCash("testuser", 1000000.0);
+  }
+  
+  /**
+   * テストユーザーに初期現金残高を設定するヘルパーメソッド
+   */
+  private void initializeTestUserCash(String username, double initialCash) {
+    positionManager.initializeUserWithCash(username, initialCash);
   }
 
   @Test
@@ -395,6 +409,51 @@ class OrderServiceTest {
 
     // When & Then - FX商品はポジションなしでも売り注文可能
     OrderResponse response = orderService.processNewOrder(username, sellRequest);
+    assertThat(response).isNotNull();
+    assertThat(response.getStatus()).isEqualTo("NEW");
+  }
+  
+  @Test
+  void testInsufficientFundsRejection() {
+    // Given - 資金不足のユーザー
+    String poorUser = "pooruser";
+    // pooruserには現金残高を設定しない（残高0）
+    
+    NewOrderRequest buyRequest = new NewOrderRequest();
+    buyRequest.setSymbol("BTCJPY");
+    buyRequest.setPrice(100.0);
+    buyRequest.setQuantity(10.0);
+    buyRequest.setSide("BUY");
+    buyRequest.setOrdType("LIMIT");
+    buyRequest.setTif("GTC");
+
+    // When & Then - 資金不足で注文が拒否される
+    RuntimeException exception = assertThrows(
+        RuntimeException.class,
+        () -> orderService.processNewOrder(poorUser, buyRequest)
+    );
+    
+    assertThat(exception.getMessage()).contains("資金不足");
+  }
+  
+  @Test
+  void testSufficientFundsAccepted() {
+    // Given - 十分な資金を持つユーザー
+    String richUser = "richuser";
+    initializeTestUserCash(richUser, 50000.0); // 5万円
+    
+    NewOrderRequest buyRequest = new NewOrderRequest();
+    buyRequest.setSymbol("BTCJPY");
+    buyRequest.setPrice(100.0);
+    buyRequest.setQuantity(10.0);  // 必要金額: 1000円
+    buyRequest.setSide("BUY");
+    buyRequest.setOrdType("LIMIT");
+    buyRequest.setTif("GTC");
+
+    // When - 資金が十分なので注文成功
+    OrderResponse response = orderService.processNewOrder(richUser, buyRequest);
+    
+    // Then
     assertThat(response).isNotNull();
     assertThat(response.getStatus()).isEqualTo("NEW");
   }

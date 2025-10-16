@@ -4,6 +4,7 @@ import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.CancelOrderRequest;
 import com.ys.exch_sim.domain.dto.MarketBoardResponse;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
+import com.ys.exch_sim.domain.dto.OrderListResponse;
 import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.market_board.MarketBoard;
 import com.ys.exch_sim.domain.message.field.ClOrdID;
@@ -123,6 +124,9 @@ public class OrderService {
         }
       }
 
+      // 資金チェック（買い注文の場合）
+      validateOrderFunds(username, request);
+      
       // 注文の作成
       Order order = createOrder(username, request);
 
@@ -162,29 +166,64 @@ public class OrderService {
         log.warn("Invalid symbol: {}", request.getSymbol());
         throw new RuntimeException("Invalid symbol: " + request.getSymbol());
       }
-      // 注文を検索
-      Order order = orderMap.get(request.getClOrdID());
+
+      // 全MarketBoardから注文を検索
+      Order order = null;
+      MarketBoard targetMarketBoard = null;
+      String foundSymbol = null;
+
+      for (String symbol : marketBoards.keySet()) {
+        MarketBoard marketBoard = marketBoards.get(symbol);
+        try {
+          java.lang.reflect.Field orderMapField = MarketBoard.class.getDeclaredField("orderMap");
+          orderMapField.setAccessible(true);
+          @SuppressWarnings("unchecked")
+          java.util.Map<ClOrdID, Order> boardOrderMap =
+              (java.util.Map<ClOrdID, Order>) orderMapField.get(marketBoard);
+
+          // ClOrdIDで検索
+          for (java.util.Map.Entry<ClOrdID, Order> entry : boardOrderMap.entrySet()) {
+            if (entry.getKey().getId().equals(request.getClOrdID())) {
+              order = entry.getValue();
+              targetMarketBoard = marketBoard;
+              foundSymbol = symbol;
+              break;
+            }
+          }
+          if (order != null) {
+            break;
+          }
+        } catch (Exception e) {
+          log.error("Error accessing MarketBoard orderMap for symbol: {}", symbol, e);
+        }
+      }
+
       if (order == null) {
-        log.warn("Order not found for clOrdID: {}", request.getClOrdID());
+        log.warn("Order not found in any MarketBoard for clOrdID: {}", request.getClOrdID());
         throw new RuntimeException("Order not found: " + request.getClOrdID());
       }
 
       // シンボルの確認
-      if (!order.getSymbol().getName().equals(request.getSymbol())) {
+      if (!foundSymbol.equalsIgnoreCase(request.getSymbol())) {
         log.warn(
             "Symbol mismatch for clOrdID: {} expected: {} actual: {}",
             request.getClOrdID(),
             request.getSymbol(),
-            order.getSymbol().getName());
+            foundSymbol);
         throw new RuntimeException("Symbol mismatch for order: " + request.getClOrdID());
       }
 
-      // MarketBoardを取得
-      MarketBoard marketBoard = marketBoards.get(request.getSymbol());
-      if (marketBoard == null) {
-        log.warn("MarketBoard not found for symbol: {}", request.getSymbol());
-        throw new RuntimeException("MarketBoard not found for symbol: " + request.getSymbol());
+      // ユーザー権限チェック
+      if (!order.getUsername().equals(username)) {
+        log.warn(
+            "User {} attempted to cancel order {} owned by {}",
+            username,
+            request.getClOrdID(),
+            order.getUsername());
+        throw new RuntimeException("Not authorized to cancel this order");
       }
+
+      MarketBoard marketBoard = targetMarketBoard;
 
       // 注文をキャンセル
       List<Execution> executions = marketBoard.cancelOrder(order);
@@ -192,7 +231,7 @@ public class OrderService {
       // 約定結果をキューに追加
       processExecutionsForQueue(executions);
 
-      // 注文をマップから削除
+      // OrderServiceのorderMapからも削除（存在する場合）
       orderMap.remove(request.getClOrdID());
 
       // レスポンスを作成
@@ -215,6 +254,23 @@ public class OrderService {
     InstrumentConfig.InstrumentDefinition instrument =
         instrumentConfig.getInstrument(request.getSymbol());
 
+    // 数量を正規化（最小単位に切り捨て）
+    double normalizedQuantity = instrument.normalizeQuantity(request.getQuantity());
+
+    // 正規化後の数量が0以下の場合はエラー
+    if (normalizedQuantity <= 0) {
+      log.warn(
+          "Invalid quantity after normalization: original={}, normalized={}, minQty={}",
+          request.getQuantity(),
+          normalizedQuantity,
+          instrument.getMinimumQuantity());
+      throw new RuntimeException(
+          String.format(
+              "Quantity too small. Minimum quantity: %f, Provided: %f",
+              instrument.getMinimumQuantity(),
+              request.getQuantity()));
+    }
+
     log.info(
         "Creating order for user: {} symbol: {} with instrument config: priceMultiplier={},"
             + " qtyMultiplier={}",
@@ -223,7 +279,10 @@ public class OrderService {
         instrument.getPriceMultiplier(),
         instrument.getQtyMultiplier());
     log.info(
-        "Raw request values: price={}, quantity={}", request.getPrice(), request.getQuantity());
+        "Request values: price={}, quantity={} (original={})",
+        request.getPrice(),
+        normalizedQuantity,
+        request.getQuantity());
 
     // シンボルオブジェクトの作成（設定値から精度を取得）
     Symbol symbol =
@@ -232,9 +291,9 @@ public class OrderService {
             instrument.getPriceMultiplier(),
             instrument.getQtyMultiplier());
 
-    // 各フィールドの作成
+    // 各フィールドの作成（正規化された数量を使用）
     Px px = new Px(symbol, request.getPrice());
-    Qty qty = new Qty(symbol, request.getQuantity());
+    Qty qty = new Qty(symbol, normalizedQuantity);
 
     log.info(
         "Calculated values: px.getLongPx()={}, qty.getLongQty()={}",
@@ -321,7 +380,7 @@ public class OrderService {
     return (double) qty.getLongQty() / qty.getSymbol().getQtyMultiplier();
   }
 
-  private void processExecutionsForQueue(List<Execution> executions) {
+  public void processExecutionsForQueue(List<Execution> executions) {
     for (Execution execution : executions) {
       String username = null;
       try {
@@ -337,7 +396,13 @@ public class OrderService {
 
         if (execution.getExecStatus() == ExecStatus.PARTIAL_FILL
             || execution.getExecStatus() == ExecStatus.FILLED) {
-          positionManager.processExecution(execution);
+          // Skip executions with zero quantity to avoid position validation errors
+          if (execution.getLastQty() != null && execution.getLastQty().getLongQty() > 0) {
+            positionManager.processExecution(execution);
+          } else {
+            log.warn("Skipping execution with zero quantity for user: {}, symbol: {}, execStatus: {}",
+                username, execution.getSymbol(), execution.getExecStatus());
+          }
         }
       }
     }
@@ -393,5 +458,95 @@ public class OrderService {
     log.info(
         "Retrieved market board for {}: {} bids, {} asks", symbolName, bids.size(), asks.size());
     return new MarketBoardResponse(symbolName, bids, asks);
+  }
+
+  /**
+   * ユーザーの注文リストを取得する（注文中の注文のみ）
+   */
+  public OrderListResponse getOrderList(String username, String symbolFilter) {
+    log.info("Getting order list for user: {}, symbol filter: {}", username, symbolFilter);
+
+    List<OrderListResponse.OrderDto> orderDtos = new ArrayList<>();
+
+    // すべてのMarketBoardから該当ユーザーの注文を検索
+    for (String symbol : marketBoards.keySet()) {
+      // シンボルフィルターが指定されている場合はフィルタリング
+      if (symbolFilter != null && !symbolFilter.trim().isEmpty()
+          && !symbol.equalsIgnoreCase(symbolFilter.trim())) {
+        continue;
+      }
+
+      MarketBoard marketBoard = marketBoards.get(symbol);
+      if (marketBoard == null) {
+        continue;
+      }
+
+      // MarketBoard内のorderMapからユーザーの注文を取得
+      try {
+        java.lang.reflect.Field orderMapField = MarketBoard.class.getDeclaredField("orderMap");
+        orderMapField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<ClOrdID, Order> boardOrderMap =
+            (java.util.Map<ClOrdID, Order>) orderMapField.get(marketBoard);
+
+        // 商品設定から精度情報を取得
+        InstrumentConfig.InstrumentDefinition instrument = instrumentConfig.getInstrument(symbol);
+
+        for (Order order : boardOrderMap.values()) {
+          if (order.getUsername().equals(username)) {
+            // 注文情報をDTOに変換
+            double orderPx = (double) order.getOrderPx().getLongPx() / instrument.getPriceMultiplier();
+            double orderQty = (double) order.getOrderQty().getLongQty() / instrument.getQtyMultiplier();
+            double leavesQty = (double) order.getLeavesQty().getLongQty() / instrument.getQtyMultiplier();
+            double filledQty = orderQty - leavesQty;
+
+            OrderListResponse.OrderDto dto = new OrderListResponse.OrderDto(
+                order.getClOrdID().getId(),
+                order.getSymbol().getName(),
+                order.getSide().toString(),
+                order.getOrdType().toString(),
+                order.getOrdStatus().toString(),
+                orderPx,
+                orderQty,
+                leavesQty,
+                filledQty,
+                order.getTif().toString(),
+                order.getTs().getTs()
+            );
+            orderDtos.add(dto);
+          }
+        }
+      } catch (Exception e) {
+        log.error("Error accessing orderMap for symbol: {}", symbol, e);
+      }
+    }
+
+    // タイムスタンプの降順でソート（新しい注文が先）
+    orderDtos.sort((o1, o2) -> o2.getTimestamp().compareTo(o1.getTimestamp()));
+
+    log.info("Retrieved {} orders for user: {}", orderDtos.size(), username);
+    return new OrderListResponse(username, orderDtos.size(), orderDtos);
+  }
+
+  /**
+   * 注文の資金チェック
+   */
+  private void validateOrderFunds(String username, NewOrderRequest request) {
+    // 買い注文の場合のみ資金チェック
+    if ("BUY".equalsIgnoreCase(request.getSide())) {
+      double requiredAmount = request.getPrice() * request.getQuantity();
+      double availableFunds = positionManager.getCashBalance(username);
+      
+      // 現金残高が0または不足している場合は注文拒否
+      if (availableFunds <= 0 || availableFunds < requiredAmount) {
+        log.warn("Order rejected - insufficient funds for user: {}. Required: {}, Available: {}", 
+                username, requiredAmount, availableFunds);
+        throw new com.ys.exch_sim.domain.exception.InsufficientFundsException(
+          username, requiredAmount, availableFunds);
+      }
+      
+      log.info("Fund validation passed for user: {}. Required: {}, Available: {}", 
+              username, requiredAmount, availableFunds);
+    }
   }
 }

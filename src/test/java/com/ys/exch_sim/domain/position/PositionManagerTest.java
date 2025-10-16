@@ -28,8 +28,22 @@ class PositionManagerTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        // Enable memory cache, disable database persistence for tests
-        positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true, false);
+        // Enable memory cache for tests
+        positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true);
+        
+        // テスト用ユーザーに初期現金残高を設定
+        initializeTestUserCash("user1", 1000000.0);
+        initializeTestUserCash("user2", 1000000.0);
+        initializeTestUserCash("user3", 1000000.0);
+        initializeTestUserCash("user4", 1000000.0);
+        initializeTestUserCash("testuser", 1000000.0);
+        initializeTestUserCash("cashuser", 1000000.0);
+        initializeTestUserCash("pooruser", 10000.0);
+        initializeTestUserCash("tradeuser", 100000.0);
+    }
+    
+    private void initializeTestUserCash(String username, double initialCash) {
+        positionManager.initializeUserWithCash(username, initialCash);
     }
 
     @Test
@@ -106,9 +120,9 @@ class PositionManagerTest {
                                              new Px(ethSymbol, 200.0), new Qty(ethSymbol, 5L), "user3");
         positionManager.processExecution(ethExecution);
         
-        // 全ポジション取得
+        // 全ポジション取得（JPY現金ポジションも含む）
         List<Position> positions = positionManager.getAllPositions("user1");
-        assertThat(positions).hasSize(2);
+        assertThat(positions).hasSize(3); // BTCJPY, ETHJPY, JPY(現金)
         
         // 銘柄別確認
         Position btcPosition = positionManager.getPosition("user1", "BTCJPY");
@@ -167,7 +181,7 @@ class PositionManagerTest {
         
         // 全取引履歴
         List<TradeHistory> allHistory = positionManager.getTradeHistory("user1");
-        assertThat(allHistory).hasSize(3);
+        assertThat(allHistory).hasSize(3); // BTC買い, BTC売り, ETH買い
         
         // BTCJPY取引履歴のみ
         List<TradeHistory> btcHistory = positionManager.getTradeHistory("user1", "BTCJPY");
@@ -198,7 +212,81 @@ class PositionManagerTest {
         
         assertThat(tradeCount).isEqualTo(2);
         assertThat(tradingVolume).isEqualTo(1550.0); // 1000 + 550
-        assertThat(symbolCounts.get("BTCJPY")).isEqualTo(2);
+        assertThat(symbolCounts.get("BTCJPY")).isEqualTo(2L);
+    }
+
+    @Test
+    void testCashBalanceInitialization() {
+        // Given
+        String username = "testuser";
+        double initialAmount = 1000000.0;
+        
+        // When
+        positionManager.initializeUserWithCash(username, initialAmount);
+        
+        // Then
+        double cashBalance = positionManager.getCashBalance(username);
+        assertThat(cashBalance).isEqualTo(initialAmount);
+    }
+    
+    @Test
+    void testCashBalanceUpdates() {
+        // Given - cashuser は既に setUp() で 1000000.0 で初期化されている
+        String username = "cashuser";
+        double initialBalance = positionManager.getCashBalance(username); // 1000000.0
+        
+        // When - 現金を増加
+        positionManager.updateCashBalance(username, 50000.0);
+        
+        // Then
+        assertThat(positionManager.getCashBalance(username)).isEqualTo(initialBalance + 50000.0);
+        
+        // When - 現金を減少
+        positionManager.updateCashBalance(username, -25000.0);
+        
+        // Then
+        assertThat(positionManager.getCashBalance(username)).isEqualTo(initialBalance + 25000.0); // +50000 -25000
+    }
+    
+    @Test
+    void testInsufficientFundsCheck() {
+        // Given
+        String username = "pooruser";
+        positionManager.initializeUserWithCash(username, 10000.0);
+        
+        // When & Then
+        assertThat(positionManager.hasSufficientFunds(username, 5000.0)).isTrue();
+        assertThat(positionManager.hasSufficientFunds(username, 15000.0)).isFalse();
+    }
+    
+    @Test
+    void testCashBalanceAfterTrade() {
+        // Given
+        String username = "tradeuser";
+        positionManager.initializeUserWithCash(username, 100000.0);
+        
+        // 買い注文の実行をシミュレート
+        Symbol symbol = new Symbol("BTCJPY", 100, 1);
+        Order buyOrder = createTestOrder(username, symbol, Side.BUY, 10L, 1000.0);
+        Execution buyExecution = new Execution(buyOrder, ExecStatus.FILLED,
+                new Px(symbol, 1000.0), new Qty(symbol, 10L), "counterparty");
+        
+        // When
+        positionManager.processExecution(buyExecution);
+        
+        // Then - 現金が減少しているはず (100000 - 10*1000 = 90000)
+        assertThat(positionManager.getCashBalance(username)).isEqualTo(90000.0);
+        
+        // 売り注文の実行をシミュレート
+        Order sellOrder = createTestOrder(username, symbol, Side.SELL, 5L, 1100.0);
+        Execution sellExecution = new Execution(sellOrder, ExecStatus.FILLED,
+                new Px(symbol, 1100.0), new Qty(symbol, 5L), "counterparty");
+        
+        // When
+        positionManager.processExecution(sellExecution);
+        
+        // Then - 現金が増加しているはず (90000 + 5*1100 = 95500)
+        assertThat(positionManager.getCashBalance(username)).isEqualTo(95500.0);
     }
 
     private Order createTestOrder(String username, Symbol symbol, Side side, long quantity, double price) {

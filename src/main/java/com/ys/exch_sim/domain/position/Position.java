@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 public class Position {
     private String username;
     private String symbol;
+    private String unit;              // 単位（BTC, ETH, JPYなど）
     private double totalBuyQty;       // 総買い数量
     private double totalBuyAmount;    // 総買い金額
     private double totalSellQty;      // 総売り数量
@@ -20,6 +21,7 @@ public class Position {
     public Position(String username, String symbol) {
         this.username = username;
         this.symbol = symbol;
+        this.unit = determineUnit(symbol);
         this.totalBuyQty = 0.0;
         this.totalBuyAmount = 0.0;
         this.totalSellQty = 0.0;
@@ -30,16 +32,39 @@ public class Position {
         this.realizedPnL = 0.0;
         this.lastUpdated = LocalDateTime.now();
     }
+    
+    // Helper method to determine unit from symbol
+    private String determineUnit(String symbol) {
+        if ("JPY".equals(symbol)) {
+            return "JPY";
+        } else if (symbol.contains("BTC")) {
+            return "BTC";
+        } else if (symbol.contains("ETH")) {
+            return "ETH";
+        } else {
+            return "UNIT"; // デフォルト
+        }
+    }
 
     public void addBuyTrade(double quantity, double price) {
         if (quantity <= 0 || price <= 0) {
             throw new IllegalArgumentException("Quantity and price must be positive");
         }
 
+        // 買いトレード前のnetQtyを保存
+        double previousNetQty = this.netQty;
+
         // 買いポジション更新
         this.totalBuyAmount += quantity * price;
         this.totalBuyQty += quantity;
         this.averageBuyPrice = this.totalBuyQty > 0 ? this.totalBuyAmount / this.totalBuyQty : 0.0;
+        
+        // ショートポジションがある場合の実現損益計算
+        if (previousNetQty < 0) {
+            // ショートポジションの一部または全部を買い戻し
+            double realizedQty = Math.min(quantity, Math.abs(previousNetQty));
+            this.realizedPnL += realizedQty * (this.averageSellPrice - price);
+        }
         
         updateNetPosition();
         this.lastUpdated = LocalDateTime.now();
@@ -50,14 +75,18 @@ public class Position {
             throw new IllegalArgumentException("Quantity and price must be positive");
         }
 
+        // 売りトレード前のnetQtyを保存
+        double previousNetQty = this.netQty;
+
         // 売りポジション更新
         this.totalSellAmount += quantity * price;
         this.totalSellQty += quantity;
         this.averageSellPrice = this.totalSellQty > 0 ? this.totalSellAmount / this.totalSellQty : 0.0;
         
-        // 実現損益の計算（売りの場合、既存の買いポジションがあれば実現）
-        if (this.netQty > 0) {
-            double realizedQty = Math.min(quantity, this.netQty);
+        // 実現損益の計算（売りトレード前のポジション状態で判定）
+        if (previousNetQty > 0) {
+            // ロングポジションの一部または全部を売り
+            double realizedQty = Math.min(quantity, previousNetQty);
             this.realizedPnL += realizedQty * (price - this.averageBuyPrice);
         }
         

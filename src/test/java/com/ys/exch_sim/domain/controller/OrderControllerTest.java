@@ -2,8 +2,7 @@ package com.ys.exch_sim.domain.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
@@ -22,13 +21,14 @@ class OrderControllerTest {
   private OrderService orderService;
   private OrderController orderController;
   private InstrumentConfig instrumentConfig;
+  private PositionManager positionManager;
 
   @BeforeEach
   void setUp() {
-    ExecutionQueueService executionQueueService = new ExecutionQueueService();
+    ExecutionQueueService executionQueueService = mock(ExecutionQueueService.class);
     PositionRepository positionRepository = mock(PositionRepository.class);
     TradeHistoryRepository tradeHistoryRepository = mock(TradeHistoryRepository.class);
-    PositionManager positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true, false);
+    positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true);
 
     // InstrumentConfigをモック化
     instrumentConfig = mock(InstrumentConfig.class);
@@ -56,6 +56,16 @@ class OrderControllerTest {
 
     orderService = new OrderService(executionQueueService, instrumentConfig, positionManager);
     orderController = new OrderController(orderService, null);
+    
+    // テストユーザーに初期現金残高を設定 (100万円)
+    initializeTestUserCash("testuser", 1000000.0);
+  }
+  
+  /**
+   * テストユーザーに初期現金残高を設定するヘルパーメソッド
+   */
+  private void initializeTestUserCash(String username, double initialCash) {
+    positionManager.initializeUserWithCash(username, initialCash);
   }
 
   @Test

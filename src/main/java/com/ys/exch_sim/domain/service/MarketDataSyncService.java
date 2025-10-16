@@ -16,11 +16,11 @@ import com.ys.exch_sim.domain.message.field.Symbol;
 import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.message.field.Timestamp;
 import com.ys.exch_sim.domain.order_exec.Execution;
-import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.order_exec.Order;
 import com.ys.exch_sim.infra.Pair;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -35,20 +35,21 @@ import org.springframework.stereotype.Service;
 public class MarketDataSyncService {
 
   private final OrderService orderService;
-  private final ExecutionRepository executionRepository;
   private final InstrumentConfig instrumentConfig;
   private final Optional<BigQueryService> bigQueryService;
+
+  // Symbol-specific locks to prevent race conditions during board updates
+  private final java.util.concurrent.ConcurrentHashMap<String, Object> symbolLocks =
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   @Value("${app.data-migration.bigquery-enabled:false}")
   private boolean bigQueryEnabled;
 
   public MarketDataSyncService(
       OrderService orderService,
-      ExecutionRepository executionRepository,
       InstrumentConfig instrumentConfig,
       @Autowired(required = false) BigQueryService bigQueryService) {
     this.orderService = orderService;
-    this.executionRepository = executionRepository;
     this.instrumentConfig = instrumentConfig;
     this.bigQueryService = Optional.ofNullable(bigQueryService);
   }
@@ -63,12 +64,17 @@ public class MarketDataSyncService {
         return;
       }
 
-      log.debug("📊 MarketBoard Update - Getting board for symbol: {}", symbolName);
-      MarketBoard marketBoard = getOrCreateMarketBoard(symbolName);
+      // Get or create a lock for this specific symbol
+      Object lock = symbolLocks.computeIfAbsent(symbolName, k -> new Object());
 
-      // Clear existing levels
-      marketBoard.clearBids();
-      marketBoard.clearAsks();
+      // Synchronize on the symbol-specific lock to prevent race conditions
+      synchronized (lock) {
+        log.debug("📊 MarketBoard Update - Getting board for symbol: {}", symbolName);
+        MarketBoard marketBoard = getOrCreateMarketBoard(symbolName);
+
+        // Clear existing levels
+        marketBoard.clearBids();
+        marketBoard.clearAsks();
 
       InstrumentConfig.InstrumentDefinition instrumentDef =
           instrumentConfig.getInstrument(symbolName);
@@ -79,38 +85,73 @@ public class MarketDataSyncService {
               instrumentDef.getQtyMultiplier());
 
       // Update bid levels and create corresponding orders
+      // IMPORTANT: Do NOT call setBid before addMarketMakerOrder to prevent bid/ask inversion
       for (int i = 0; i < data.bids().size() && i < 10; i++) {
         var bidLevel = data.bids().get(i);
         if (bidLevel.price() != null && bidLevel.quantity() != null && bidLevel.quantity() > 0) {
+          // Normalize quantity to minimum unit (truncate extra precision)
+          double normalizedQuantity = instrumentDef.normalizeQuantity(bidLevel.quantity());
+
+          // Skip if quantity is too small after normalization
+          if (normalizedQuantity <= 0) {
+            log.debug(
+                "Skipping bid level with quantity too small: original={}, normalized={}, minQty={}",
+                bidLevel.quantity(),
+                normalizedQuantity,
+                instrumentDef.getMinimumQuantity());
+            continue;
+          }
+
           long price = (long) (bidLevel.price() * instrumentDef.getPriceMultiplier());
-          long quantity = (long) (bidLevel.quantity() * instrumentDef.getQtyMultiplier());
-          marketBoard.setBid(i, new Pair<>(price, quantity));
+          long quantity = (long) (normalizedQuantity * instrumentDef.getQtyMultiplier());
 
           // Create a market maker order for this price level
+          // The order will be matched against existing orders and automatically added to the board
           Order marketMakerOrder = createMarketMakerOrder(symbol, price, quantity, Side.BUY);
-          marketBoard.addMarketMakerOrder(marketMakerOrder);
+          List<Execution> executions = marketBoard.addMarketMakerOrder(marketMakerOrder);
+
+          // Process executions for user notifications and position updates
+          orderService.processExecutionsForQueue(executions);
         }
       }
 
       // Update ask levels and create corresponding orders
+      // IMPORTANT: Do NOT call setAsk before addMarketMakerOrder to prevent bid/ask inversion
       for (int i = 0; i < data.asks().size() && i < 10; i++) {
         var askLevel = data.asks().get(i);
         if (askLevel.price() != null && askLevel.quantity() != null && askLevel.quantity() > 0) {
+          // Normalize quantity to minimum unit (truncate extra precision)
+          double normalizedQuantity = instrumentDef.normalizeQuantity(askLevel.quantity());
+
+          // Skip if quantity is too small after normalization
+          if (normalizedQuantity <= 0) {
+            log.debug(
+                "Skipping ask level with quantity too small: original={}, normalized={}, minQty={}",
+                askLevel.quantity(),
+                normalizedQuantity,
+                instrumentDef.getMinimumQuantity());
+            continue;
+          }
+
           long price = (long) (askLevel.price() * instrumentDef.getPriceMultiplier());
-          long quantity = (long) (askLevel.quantity() * instrumentDef.getQtyMultiplier());
-          marketBoard.setAsk(i, new Pair<>(price, quantity));
+          long quantity = (long) (normalizedQuantity * instrumentDef.getQtyMultiplier());
 
           // Create a market maker order for this price level
+          // The order will be matched against existing orders and automatically added to the board
           Order marketMakerOrder = createMarketMakerOrder(symbol, price, quantity, Side.SELL);
-          marketBoard.addMarketMakerOrder(marketMakerOrder);
+          List<Execution> executions = marketBoard.addMarketMakerOrder(marketMakerOrder);
+
+          // Process executions for user notifications and position updates
+          orderService.processExecutionsForQueue(executions);
         }
       }
 
-      log.info(
-          "✅ MarketBoard Update - Updated board for symbol: {} with {} bid levels, {} ask levels",
-          symbolName,
-          data.bids().size(),
-          data.asks().size());
+        log.info(
+            "✅ MarketBoard Update - Updated board for symbol: {} with {} bid levels, {} ask levels",
+            symbolName,
+            data.bids().size(),
+            data.asks().size());
+      } // end synchronized block
 
     } catch (Exception e) {
       log.error(
@@ -141,54 +182,21 @@ public class MarketDataSyncService {
       InstrumentConfig.InstrumentDefinition instrumentDef =
           instrumentConfig.getInstrument(symbolName);
 
-      Side side = "BUY".equals(data.side()) ? Side.BUY : Side.SELL;
-
-      // Create execution record
-      Execution execution =
-          new Execution(
-              UUID.randomUUID().toString(), // execID
-              UUID.randomUUID().toString(), // orderID (fake)
-              "EXTERNAL_FEED", // username
-              symbolName,
-              ExecStatus.FILLED,
-              (long)
-                  (data.price() * instrumentDef.getPriceMultiplier()), // Convert to internal price
-              (long)
-                  (data.quantity()
-                      * instrumentDef.getQtyMultiplier()), // Convert to internal quantity
-              "MARKET", // counterPartyUsername
-              LocalDateTime.now(ZoneOffset.UTC),
-              false, // isMarketMaker
-              side.toString());
-
-      // Save to H2 database
-      executionRepository.save(execution);
-
-      // Asynchronously save to BigQuery if enabled
-      if (bigQueryEnabled && bigQueryService.isPresent()) {
-        try {
-          BigQueryExecutionEntity bigQueryExecution = new BigQueryExecutionEntity(execution);
-          bigQueryService.get().insertExecutionAsync(bigQueryExecution);
-          log.debug(
-              "🔄 BigQuery async insert initiated for execution: {}",
-              execution.getExecID().getId());
-        } catch (Exception e) {
-          log.warn(
-              "⚠️ Failed to initiate BigQuery async insert for execution: {} - Error: {}",
-              execution.getExecID().getId(),
-              e.getMessage());
-          // Continue processing - BigQuery failure should not stop the main flow
-        }
-      }
-
-      log.info(
-          "✅ Trade Insert - Saved execution for symbol: {} - side: {}, price: {}, quantity: {},"
-              + " execId: {}",
+      // NOTE: External market data (EXTERNAL_FEED) is NOT saved anywhere
+      // Only user executions (from OrderService/TradeController) are saved to BigQuery
+      log.debug(
+          "✅ External market data NOT persisted (EXTERNAL_FEED data is not stored) - symbol: {}, side: {}, price: {}, quantity: {}",
           symbolName,
           data.side(),
           data.price(),
-          data.quantity(),
-          execution.getExecID().getId());
+          data.quantity());
+
+      log.info(
+          "✅ Trade Insert - Processed external market data for symbol: {} - side: {}, price: {}, quantity: {}",
+          symbolName,
+          data.side(),
+          data.price(),
+          data.quantity());
 
     } catch (Exception e) {
       log.error(

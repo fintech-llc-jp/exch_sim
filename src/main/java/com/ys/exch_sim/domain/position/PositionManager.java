@@ -5,6 +5,7 @@ import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.bigquery.BigQueryTradeHistoryEntity;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.message.field.Side;
+import com.ys.exch_sim.domain.exception.InsufficientFundsException;
 import com.ys.exch_sim.infra.Pair;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,44 +20,34 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class PositionManager {
-    
-    private final PositionRepository positionRepository;
-    private final TradeHistoryRepository tradeHistoryRepository;
+
     private final BigQueryService bigQueryService;
-    
+
     // Configuration flags
     @Value("${app.data-migration.memory-cache-enabled:true}")
     private boolean memoryCacheEnabled;
-    
-    @Value("${app.data-migration.database-persistence-enabled:true}")
-    private boolean databasePersistenceEnabled;
-    
+
+    // Removed: databasePersistenceEnabled flag - BigQuery is now the primary storage
+
     @Value("${app.data-migration.bigquery-enabled:false}")
     private boolean bigQueryEnabled;
-    
+
     // ユーザー別・銘柄別のポジション管理（メモリキャッシュ）
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, Position>> positionsCache = new ConcurrentHashMap<>();
-    
+
     // 取引履歴（メモリキャッシュ）
     private final List<TradeHistory> tradeHistoriesCache = Collections.synchronizedList(new ArrayList<>());
-    
+
     // Main constructor for Spring
     @Autowired
-    public PositionManager(PositionRepository positionRepository, TradeHistoryRepository tradeHistoryRepository, 
-                          @Autowired(required = false) BigQueryService bigQueryService) {
-        this.positionRepository = positionRepository;
-        this.tradeHistoryRepository = tradeHistoryRepository;
+    public PositionManager(@Autowired(required = false) BigQueryService bigQueryService) {
         this.bigQueryService = bigQueryService;
     }
-    
+
     // Test-only constructor
-    public PositionManager(PositionRepository positionRepository, TradeHistoryRepository tradeHistoryRepository, 
-                          boolean memoryCacheEnabled, boolean databasePersistenceEnabled) {
-        this.positionRepository = positionRepository;
-        this.tradeHistoryRepository = tradeHistoryRepository;
+    public PositionManager(boolean memoryCacheEnabled) {
         this.bigQueryService = null;
         this.memoryCacheEnabled = memoryCacheEnabled;
-        this.databasePersistenceEnabled = databasePersistenceEnabled;
     }
 
     @Transactional
@@ -69,14 +60,21 @@ public class PositionManager {
         String username = execution.getOrder().getUsername();
         String symbol = execution.getOrder().getSymbol().getName();
         Side side = execution.getOrder().getSide();
-        double quantity = (double) execution.getLastQty().getLongQty() / execution.getLastQty().getSymbol().getQtyMultiplier();
-        double price = (double) execution.getLastPx().getLongPx() / execution.getLastPx().getSymbol().getPxMultiplier();
-        
+
+        // 詳細なログを追加して数量計算の内訳を確認
+        long rawQty = execution.getLastQty().getLongQty();
+        long qtyMultiplier = execution.getLastQty().getSymbol().getQtyMultiplier();
+        double quantity = (double) rawQty / qtyMultiplier;
+
+        long rawPx = execution.getLastPx().getLongPx();
+        long pxMultiplier = execution.getLastPx().getSymbol().getPxMultiplier();
+        double price = (double) rawPx / pxMultiplier;
+
         // 相手方のユーザー名を取得（約定相手）
         String counterPartyUsername = execution.getCounterPartyUsername();
-        
-        log.info("Processing execution for user: {}, symbol: {}, side: {}, qty: {}, price: {}", 
-                username, symbol, side, quantity, price);
+
+        log.info("Processing execution for user: {}, symbol: {}, side: {}, rawQty: {}, qtyMultiplier: {}, qty: {}, rawPx: {}, pxMultiplier: {}, price: {}",
+                username, symbol, side, rawQty, qtyMultiplier, quantity, rawPx, pxMultiplier, price);
 
         try {
             // ポジション更新
@@ -84,13 +82,19 @@ public class PositionManager {
             
             if (side == Side.BUY) {
                 position.addBuyTrade(quantity, price);
+                // 買い注文：現金を減らす
+                double amount = quantity * price;
+                updateCashBalance(username, -amount);
             } else if (side == Side.SELL) {
                 position.addSellTrade(quantity, price);
+                // 売り注文：現金を増やす
+                double amount = quantity * price;
+                updateCashBalance(username, amount);
             }
 
-            // データベース永続化
-            if (databasePersistenceEnabled) {
-                savePositionToDatabase(position);
+            // BigQueryに保存
+            if (bigQueryEnabled && bigQueryService != null) {
+                savePositionToBigQuery(position);
             }
 
             // 取引履歴を記録
@@ -109,13 +113,13 @@ public class PositionManager {
             if (memoryCacheEnabled) {
                 tradeHistoriesCache.add(tradeHistory);
             }
-            
-            // データベース永続化
-            if (databasePersistenceEnabled) {
-                saveTradeHistoryToDatabase(tradeHistory);
+
+            // BigQueryに保存
+            if (bigQueryEnabled && bigQueryService != null) {
+                saveTradeHistoryToBigQuery(tradeHistory);
             }
 
-            log.info("Position updated for user: {}, symbol: {}, netQty: {}, realizedPnL: {}", 
+            log.info("Position updated for user: {}, symbol: {}, netQty: {}, realizedPnL: {}",
                     username, symbol, position.getNetQty(), position.getRealizedPnL());
 
         } catch (Exception e) {
@@ -130,29 +134,23 @@ public class PositionManager {
                 return userPositions.get(symbol.toUpperCase());
             }
         }
-        
+
         if (bigQueryEnabled && bigQueryService != null) {
             BigQueryPositionEntity bigQueryPosition = bigQueryService.queryPosition(username, symbol.toUpperCase());
             if (bigQueryPosition != null) {
                 return bigQueryPosition.toPosition();
             }
         }
-        
-        if (databasePersistenceEnabled) {
-            return positionRepository.findByUsernameAndSymbol(username, symbol.toUpperCase())
-                    .map(PositionEntity::toPosition)
-                    .orElse(null);
-        }
-        
+
         return null;
     }
 
     public List<Position> getAllPositions(String username) {
         List<Position> positions = new ArrayList<>();
-        
-        log.debug("Getting positions for user: {} - bigQueryEnabled: {}, memoryCacheEnabled: {}, databasePersistenceEnabled: {}", 
-                  username, bigQueryEnabled, memoryCacheEnabled, databasePersistenceEnabled);
-        
+
+        log.debug("Getting positions for user: {} - bigQueryEnabled: {}, memoryCacheEnabled: {}",
+                  username, bigQueryEnabled, memoryCacheEnabled);
+
         if (memoryCacheEnabled) {
             ConcurrentHashMap<String, Position> userPositions = positionsCache.get(username);
             if (userPositions != null) {
@@ -160,7 +158,7 @@ public class PositionManager {
                 log.debug("Found {} positions in memory cache for user: {}", positions.size(), username);
             }
         }
-        
+
         if (bigQueryService != null && positions.isEmpty()) {
             log.debug("Querying BigQuery for positions for user: {}", username);
             List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
@@ -168,7 +166,7 @@ public class PositionManager {
             positions = bigQueryPositions.stream()
                     .map(BigQueryPositionEntity::toPosition)
                     .collect(Collectors.toList());
-            
+
             // BigQueryから読み込んだデータをメモリキャッシュに保存
             if (memoryCacheEnabled && !positions.isEmpty()) {
                 ConcurrentHashMap<String, Position> userPositions = positionsCache.computeIfAbsent(username, k -> new ConcurrentHashMap<>());
@@ -178,105 +176,131 @@ public class PositionManager {
                 }
             }
         }
-        
-        if (databasePersistenceEnabled && positions.isEmpty()) {
-            log.debug("Querying H2 database for positions for user: {}", username);
-            positions = positionRepository.findByUsername(username)
-                    .stream()
-                    .map(PositionEntity::toPosition)
-                    .collect(Collectors.toList());
-            log.debug("Found {} positions in H2 database for user: {}", positions.size(), username);
-            
-            // H2から読み込んだデータをメモリキャッシュに保存
-            if (memoryCacheEnabled && !positions.isEmpty()) {
-                ConcurrentHashMap<String, Position> userPositions = positionsCache.computeIfAbsent(username, k -> new ConcurrentHashMap<>());
-                for (Position position : positions) {
-                    userPositions.put(position.getSymbol(), position);
-                    log.debug("Cached position from H2: {}_{}", position.getUsername(), position.getSymbol());
-                }
-            }
-        }
-        
+
         log.info("Total positions returned for user {}: {}", username, positions.size());
         return positions;
     }
 
     public List<TradeHistory> getTradeHistory(String username) {
-        if (memoryCacheEnabled && !tradeHistoriesCache.isEmpty()) {
-            return tradeHistoriesCache.stream()
+        List<TradeHistory> trades = new ArrayList<>();
+
+        if (memoryCacheEnabled) {
+            trades = tradeHistoriesCache.stream()
                     .filter(history -> username.equals(history.getUsername()))
                     .sorted((h1, h2) -> h2.getTimestamp().compareTo(h1.getTimestamp())) // 新しい順
                     .collect(Collectors.toList());
+            if (!trades.isEmpty()) {
+                return trades;
+            }
         }
-        
-        if (bigQueryEnabled && bigQueryService != null) {
+
+        if (bigQueryService != null) {
             List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username);
-            return bigQueryTradeHistories.stream()
+            trades = bigQueryTradeHistories.stream()
                     .map(BigQueryTradeHistoryEntity::toTradeHistory)
                     .collect(Collectors.toList());
-        }
-        
-        if (databasePersistenceEnabled) {
-            return tradeHistoryRepository.findByUsernameOrderByTimestampDesc(username)
-                    .stream()
-                    .map(TradeHistoryEntity::toTradeHistory)
+
+            // BigQueryから読み込んだデータをメモリキャッシュに追加（重複チェック）
+            if (memoryCacheEnabled && !trades.isEmpty()) {
+                Set<String> existingExecIds = tradeHistoriesCache.stream()
+                    .map(TradeHistory::getExecID)
+                    .collect(Collectors.toSet());
+
+                List<TradeHistory> newTrades = trades.stream()
+                    .filter(trade -> !existingExecIds.contains(trade.getExecID()))
                     .collect(Collectors.toList());
+
+                tradeHistoriesCache.addAll(newTrades);
+            }
+
+            if (!trades.isEmpty()) {
+                return trades;
+            }
         }
-        
-        return new ArrayList<>();
+
+        return trades;
     }
 
     public List<TradeHistory> getTradeHistory(String username, String symbol) {
-        if (memoryCacheEnabled && !tradeHistoriesCache.isEmpty()) {
-            return tradeHistoriesCache.stream()
-                    .filter(history -> username.equals(history.getUsername()) && 
+        List<TradeHistory> trades = new ArrayList<>();
+
+        if (memoryCacheEnabled) {
+            trades = tradeHistoriesCache.stream()
+                    .filter(history -> username.equals(history.getUsername()) &&
                                      symbol.equalsIgnoreCase(history.getSymbol()))
                     .sorted((h1, h2) -> h2.getTimestamp().compareTo(h1.getTimestamp())) // 新しい順
                     .collect(Collectors.toList());
+            if (!trades.isEmpty()) {
+                return trades;
+            }
         }
-        
-        if (bigQueryEnabled && bigQueryService != null) {
+
+        if (bigQueryService != null) {
             List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username, symbol);
-            return bigQueryTradeHistories.stream()
+            trades = bigQueryTradeHistories.stream()
                     .map(BigQueryTradeHistoryEntity::toTradeHistory)
                     .collect(Collectors.toList());
-        }
-        
-        if (databasePersistenceEnabled) {
-            return tradeHistoryRepository.findByUsernameAndSymbolOrderByTimestampDesc(username, symbol)
-                    .stream()
-                    .map(TradeHistoryEntity::toTradeHistory)
+
+            // BigQueryから読み込んだデータをメモリキャッシュに追加（重複チェック）
+            if (memoryCacheEnabled && !trades.isEmpty()) {
+                Set<String> existingExecIds = tradeHistoriesCache.stream()
+                    .map(TradeHistory::getExecID)
+                    .collect(Collectors.toSet());
+
+                List<TradeHistory> newTrades = trades.stream()
+                    .filter(trade -> !existingExecIds.contains(trade.getExecID()))
                     .collect(Collectors.toList());
+
+                tradeHistoriesCache.addAll(newTrades);
+            }
+
+            if (!trades.isEmpty()) {
+                return trades;
+            }
         }
-        
-        return new ArrayList<>();
+
+        return trades;
     }
 
     public List<TradeHistory> getTradeHistory(String username, int limit) {
-        if (memoryCacheEnabled && !tradeHistoriesCache.isEmpty()) {
-            return tradeHistoriesCache.stream()
+        List<TradeHistory> trades = new ArrayList<>();
+
+        if (memoryCacheEnabled) {
+            trades = tradeHistoriesCache.stream()
                     .filter(history -> username.equals(history.getUsername()))
                     .sorted((h1, h2) -> h2.getTimestamp().compareTo(h1.getTimestamp())) // 新しい順
                     .limit(limit)
                     .collect(Collectors.toList());
+            if (trades.size() >= limit) {
+                return trades;
+            }
         }
-        
-        if (bigQueryEnabled && bigQueryService != null) {
+
+        if (bigQueryService != null) {
             List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username, limit);
-            return bigQueryTradeHistories.stream()
+            trades = bigQueryTradeHistories.stream()
                     .map(BigQueryTradeHistoryEntity::toTradeHistory)
                     .collect(Collectors.toList());
-        }
-        
-        if (databasePersistenceEnabled) {
-            return tradeHistoryRepository.findByUsernameOrderByTimestampDesc(username, 
-                    org.springframework.data.domain.PageRequest.of(0, limit))
-                    .stream()
-                    .map(TradeHistoryEntity::toTradeHistory)
+
+            // BigQueryから読み込んだデータをメモリキャッシュに追加（重複チェック）
+            if (memoryCacheEnabled && !trades.isEmpty()) {
+                Set<String> existingExecIds = tradeHistoriesCache.stream()
+                    .map(TradeHistory::getExecID)
+                    .collect(Collectors.toSet());
+
+                List<TradeHistory> newTrades = trades.stream()
+                    .filter(trade -> !existingExecIds.contains(trade.getExecID()))
                     .collect(Collectors.toList());
+
+                tradeHistoriesCache.addAll(newTrades);
+            }
+
+            if (!trades.isEmpty()) {
+                return trades;
+            }
         }
-        
-        return new ArrayList<>();
+
+        return trades;
     }
 
     public double getTotalRealizedPnL(String username) {
@@ -288,21 +312,14 @@ public class PositionManager {
                         .sum();
             }
         }
-        
+
         if (bigQueryEnabled && bigQueryService != null) {
             List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
             return bigQueryPositions.stream()
                     .mapToDouble(position -> position.getRealizedPnL() != null ? position.getRealizedPnL() : 0.0)
                     .sum();
         }
-        
-        if (databasePersistenceEnabled) {
-            return positionRepository.findByUsername(username)
-                    .stream()
-                    .mapToDouble(PositionEntity::getRealizedPnL)
-                    .sum();
-        }
-        
+
         return 0.0;
     }
 
@@ -318,7 +335,7 @@ public class PositionManager {
                         .sum();
             }
         }
-        
+
         if (bigQueryEnabled && bigQueryService != null) {
             List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
             return bigQueryPositions.stream()
@@ -329,18 +346,7 @@ public class PositionManager {
                     })
                     .sum();
         }
-        
-        if (databasePersistenceEnabled) {
-            return positionRepository.findByUsername(username)
-                    .stream()
-                    .map(PositionEntity::toPosition)
-                    .mapToDouble(position -> {
-                        Double currentPrice = currentPrices.get(position.getSymbol());
-                        return currentPrice != null ? position.getUnrealizedPnL(currentPrice) : 0.0;
-                    })
-                    .sum();
-        }
-        
+
         return 0.0;
     }
 
@@ -352,20 +358,28 @@ public class PositionManager {
         if (memoryCacheEnabled) {
             return positionsCache.computeIfAbsent(username, k -> new ConcurrentHashMap<>())
                     .computeIfAbsent(symbol.toUpperCase(), k -> {
+                        // Check BigQuery before creating new position
+                        if (bigQueryEnabled && bigQueryService != null) {
+                            BigQueryPositionEntity bigQueryPosition = bigQueryService.queryPosition(username, symbol.toUpperCase());
+                            if (bigQueryPosition != null) {
+                                log.info("Loaded existing position from BigQuery for user: {}, symbol: {}", username, symbol);
+                                return bigQueryPosition.toPosition();
+                            }
+                        }
+
                         log.info("Creating new position for user: {}, symbol: {}", username, symbol);
                         return new Position(username, symbol.toUpperCase());
                     });
         }
-        
-        if (databasePersistenceEnabled) {
-            return positionRepository.findByUsernameAndSymbol(username, symbol.toUpperCase())
-                    .map(PositionEntity::toPosition)
-                    .orElseGet(() -> {
-                        log.info("Creating new position for user: {}, symbol: {}", username, symbol);
-                        return new Position(username, symbol.toUpperCase());
-                    });
+
+        // If memory cache is disabled, check BigQuery first
+        if (bigQueryEnabled && bigQueryService != null) {
+            BigQueryPositionEntity bigQueryPosition = bigQueryService.queryPosition(username, symbol.toUpperCase());
+            if (bigQueryPosition != null) {
+                return bigQueryPosition.toPosition();
+            }
         }
-        
+
         // Fallback
         log.info("Creating new position for user: {}, symbol: {}", username, symbol);
         return new Position(username, symbol.toUpperCase());
@@ -378,17 +392,12 @@ public class PositionManager {
                     .filter(history -> username.equals(history.getUsername()))
                     .count();
         }
-        
+
         if (bigQueryEnabled && bigQueryService != null) {
             List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username);
             return bigQueryTradeHistories.size();
         }
-        
-        if (databasePersistenceEnabled) {
-            Long count = tradeHistoryRepository.countByUsername(username);
-            return count != null ? count.intValue() : 0;
-        }
-        
+
         return 0;
     }
 
@@ -399,19 +408,14 @@ public class PositionManager {
                     .mapToDouble(TradeHistory::getAmount)
                     .sum();
         }
-        
+
         if (bigQueryEnabled && bigQueryService != null) {
             List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username);
             return bigQueryTradeHistories.stream()
                     .mapToDouble(trade -> trade.getAmount() != null ? trade.getAmount() : 0.0)
                     .sum();
         }
-        
-        if (databasePersistenceEnabled) {
-            Double amount = tradeHistoryRepository.sumAmountByUsername(username);
-            return amount != null ? amount : 0.0;
-        }
-        
+
         return 0.0;
     }
 
@@ -424,7 +428,7 @@ public class PositionManager {
                         Collectors.counting()
                     ));
         }
-        
+
         if (bigQueryEnabled && bigQueryService != null) {
             List<BigQueryTradeHistoryEntity> bigQueryTradeHistories = bigQueryService.queryTradeHistory(username);
             return bigQueryTradeHistories.stream()
@@ -433,16 +437,7 @@ public class PositionManager {
                         Collectors.counting()
                     ));
         }
-        
-        if (databasePersistenceEnabled) {
-            return tradeHistoryRepository.countByUsernameGroupBySymbol(username)
-                    .stream()
-                    .collect(Collectors.toMap(
-                        result -> (String) result[0],
-                        result -> (Long) result[1]
-                    ));
-        }
-        
+
         return new HashMap<>();
     }
 
@@ -452,44 +447,85 @@ public class PositionManager {
             positionsCache.clear();
             tradeHistoriesCache.clear();
         }
-        
-        if (databasePersistenceEnabled) {
-            positionRepository.deleteAll();
-            tradeHistoryRepository.deleteAll();
-        }
-        
+
         log.info("All position and trade history data cleared");
     }
+
+    // 現金管理メソッド
+    private static final String CASH_SYMBOL = "JPY";
     
-    // Helper methods for database operations
-    private void savePositionToDatabase(Position position) {
-        try {
-            PositionEntity entity = new PositionEntity(position);
-            positionRepository.save(entity);
-            log.debug("Position saved to database: {}", entity.getId());
-            
-            // BigQueryにも保存
-            if (bigQueryEnabled && bigQueryService != null) {
-                savePositionToBigQuery(position);
-            }
-        } catch (Exception e) {
-            log.error("Error saving position to database: " + position.getUsername() + "_" + position.getSymbol(), e);
+    /**
+     * ユーザーの現金残高を取得
+     */
+    public double getCashBalance(String username) {
+        Position cashPosition = getPosition(username, CASH_SYMBOL);
+        if (cashPosition == null) {
+            // 現金ポジションが存在しない場合は0を返す
+            return 0.0;
         }
+        // 現金残高は 買い金額 - 売り金額 で計算
+        return cashPosition.getTotalBuyAmount() - cashPosition.getTotalSellAmount();
     }
     
-    private void saveTradeHistoryToDatabase(TradeHistory tradeHistory) {
-        try {
-            TradeHistoryEntity entity = new TradeHistoryEntity(tradeHistory);
-            tradeHistoryRepository.save(entity);
-            log.debug("Trade history saved to database: {}", entity.getExecId());
-            
-            // BigQueryにも保存
-            if (bigQueryEnabled && bigQueryService != null) {
-                saveTradeHistoryToBigQuery(tradeHistory);
-            }
-        } catch (Exception e) {
-            log.error("Error saving trade history to database: " + tradeHistory.getExecID(), e);
+    /**
+     * ユーザーの現金残高を更新
+     */
+    public void updateCashBalance(String username, double amount) {
+        Position cashPosition = getOrCreatePosition(username, CASH_SYMBOL);
+        
+        // 現金増加の場合
+        if (amount > 0) {
+            cashPosition.addBuyTrade(amount, 1.0); // 現金は価格1円で管理
         }
+        // 現金減少の場合
+        else if (amount < 0) {
+            double absAmount = Math.abs(amount);
+            // 現在の残高をチェック
+            double currentBalance = getCashBalance(username);
+            if (currentBalance >= absAmount) {
+                cashPosition.addSellTrade(absAmount, 1.0); // 現金は価格1円で管理
+            } else {
+                log.error("Insufficient cash balance for user: {}. Required: {}, Available: {}", 
+                         username, absAmount, currentBalance);
+                throw new InsufficientFundsException(username, absAmount, currentBalance);
+            }
+        }
+
+        // BigQueryに保存
+        if (bigQueryEnabled && bigQueryService != null) {
+            savePositionToBigQuery(cashPosition);
+        }
+
+        log.info("Updated cash balance for user: {}. New balance: {}", username, getCashBalance(username));
+    }
+    
+    /**
+     * ユーザーが必要な現金を持っているかチェック
+     */
+    public boolean hasSufficientFunds(String username, double requiredAmount) {
+        double currentBalance = getCashBalance(username);
+        return currentBalance >= requiredAmount;
+    }
+    
+    /**
+     * ユーザーに初期現金残高を設定
+     */
+    public void initializeUserWithCash(String username, double initialAmount) {
+        Position cashPosition = new Position(username, CASH_SYMBOL);
+        cashPosition.addBuyTrade(initialAmount, 1.0); // 現金は価格1円で管理
+        
+        // キャッシュに追加
+        if (memoryCacheEnabled) {
+            positionsCache.computeIfAbsent(username, k -> new ConcurrentHashMap<>())
+                          .put(CASH_SYMBOL, cashPosition);
+        }
+        
+        // BigQueryに保存
+        if (bigQueryEnabled && bigQueryService != null) {
+            savePositionToBigQuery(cashPosition);
+        }
+
+        log.info("Initialized user {} with cash balance: {}", username, initialAmount);
     }
     
     // BigQuery保存メソッド

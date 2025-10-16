@@ -8,6 +8,7 @@ import java.util.List;
 public class PositionResponse {
     private String username;
     private String symbol;
+    private String unit;
     private double totalBuyQty;
     private double totalBuyAmount;
     private double totalSellQty;
@@ -20,12 +21,13 @@ public class PositionResponse {
     private double totalPnL;
     private LocalDateTime lastUpdated;
 
-    public PositionResponse(String username, String symbol, double totalBuyQty, double totalBuyAmount,
+    public PositionResponse(String username, String symbol, String unit, double totalBuyQty, double totalBuyAmount,
                            double totalSellQty, double totalSellAmount, double netQty,
                            double averageBuyPrice, double averageSellPrice, double realizedPnL,
                            double unrealizedPnL, double totalPnL, LocalDateTime lastUpdated) {
         this.username = username;
         this.symbol = symbol;
+        this.unit = unit;
         this.totalBuyQty = totalBuyQty;
         this.totalBuyAmount = totalBuyAmount;
         this.totalSellQty = totalSellQty;

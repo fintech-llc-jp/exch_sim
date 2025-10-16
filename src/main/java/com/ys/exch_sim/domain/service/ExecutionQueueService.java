@@ -3,7 +3,6 @@ package com.ys.exch_sim.domain.service;
 import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.order_exec.Execution;
-import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -18,8 +17,6 @@ import org.springframework.stereotype.Service;
 @Service
 @Slf4j
 public class ExecutionQueueService {
-
-  @Autowired private ExecutionRepository executionRepository;
 
   @Autowired(required = false)
   private BigQueryService bigQueryService;
@@ -39,15 +36,13 @@ public class ExecutionQueueService {
         .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
         .offer(execution);
 
-    // MarketMaker以外の約定をデータベースに永続化
+    // MarketMaker以外の約定をBigQueryに永続化
     if (!execution.getIsMarketMaker()) {
       try {
-        executionRepository.save(execution);
-        log.info("Persisted non-MarketMaker execution to database for user: {}", username);
-
         // BigQueryにも非同期保存
         if (bigQueryEnabled && bigQueryService != null) {
           saveExecutionToBigQueryAsync(execution);
+          log.info("Persisted non-MarketMaker execution to BigQuery for user: {}", username);
         }
 
         // 取引量を更新
@@ -55,7 +50,7 @@ public class ExecutionQueueService {
           volumeCalculationService.updateVolumeOnTrade(execution);
         }
       } catch (Exception e) {
-        log.error("Failed to persist execution to database for user: {}", username, e);
+        log.error("Failed to persist execution to BigQuery for user: {}", username, e);
       }
     }
 

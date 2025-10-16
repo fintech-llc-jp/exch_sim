@@ -73,7 +73,23 @@ public class BigQueryTradeHistoryEntity {
         row.put("price", price);
         row.put("amount", amount);
         row.put("counter_party_username", counterPartyUsername);
-        row.put("timestamp", timestamp);
+
+        // Convert ISO string to BigQuery TIMESTAMP format (seconds.microseconds since epoch)
+        if (timestamp != null) {
+            try {
+                LocalDateTime dateTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                // Convert to seconds since epoch (BigQuery TIMESTAMP format)
+                double ts = dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant().getEpochSecond()
+                    + dateTime.getNano() / 1_000_000_000.0;
+                row.put("timestamp", ts);
+            } catch (Exception e) {
+                // If parsing fails, use current timestamp
+                row.put("timestamp", System.currentTimeMillis() / 1000.0);
+            }
+        } else {
+            row.put("timestamp", System.currentTimeMillis() / 1000.0);
+        }
+
         row.put("cl_ord_id", clOrdId);
         row.put("is_market_maker", isMarketMaker);
         return row;
@@ -118,7 +134,19 @@ public class BigQueryTradeHistoryEntity {
         entity.counterPartyUsername = (String) row.get("counter_party_username");
         entity.timestamp = (String) row.get("timestamp");
         entity.clOrdId = (String) row.get("cl_ord_id");
-        entity.isMarketMaker = (Boolean) row.get("is_market_maker");
+        
+        // Safe conversion for isMarketMaker
+        Object isMarketMakerObj = row.get("is_market_maker");
+        if (isMarketMakerObj != null) {
+            if (isMarketMakerObj instanceof Boolean) {
+                entity.isMarketMaker = (Boolean) isMarketMakerObj;
+            } else if (isMarketMakerObj instanceof String) {
+                entity.isMarketMaker = Boolean.parseBoolean((String) isMarketMakerObj);
+            }
+        } else {
+            entity.isMarketMaker = false; // Default value
+        }
+        
         return entity;
     }
     
@@ -138,7 +166,23 @@ public class BigQueryTradeHistoryEntity {
             clOrdId
         );
         if (timestamp != null) {
-            tradeHistory.setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            try {
+                // Try parsing as ISO format first
+                tradeHistory.setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            } catch (Exception e) {
+                try {
+                    // If that fails, try parsing as Unix timestamp (seconds)
+                    double unixTimestamp = Double.parseDouble(timestamp);
+                    tradeHistory.setTimestamp(LocalDateTime.ofEpochSecond((long) unixTimestamp, 
+                        (int) ((unixTimestamp % 1) * 1_000_000_000), 
+                        java.time.ZoneOffset.UTC).atZone(java.time.ZoneOffset.UTC).toLocalDateTime());
+                } catch (Exception ex) {
+                    // If all parsing fails, use current time
+                    tradeHistory.setTimestamp(LocalDateTime.now());
+                }
+            }
+        } else {
+            tradeHistory.setTimestamp(LocalDateTime.now());
         }
         return tradeHistory;
     }

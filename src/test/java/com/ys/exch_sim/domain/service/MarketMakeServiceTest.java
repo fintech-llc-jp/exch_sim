@@ -25,13 +25,14 @@ class MarketMakeServiceTest {
     private MarketMakeService marketMakeService;
     private OrderService orderService;
     private InstrumentConfig instrumentConfig;
+    private PositionManager positionManager;
 
     @BeforeEach
     void setUp() {
-        ExecutionQueueService executionQueueService = new ExecutionQueueService();
+        ExecutionQueueService executionQueueService = mock(ExecutionQueueService.class);
         PositionRepository positionRepository = mock(PositionRepository.class);
         TradeHistoryRepository tradeHistoryRepository = mock(TradeHistoryRepository.class);
-        PositionManager positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true, false);
+        positionManager = new PositionManager(positionRepository, tradeHistoryRepository, true);
         
         // InstrumentConfigをモック化
         instrumentConfig = mock(InstrumentConfig.class);
@@ -53,6 +54,17 @@ class MarketMakeServiceTest {
         
         orderService = new OrderService(executionQueueService, instrumentConfig, positionManager);
         marketMakeService = new MarketMakeService(orderService, instrumentConfig);
+        
+        // テストユーザーに初期現金残高を設定
+        initializeTestUserCash("marketmaker1", 1000000.0);
+        initializeTestUserCash("testuser", 1000000.0);
+    }
+    
+    /**
+     * テストユーザーに初期現金残高を設定するヘルパーメソッド
+     */
+    private void initializeTestUserCash(String username, double initialCash) {
+        positionManager.initializeUserWithCash(username, initialCash);
     }
 
     @Test

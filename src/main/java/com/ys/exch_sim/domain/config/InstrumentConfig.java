@@ -18,13 +18,47 @@ public class InstrumentConfig {
         private long priceMultiplier;
         private long qtyMultiplier;
         private String type; // Cash or FX
-        
+
         public boolean isCash() {
             return "Cash".equalsIgnoreCase(type);
         }
-        
+
         public boolean isFX() {
             return "FX".equalsIgnoreCase(type);
+        }
+
+        /**
+         * Get the minimum quantity that can be represented with this instrument's qtyMultiplier
+         * @return minimum quantity (e.g., 0.001 for qtyMultiplier=1000)
+         */
+        public double getMinimumQuantity() {
+            return 1.0 / qtyMultiplier;
+        }
+
+        /**
+         * Normalize quantity to the minimum unit by truncating extra precision
+         * For example, with qtyMultiplier=1000 (min unit = 0.001):
+         *   0.0019 -> 0.001
+         *   0.0025 -> 0.002
+         * @param quantity the quantity to normalize
+         * @return normalized quantity (truncated to minimum unit)
+         */
+        public double normalizeQuantity(double quantity) {
+            if (quantity <= 0) {
+                return 0.0;
+            }
+            // Convert to long representation and back to truncate extra precision
+            long longQty = (long) (quantity * qtyMultiplier);
+            return (double) longQty / qtyMultiplier;
+        }
+
+        /**
+         * Validate if the quantity is positive after normalization
+         * @param quantity the quantity to validate
+         * @return true if quantity is valid (positive after normalization), false otherwise
+         */
+        public boolean isValidQuantity(double quantity) {
+            return normalizeQuantity(quantity) > 0;
         }
     }
 
