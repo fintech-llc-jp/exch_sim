@@ -1,0 +1,736 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :resolveMainClassName
+
+> Task :bootRun
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v3.1.0)
+
+2025-10-08T18:00:09.343+09:00 ERROR 1989 --- [           main] i.n.r.d.DnsServerAddressStreamProviders  : Unable to load io.netty.resolver.dns.macos.MacOSDnsServerAddressStreamProvider, fallback to system defaults. This may result in incorrect DNS resolutions on MacOS. Check whether you have a dependency on 'io.netty:netty-resolver-dns-native-macos'. Use DEBUG level to see the full stack: java.lang.UnsatisfiedLinkError: failed to load the required native library
+2025-10-08T18:00:09.933+09:00 ERROR 1989 --- [onPool-worker-1] c.y.e.d.service.MarketDataSyncService    : ❌ MarketBoard Update - Error updating market board for symbol: B_BTCJPY, error: MarketBoard not found for symbol: B_BTCJPY. Available symbols: []
+
+java.lang.RuntimeException: MarketBoard not found for symbol: B_BTCJPY. Available symbols: []
+	at com.ys.exch_sim.domain.service.MarketDataSyncService.getOrCreateMarketBoard(MarketDataSyncService.java:236) ~[main/:na]
+	at com.ys.exch_sim.domain.service.MarketDataSyncService.updateMarketBoard(MarketDataSyncService.java:68) ~[main/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569) ~[na:na]
+	at org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:343) ~[spring-aop-6.0.9.jar:6.0.9]
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:698) ~[spring-aop-6.0.9.jar:6.0.9]
+	at com.ys.exch_sim.domain.service.MarketDataSyncService$$SpringCGLIB$$0.updateMarketBoard(<generated>) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.service.DirectMarketDataService.processMarketBoard(DirectMarketDataService.java:60) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.service.DirectMarketDataService.lambda$processMarketBoardAsync$0(DirectMarketDataService.java:31) ~[main/:na]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.exec(CompletableFuture.java:1796) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:373) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinPool$WorkQueue.topLevelExec(ForkJoinPool.java:1182) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinPool.scan(ForkJoinPool.java:1655) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:1622) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:165) ~[na:na]
+
+2025-10-08T18:00:09.933+09:00 ERROR 1989 --- [onPool-worker-2] c.y.e.d.service.MarketDataSyncService    : ❌ MarketBoard Update - Error updating market board for symbol: B_FX_BTCJPY, error: MarketBoard not found for symbol: B_FX_BTCJPY. Available symbols: []
+
+java.lang.RuntimeException: MarketBoard not found for symbol: B_FX_BTCJPY. Available symbols: []
+	at com.ys.exch_sim.domain.service.MarketDataSyncService.getOrCreateMarketBoard(MarketDataSyncService.java:236) ~[main/:na]
+	at com.ys.exch_sim.domain.service.MarketDataSyncService.updateMarketBoard(MarketDataSyncService.java:68) ~[main/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569) ~[na:na]
+	at org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:343) ~[spring-aop-6.0.9.jar:6.0.9]
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:698) ~[spring-aop-6.0.9.jar:6.0.9]
+	at com.ys.exch_sim.domain.service.MarketDataSyncService$$SpringCGLIB$$0.updateMarketBoard(<generated>) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.service.DirectMarketDataService.processMarketBoard(DirectMarketDataService.java:60) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.service.DirectMarketDataService.lambda$processMarketBoardAsync$0(DirectMarketDataService.java:31) ~[main/:na]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.exec(CompletableFuture.java:1796) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:373) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinPool$WorkQueue.topLevelExec(ForkJoinPool.java:1182) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinPool.scan(ForkJoinPool.java:1655) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:1622) ~[na:na]
+	at java.base/java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:165) ~[na:na]
+
+2025-10-08T18:03:09.734+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Connection has been closed BEFORE send operation
+2025-10-08T18:03:09.734+09:00 ERROR 1989 --- [     parallel-2] reactor.core.publisher.Operators         : Operator called default onErrorDropped
+
+reactor.core.Exceptions$ErrorCallbackNotImplemented: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+Caused by: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+	at reactor.netty.channel.AbortedException.beforeSend(AbortedException.java:59) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.http.HttpOperations.then(HttpOperations.java:194) ~[reactor-netty-http-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:735) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:728) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.then(NettyOutbound.java:358) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.channel.ChannelOperations.sendObject(ChannelOperations.java:303) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.sendObject(NettyOutbound.java:246) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at org.springframework.web.reactive.socket.adapter.ReactorNettyWebSocketSession.send(ReactorNettyWebSocketSession.java:110) ~[spring-webflux-6.0.9.jar:6.0.9]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.sendKeepalive(BitflyerMarketDataClient.java:647) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.lambda$startKeepalive$11(BitflyerMarketDataClient.java:607) ~[main/:na]
+	at reactor.core.publisher.LambdaSubscriber.onNext(LambdaSubscriber.java:160) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.publisher.FluxInterval$IntervalRunnable.run(FluxInterval.java:125) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.call(PeriodicWorkerTask.java:59) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.run(PeriodicWorkerTask.java:73) ~[reactor-core-3.5.6.jar:3.5.6]
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
+	at java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+
+2025-10-08T18:06:39.761+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Connection has been closed BEFORE send operation
+2025-10-08T18:06:39.762+09:00 ERROR 1989 --- [     parallel-1] reactor.core.publisher.Operators         : Operator called default onErrorDropped
+
+reactor.core.Exceptions$ErrorCallbackNotImplemented: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+Caused by: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+	at reactor.netty.channel.AbortedException.beforeSend(AbortedException.java:59) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.http.HttpOperations.then(HttpOperations.java:194) ~[reactor-netty-http-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:735) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:728) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.then(NettyOutbound.java:358) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.channel.ChannelOperations.sendObject(ChannelOperations.java:303) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.sendObject(NettyOutbound.java:246) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at org.springframework.web.reactive.socket.adapter.ReactorNettyWebSocketSession.send(ReactorNettyWebSocketSession.java:110) ~[spring-webflux-6.0.9.jar:6.0.9]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.sendKeepalive(BitflyerMarketDataClient.java:647) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.lambda$startKeepalive$11(BitflyerMarketDataClient.java:607) ~[main/:na]
+	at reactor.core.publisher.LambdaSubscriber.onNext(LambdaSubscriber.java:160) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.publisher.FluxInterval$IntervalRunnable.run(FluxInterval.java:125) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.call(PeriodicWorkerTask.java:59) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.run(PeriodicWorkerTask.java:73) ~[reactor-core-3.5.6.jar:3.5.6]
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
+	at java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+
+2025-10-08T18:09:35.690+09:00 ERROR 1989 --- [nio-8080-exec-3] c.y.e.s.controller.AuthController        : AuthController: Login failed for user: trader001
+
+org.springframework.security.authentication.BadCredentialsException: Bad credentials
+	at org.springframework.security.authentication.dao.DaoAuthenticationProvider.additionalAuthenticationChecks(DaoAuthenticationProvider.java:89) ~[spring-security-core-6.1.0.jar:6.1.0]
+	at org.springframework.security.authentication.dao.AbstractUserDetailsAuthenticationProvider.authenticate(AbstractUserDetailsAuthenticationProvider.java:147) ~[spring-security-core-6.1.0.jar:6.1.0]
+	at org.springframework.security.authentication.ProviderManager.authenticate(ProviderManager.java:182) ~[spring-security-core-6.1.0.jar:6.1.0]
+	at com.ys.exch_sim.security.controller.AuthController.authenticate(AuthController.java:57) ~[main/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:118) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1081) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:974) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1011) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:914) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:590) ~[tomcat-embed-core-10.1.8.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:885) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658) ~[tomcat-embed-core-10.1.8.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:205) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51) ~[tomcat-embed-websocket-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:110) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.security.web.FilterChainProxy.lambda$doFilterInternal$3(FilterChainProxy.java:231) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$FilterObservation$SimpleFilterObservation.lambda$wrap$1(ObservationFilterChainDecorator.java:477) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$AroundFilterObservation$SimpleAroundFilterObservation.lambda$wrap$1(ObservationFilterChainDecorator.java:338) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator.lambda$wrapSecured$0(ObservationFilterChainDecorator.java:80) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:126) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.intercept.AuthorizationFilter.doFilter(AuthorizationFilter.java:100) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.ExceptionTranslationFilter.doFilter(ExceptionTranslationFilter.java:126) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.ExceptionTranslationFilter.doFilter(ExceptionTranslationFilter.java:120) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.SessionManagementFilter.doFilter(SessionManagementFilter.java:131) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.SessionManagementFilter.doFilter(SessionManagementFilter.java:85) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.AnonymousAuthenticationFilter.doFilter(AnonymousAuthenticationFilter.java:100) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter.doFilter(SecurityContextHolderAwareRequestFilter.java:179) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.savedrequest.RequestCacheAwareFilter.doFilter(RequestCacheAwareFilter.java:63) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at com.ys.exch_sim.security.jwt.JwtAuthenticationFilter.doFilterInternal(JwtAuthenticationFilter.java:39) ~[main/:na]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.logout.LogoutFilter.doFilter(LogoutFilter.java:107) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.logout.LogoutFilter.doFilter(LogoutFilter.java:93) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.CorsFilter.doFilterInternal(CorsFilter.java:91) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.header.HeaderWriterFilter.doHeadersAfter(HeaderWriterFilter.java:90) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.header.HeaderWriterFilter.doFilterInternal(HeaderWriterFilter.java:75) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.SecurityContextHolderFilter.doFilter(SecurityContextHolderFilter.java:82) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.SecurityContextHolderFilter.doFilter(SecurityContextHolderFilter.java:69) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.request.async.WebAsyncManagerIntegrationFilter.doFilterInternal(WebAsyncManagerIntegrationFilter.java:62) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.DisableEncodeUrlFilter.doFilterInternal(DisableEncodeUrlFilter.java:42) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$AroundFilterObservation$SimpleAroundFilterObservation.lambda$wrap$0(ObservationFilterChainDecorator.java:321) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:222) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.FilterChainProxy.doFilterInternal(FilterChainProxy.java:233) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.FilterChainProxy.doFilter(FilterChainProxy.java:191) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.DelegatingFilterProxy.invokeDelegate(DelegatingFilterProxy.java:352) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.DelegatingFilterProxy.doFilter(DelegatingFilterProxy.java:268) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.ServerHttpObservationFilter.doFilterInternal(ServerHttpObservationFilter.java:109) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:166) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:482) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:115) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:341) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:390) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:894) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1741) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+
+2025-10-08T18:10:40.174+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Connection has been closed BEFORE send operation
+2025-10-08T18:10:40.175+09:00 ERROR 1989 --- [     parallel-4] reactor.core.publisher.Operators         : Operator called default onErrorDropped
+
+reactor.core.Exceptions$ErrorCallbackNotImplemented: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+Caused by: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+	at reactor.netty.channel.AbortedException.beforeSend(AbortedException.java:59) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.http.HttpOperations.then(HttpOperations.java:194) ~[reactor-netty-http-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:735) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:728) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.then(NettyOutbound.java:358) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.channel.ChannelOperations.sendObject(ChannelOperations.java:303) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.sendObject(NettyOutbound.java:246) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at org.springframework.web.reactive.socket.adapter.ReactorNettyWebSocketSession.send(ReactorNettyWebSocketSession.java:110) ~[spring-webflux-6.0.9.jar:6.0.9]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.sendKeepalive(BitflyerMarketDataClient.java:647) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.lambda$startKeepalive$11(BitflyerMarketDataClient.java:607) ~[main/:na]
+	at reactor.core.publisher.LambdaSubscriber.onNext(LambdaSubscriber.java:160) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.publisher.FluxInterval$IntervalRunnable.run(FluxInterval.java:125) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.call(PeriodicWorkerTask.java:59) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.run(PeriodicWorkerTask.java:73) ~[reactor-core-3.5.6.jar:3.5.6]
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
+	at java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+
+2025-10-08T18:11:09.552+09:00 ERROR 1989 --- [nio-8080-exec-9] c.y.e.domain.service.OrderService        : Error processing order for user: test01
+
+com.ys.exch_sim.domain.exception.InsufficientFundsException: 資金不足: ユーザー=test01, 必要金額=18700.00円, 利用可能金額=0.00円
+	at com.ys.exch_sim.domain.service.OrderService.validateOrderFunds(OrderService.java:518) ~[main/:na]
+	at com.ys.exch_sim.domain.service.OrderService.processNewOrder(OrderService.java:128) ~[main/:na]
+	at com.ys.exch_sim.domain.controller.OrderController.newOrder(OrderController.java:86) ~[main/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:118) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1081) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:974) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1011) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:914) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:590) ~[tomcat-embed-core-10.1.8.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:885) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658) ~[tomcat-embed-core-10.1.8.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:205) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51) ~[tomcat-embed-websocket-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:110) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.security.web.FilterChainProxy.lambda$doFilterInternal$3(FilterChainProxy.java:231) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$FilterObservation$SimpleFilterObservation.lambda$wrap$1(ObservationFilterChainDecorator.java:477) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$AroundFilterObservation$SimpleAroundFilterObservation.lambda$wrap$1(ObservationFilterChainDecorator.java:338) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator.lambda$wrapSecured$0(ObservationFilterChainDecorator.java:80) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:126) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.intercept.AuthorizationFilter.doFilter(AuthorizationFilter.java:100) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.ExceptionTranslationFilter.doFilter(ExceptionTranslationFilter.java:126) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.ExceptionTranslationFilter.doFilter(ExceptionTranslationFilter.java:120) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.SessionManagementFilter.doFilter(SessionManagementFilter.java:131) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.SessionManagementFilter.doFilter(SessionManagementFilter.java:85) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.AnonymousAuthenticationFilter.doFilter(AnonymousAuthenticationFilter.java:100) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter.doFilter(SecurityContextHolderAwareRequestFilter.java:179) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.savedrequest.RequestCacheAwareFilter.doFilter(RequestCacheAwareFilter.java:63) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at com.ys.exch_sim.security.jwt.JwtAuthenticationFilter.doFilterInternal(JwtAuthenticationFilter.java:70) ~[main/:na]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.logout.LogoutFilter.doFilter(LogoutFilter.java:107) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.logout.LogoutFilter.doFilter(LogoutFilter.java:93) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.CorsFilter.doFilterInternal(CorsFilter.java:91) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.header.HeaderWriterFilter.doHeadersAfter(HeaderWriterFilter.java:90) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.header.HeaderWriterFilter.doFilterInternal(HeaderWriterFilter.java:75) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.SecurityContextHolderFilter.doFilter(SecurityContextHolderFilter.java:82) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.SecurityContextHolderFilter.doFilter(SecurityContextHolderFilter.java:69) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.request.async.WebAsyncManagerIntegrationFilter.doFilterInternal(WebAsyncManagerIntegrationFilter.java:62) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.DisableEncodeUrlFilter.doFilterInternal(DisableEncodeUrlFilter.java:42) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$AroundFilterObservation$SimpleAroundFilterObservation.lambda$wrap$0(ObservationFilterChainDecorator.java:321) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:222) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.FilterChainProxy.doFilterInternal(FilterChainProxy.java:233) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.FilterChainProxy.doFilter(FilterChainProxy.java:191) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.DelegatingFilterProxy.invokeDelegate(DelegatingFilterProxy.java:352) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.DelegatingFilterProxy.doFilter(DelegatingFilterProxy.java:268) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.ServerHttpObservationFilter.doFilterInternal(ServerHttpObservationFilter.java:109) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:166) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:482) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:115) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:341) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:390) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:894) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1741) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+
+2025-10-08T18:11:09.554+09:00 ERROR 1989 --- [nio-8080-exec-9] c.y.e.domain.controller.OrderController  : Error processing new order
+
+java.lang.RuntimeException: Error processing order: 資金不足: ユーザー=test01, 必要金額=18700.00円, 利用可能金額=0.00円
+	at com.ys.exch_sim.domain.service.OrderService.processNewOrder(OrderService.java:156) ~[main/:na]
+	at com.ys.exch_sim.domain.controller.OrderController.newOrder(OrderController.java:86) ~[main/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:118) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1081) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:974) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1011) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:914) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:590) ~[tomcat-embed-core-10.1.8.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:885) ~[spring-webmvc-6.0.9.jar:6.0.9]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658) ~[tomcat-embed-core-10.1.8.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:205) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51) ~[tomcat-embed-websocket-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:110) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.security.web.FilterChainProxy.lambda$doFilterInternal$3(FilterChainProxy.java:231) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$FilterObservation$SimpleFilterObservation.lambda$wrap$1(ObservationFilterChainDecorator.java:477) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$AroundFilterObservation$SimpleAroundFilterObservation.lambda$wrap$1(ObservationFilterChainDecorator.java:338) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator.lambda$wrapSecured$0(ObservationFilterChainDecorator.java:80) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:126) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.intercept.AuthorizationFilter.doFilter(AuthorizationFilter.java:100) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.ExceptionTranslationFilter.doFilter(ExceptionTranslationFilter.java:126) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.access.ExceptionTranslationFilter.doFilter(ExceptionTranslationFilter.java:120) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.SessionManagementFilter.doFilter(SessionManagementFilter.java:131) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.SessionManagementFilter.doFilter(SessionManagementFilter.java:85) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.AnonymousAuthenticationFilter.doFilter(AnonymousAuthenticationFilter.java:100) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter.doFilter(SecurityContextHolderAwareRequestFilter.java:179) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.savedrequest.RequestCacheAwareFilter.doFilter(RequestCacheAwareFilter.java:63) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at com.ys.exch_sim.security.jwt.JwtAuthenticationFilter.doFilterInternal(JwtAuthenticationFilter.java:70) ~[main/:na]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.logout.LogoutFilter.doFilter(LogoutFilter.java:107) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.authentication.logout.LogoutFilter.doFilter(LogoutFilter.java:93) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.CorsFilter.doFilterInternal(CorsFilter.java:91) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.header.HeaderWriterFilter.doHeadersAfter(HeaderWriterFilter.java:90) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.header.HeaderWriterFilter.doFilterInternal(HeaderWriterFilter.java:75) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.SecurityContextHolderFilter.doFilter(SecurityContextHolderFilter.java:82) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.SecurityContextHolderFilter.doFilter(SecurityContextHolderFilter.java:69) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.context.request.async.WebAsyncManagerIntegrationFilter.doFilterInternal(WebAsyncManagerIntegrationFilter.java:62) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.session.DisableEncodeUrlFilter.doFilterInternal(DisableEncodeUrlFilter.java:42) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:238) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$AroundFilterObservation$SimpleAroundFilterObservation.lambda$wrap$0(ObservationFilterChainDecorator.java:321) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:222) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:135) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.FilterChainProxy.doFilterInternal(FilterChainProxy.java:233) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.security.web.FilterChainProxy.doFilter(FilterChainProxy.java:191) ~[spring-security-web-6.1.0.jar:6.1.0]
+	at org.springframework.web.filter.DelegatingFilterProxy.invokeDelegate(DelegatingFilterProxy.java:352) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.DelegatingFilterProxy.doFilter(DelegatingFilterProxy.java:268) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.ServerHttpObservationFilter.doFilterInternal(ServerHttpObservationFilter.java:109) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.9.jar:6.0.9]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:166) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:482) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:115) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:341) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:390) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:894) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1741) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.8.jar:10.1.8]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+
+2025-10-08T18:17:39.659+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Connection has been closed BEFORE send operation
+2025-10-08T18:17:39.662+09:00 ERROR 1989 --- [     parallel-7] reactor.core.publisher.Operators         : Operator called default onErrorDropped
+
+reactor.core.Exceptions$ErrorCallbackNotImplemented: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+Caused by: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+	at reactor.netty.channel.AbortedException.beforeSend(AbortedException.java:59) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.http.HttpOperations.then(HttpOperations.java:194) ~[reactor-netty-http-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:735) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:728) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.then(NettyOutbound.java:358) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.channel.ChannelOperations.sendObject(ChannelOperations.java:303) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.sendObject(NettyOutbound.java:246) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at org.springframework.web.reactive.socket.adapter.ReactorNettyWebSocketSession.send(ReactorNettyWebSocketSession.java:110) ~[spring-webflux-6.0.9.jar:6.0.9]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.sendKeepalive(BitflyerMarketDataClient.java:647) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.lambda$startKeepalive$11(BitflyerMarketDataClient.java:607) ~[main/:na]
+	at reactor.core.publisher.LambdaSubscriber.onNext(LambdaSubscriber.java:160) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.publisher.FluxInterval$IntervalRunnable.run(FluxInterval.java:125) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.call(PeriodicWorkerTask.java:59) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.run(PeriodicWorkerTask.java:73) ~[reactor-core-3.5.6.jar:3.5.6]
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
+	at java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+
+2025-10-08T18:21:39.646+09:00 ERROR 1989 --- [     parallel-3] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 419s
+2025-10-08T18:26:39.671+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Connection has been closed BEFORE send operation
+2025-10-08T18:26:39.672+09:00 ERROR 1989 --- [     parallel-5] reactor.core.publisher.Operators         : Operator called default onErrorDropped
+
+reactor.core.Exceptions$ErrorCallbackNotImplemented: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+Caused by: reactor.netty.channel.AbortedException: Connection has been closed BEFORE send operation
+	at reactor.netty.channel.AbortedException.beforeSend(AbortedException.java:59) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.http.HttpOperations.then(HttpOperations.java:194) ~[reactor-netty-http-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:735) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.ReactorNetty$OutboundThen.<init>(ReactorNetty.java:728) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.then(NettyOutbound.java:358) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.channel.ChannelOperations.sendObject(ChannelOperations.java:303) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at reactor.netty.NettyOutbound.sendObject(NettyOutbound.java:246) ~[reactor-netty-core-1.1.7.jar:1.1.7]
+	at org.springframework.web.reactive.socket.adapter.ReactorNettyWebSocketSession.send(ReactorNettyWebSocketSession.java:110) ~[spring-webflux-6.0.9.jar:6.0.9]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.sendKeepalive(BitflyerMarketDataClient.java:647) ~[main/:na]
+	at com.ys.exch_sim.domain.market_data.client.BitflyerMarketDataClient.lambda$startKeepalive$11(BitflyerMarketDataClient.java:607) ~[main/:na]
+	at reactor.core.publisher.LambdaSubscriber.onNext(LambdaSubscriber.java:160) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.publisher.FluxInterval$IntervalRunnable.run(FluxInterval.java:125) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.call(PeriodicWorkerTask.java:59) ~[reactor-core-3.5.6.jar:3.5.6]
+	at reactor.core.scheduler.PeriodicWorkerTask.run(PeriodicWorkerTask.java:73) ~[reactor-core-3.5.6.jar:3.5.6]
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
+	at java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+
+2025-10-08T18:31:39.777+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 600s
+2025-10-08T18:33:44.724+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 725s
+2025-10-08T18:36:39.746+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 900s
+2025-10-08T18:38:39.775+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1020s
+2025-10-08T18:39:11.045+09:00 ERROR 1989 --- [ctor-http-nio-4] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T18:40:12.439+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1112s
+2025-10-08T18:41:39.779+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1200s
+2025-10-08T18:42:04.188+09:00 ERROR 1989 --- [ctor-http-nio-6] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T18:43:10.541+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1290s
+2025-10-08T18:43:48.890+09:00 ERROR 1989 --- [ctor-http-nio-7] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T18:44:51.064+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1391s
+2025-10-08T18:46:39.782+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1500s
+2025-10-08T18:48:39.803+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1620s
+2025-10-08T18:50:39.819+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1740s
+2025-10-08T18:52:39.845+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1860s
+2025-10-08T18:54:39.861+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 1980s
+2025-10-08T18:56:39.862+09:00 ERROR 1989 --- [     parallel-3] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 2100s
+2025-10-08T18:57:35.053+09:00 ERROR 1989 --- [ctor-http-nio-6] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T18:58:36.756+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 2217s
+2025-10-08T19:00:12.142+09:00 ERROR 1989 --- [ctor-http-nio-7] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T19:01:14.549+09:00 ERROR 1989 --- [     parallel-3] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 2374s
+2025-10-08T19:03:39.914+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 2520s
+2025-10-08T19:04:38.392+09:00 ERROR 1989 --- [ctor-http-nio-1] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T19:05:39.669+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 2639s
+2025-10-08T19:09:13.856+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 2854s
+2025-10-08T19:10:44.937+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 2945s
+2025-10-08T19:11:56.071+09:00 ERROR 1989 --- [ctor-http-nio-4] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T19:12:57.377+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 3077s
+2025-10-08T19:14:40.017+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 3180s
+2025-10-08T19:16:40.006+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 3300s
+2025-10-08T19:18:40.000+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 3420s
+2025-10-08T19:19:37.163+09:00 ERROR 1989 --- [ctor-http-nio-8] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T19:20:38.505+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 3538s
+2025-10-08T19:23:40.452+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 3720s
+2025-10-08T19:28:48.590+09:00 ERROR 1989 --- [ctor-http-nio-3] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: connection timed out: ws.lightstream.bitflyer.com/20.210.51.169:443
+2025-10-08T19:29:49.861+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 4090s
+2025-10-08T19:31:40.069+09:00 ERROR 1989 --- [     parallel-3] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 4200s
+2025-10-08T19:33:40.136+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 4320s
+2025-10-08T19:36:40.057+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 4500s
+2025-10-08T19:37:24.030+09:00 ERROR 1989 --- [ctor-http-nio-7] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T19:38:25.239+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 4605s
+2025-10-08T19:39:04.065+09:00 ERROR 1989 --- [ctor-http-nio-8] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T19:40:06.420+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 4706s
+2025-10-08T19:42:40.147+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 4860s
+2025-10-08T19:43:05.986+09:00 ERROR 1989 --- [ctor-http-nio-2] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T19:46:08.953+09:00 ERROR 1989 --- [ctor-http-nio-3] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: connection timed out: ws.lightstream.bitflyer.com/20.210.51.169:443
+2025-10-08T19:47:11.310+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 5131s
+2025-10-08T19:48:40.131+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 5220s
+2025-10-08T19:50:40.142+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 5340s
+2025-10-08T19:52:40.116+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 5460s
+2025-10-08T19:55:40.330+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 5640s
+2025-10-08T19:56:17.398+09:00 ERROR 1989 --- [ctor-http-nio-8] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T19:57:18.773+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 5739s
+2025-10-08T20:00:40.524+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 5940s
+2025-10-08T20:06:08.883+09:00 ERROR 1989 --- [ctor-http-nio-3] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: connection timed out: ws.lightstream.bitflyer.com/20.210.51.169:443
+2025-10-08T20:07:10.169+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 6330s
+2025-10-08T20:07:33.270+09:00 ERROR 1989 --- [ctor-http-nio-4] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T20:08:35.885+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 6416s
+2025-10-08T20:09:48.165+09:00 ERROR 1989 --- [ctor-http-nio-5] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Operation timed out
+2025-10-08T20:10:52.172+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 6552s
+2025-10-08T20:11:49.479+09:00 ERROR 1989 --- [ctor-http-nio-6] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T20:12:13.483+09:00 ERROR 1989 --- [ctor-http-nio-3] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ GMO WebSocket connection error - URL: wss://api.coin.z.com/ws/public/v1, Error: Connection reset
+2025-10-08T20:12:58.115+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 6678s
+2025-10-08T20:14:10.379+09:00 ERROR 1989 --- [ctor-http-nio-7] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T20:15:25.821+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 6826s
+2025-10-08T20:16:30.559+09:00 ERROR 1989 --- [ctor-http-nio-1] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T20:17:58.938+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 6979s
+2025-10-08T20:19:40.510+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 7080s
+2025-10-08T20:22:40.464+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 7260s
+2025-10-08T20:24:03.610+09:00 ERROR 1989 --- [ctor-http-nio-4] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T20:25:04.865+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 7405s
+2025-10-08T20:28:40.515+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 7620s
+2025-10-08T20:30:23.119+09:00 ERROR 1989 --- [ctor-http-nio-6] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T20:31:24.401+09:00 ERROR 1989 --- [     parallel-3] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 7784s
+2025-10-08T20:36:48.671+09:00 ERROR 1989 --- [ctor-http-nio-8] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: connection timed out: ws.lightstream.bitflyer.com/20.210.51.169:443
+2025-10-08T20:37:49.985+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 8170s
+2025-10-08T20:40:40.684+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 8341s
+2025-10-08T20:42:40.823+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 8461s
+2025-10-08T20:45:40.745+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 8641s
+2025-10-08T20:47:31.308+09:00 ERROR 1989 --- [ctor-http-nio-4] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T20:48:32.578+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 8812s
+2025-10-08T20:51:41.417+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 9001s
+2025-10-08T20:53:40.795+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 9121s
+2025-10-08T20:59:54.977+09:00 ERROR 1989 --- [ctor-http-nio-8] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: connection timed out: ws.lightstream.bitflyer.com/20.210.51.169:443
+2025-10-08T21:00:56.603+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 9556s
+2025-10-08T21:03:41.226+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 9721s
+2025-10-08T21:04:29.732+09:00 ERROR 1989 --- [ctor-http-nio-2] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T21:05:31.070+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 9831s
+2025-10-08T21:07:41.176+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 9961s
+2025-10-08T21:08:02.979+09:00 ERROR 1989 --- [ctor-http-nio-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ GMO WebSocket connection error - URL: wss://api.coin.z.com/ws/public/v1, Error: Connection reset
+2025-10-08T21:10:41.219+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 10141s
+2025-10-08T21:13:41.495+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 10321s
+2025-10-08T21:15:14.775+09:00 ERROR 1989 --- [ctor-http-nio-7] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T21:16:16.078+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 10476s
+2025-10-08T21:19:41.452+09:00 ERROR 1989 --- [     parallel-3] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 10681s
+2025-10-08T21:22:41.744+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 10862s
+2025-10-08T21:23:44.606+09:00 ERROR 1989 --- [ctor-http-nio-2] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T21:24:46.436+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 10986s
+2025-10-08T21:27:41.370+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 11161s
+2025-10-08T21:30:41.448+09:00 ERROR 1989 --- [     parallel-8] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 11341s
+2025-10-08T21:31:03.001+09:00 ERROR 1989 --- [ctor-http-nio-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ GMO WebSocket connection error - URL: wss://api.coin.z.com/ws/public/v1, Error: null
+2025-10-08T21:32:41.351+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 11461s
+2025-10-08T21:35:41.361+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 11641s
+2025-10-08T21:40:41.770+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 11942s
+2025-10-08T21:44:41.465+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 12181s
+2025-10-08T21:46:41.407+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 12301s
+2025-10-08T21:48:05.793+09:00 ERROR 1989 --- [ctor-http-nio-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ GMO WebSocket connection error - URL: wss://api.coin.z.com/ws/public/v1, Error: Connection reset
+2025-10-08T21:49:41.387+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 12481s
+2025-10-08T21:50:49.520+09:00 ERROR 1989 --- [ctor-http-nio-5] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T21:51:50.857+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 12611s
+2025-10-08T21:55:01.499+09:00 ERROR 1989 --- [ctor-http-nio-6] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Operation timed out
+2025-10-08T21:56:03.911+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 12864s
+2025-10-08T21:58:36.399+09:00 ERROR 1989 --- [ctor-http-nio-7] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T21:59:40.676+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 13080s
+2025-10-08T22:01:10.126+09:00 ERROR 1989 --- [ctor-http-nio-8] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T22:02:17.672+09:00 ERROR 1989 --- [     parallel-6] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 13237s
+2025-10-08T22:03:42.102+09:00 ERROR 1989 --- [ctor-http-nio-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ GMO WebSocket connection error - URL: wss://api.coin.z.com/ws/public/v1, Error: Connection reset
+2025-10-08T22:06:41.621+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 13501s
+2025-10-08T22:08:04.702+09:00 ERROR 1989 --- [ctor-http-nio-3] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Connection reset
+2025-10-08T22:09:06.062+09:00 ERROR 1989 --- [     parallel-3] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 13646s
+2025-10-08T22:12:00.494+09:00 ERROR 1989 --- [ctor-http-nio-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ GMO WebSocket connection error - URL: wss://api.coin.z.com/ws/public/v1, Error: Connection reset
+2025-10-08T22:13:41.588+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 13921s
+2025-10-08T22:17:41.619+09:00 ERROR 1989 --- [     parallel-7] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 14161s
+2025-10-08T22:21:41.610+09:00 ERROR 1989 --- [     parallel-2] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 14401s
+2025-10-08T22:24:41.632+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 14581s
+2025-10-08T22:26:59.939+09:00 ERROR 1989 --- [ctor-http-nio-1] c.y.e.d.m.c.BitflyerMarketDataClient     : ❌ Bitflyer WebSocket connection error: Operation timed out
+2025-10-08T22:28:01.229+09:00 ERROR 1989 --- [     parallel-1] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 14781s
+2025-10-08T22:29:56.391+09:00 ERROR 1989 --- [ctor-http-nio-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ GMO WebSocket connection error - URL: wss://api.coin.z.com/ws/public/v1, Error: Connection reset
+2025-10-08T22:30:41.661+09:00 ERROR 1989 --- [     parallel-4] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 14941s
+2025-10-08T22:32:41.670+09:00 ERROR 1989 --- [     parallel-5] c.y.e.d.m.c.MarketDataWebSocketClient    : ❌ Bitflyer WebSocket connection error - URL: wss://ws.lightstream.bitflyer.com/json-rpc, Error: Keepalive timeout - no response for 15061s

@@ -68,32 +68,80 @@ public class BigQueryService {
     }
   }
 
-  /** Insert execution data into BigQuery asynchronously */
+  /** Insert execution data into BigQuery asynchronously with retry logic */
   @Async("bigQueryAsyncExecutor")
   public CompletableFuture<Void> insertExecutionAsync(BigQueryExecutionEntity execution) {
-    try {
-      log.debug("Starting async BigQuery execution insert: {}", execution.getExecId());
+    int maxRetries = 3;
+    int retryDelayMs = 1000;
 
-      TableId tableId = BigQueryExecutionEntity.getTableId(projectId, datasetName);
-      Map<String, Object> row = execution.toBigQueryRow();
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        log.debug("Starting async BigQuery execution insert (attempt {}/{}): {}",
+                  attempt, maxRetries, execution.getExecId());
 
-      InsertAllRequest insertRequest = InsertAllRequest.newBuilder(tableId).addRow(row).build();
+        TableId tableId = BigQueryExecutionEntity.getTableId(projectId, datasetName);
+        Map<String, Object> row = execution.toBigQueryRow();
 
-      InsertAllResponse response = bigQuery.insertAll(insertRequest);
+        InsertAllRequest insertRequest = InsertAllRequest.newBuilder(tableId).addRow(row).build();
 
-      if (response.hasErrors()) {
-        log.error("Error inserting execution to BigQuery (async): {}", response.getInsertErrors());
-        return CompletableFuture.failedFuture(
-            new RuntimeException("Failed to insert execution to BigQuery"));
+        InsertAllResponse response = bigQuery.insertAll(insertRequest);
+
+        if (response.hasErrors()) {
+          log.error("Error inserting execution to BigQuery (async, attempt {}/{}): {}",
+                    attempt, maxRetries, response.getInsertErrors());
+
+          if (attempt == maxRetries) {
+            return CompletableFuture.failedFuture(
+                new RuntimeException("Failed to insert execution to BigQuery after " + maxRetries + " attempts"));
+          }
+
+          // Retry on BigQuery API errors
+          Thread.sleep(retryDelayMs * attempt);
+          continue;
+        }
+
+        log.debug("Successfully inserted execution to BigQuery (async, attempt {}): {}",
+                  attempt, execution.getExecId());
+        return CompletableFuture.completedFuture(null);
+
+      } catch (BigQueryException e) {
+        // Handle BigQuery-specific exceptions (including Broken pipe)
+        log.warn("BigQuery exception on attempt {}/{} for execution {}: {}",
+                 attempt, maxRetries, execution.getExecId(), e.getMessage());
+
+        if (attempt == maxRetries) {
+          log.error("Failed to insert execution to BigQuery after {} attempts: {}",
+                    maxRetries, execution.getExecId(), e);
+          return CompletableFuture.failedFuture(e);
+        }
+
+        try {
+          Thread.sleep(retryDelayMs * attempt);
+        } catch (InterruptedException ie) {
+          Thread.currentThread().interrupt();
+          return CompletableFuture.failedFuture(ie);
+        }
+
+      } catch (Exception e) {
+        log.error("Unexpected error inserting execution to BigQuery (async, attempt {}/{}): {}",
+                  attempt, maxRetries, execution.getExecId(), e);
+
+        if (attempt == maxRetries) {
+          return CompletableFuture.failedFuture(e);
+        }
+
+        try {
+          Thread.sleep(retryDelayMs * attempt);
+        } catch (InterruptedException ie) {
+          Thread.currentThread().interrupt();
+          return CompletableFuture.failedFuture(ie);
+        }
       }
-
-      log.debug("Successfully inserted execution to BigQuery (async): {}", execution.getExecId());
-      return CompletableFuture.completedFuture(null);
-
-    } catch (Exception e) {
-      log.error("Error inserting execution to BigQuery (async): {}", execution.getExecId(), e);
-      return CompletableFuture.failedFuture(e);
     }
+
+    // Should not reach here, but just in case
+    return CompletableFuture.failedFuture(
+        new RuntimeException("Failed to insert execution after retries"));
   }
 
   /** Upsert position data into BigQuery (synchronous version) */

@@ -1,24 +1,91 @@
 #!/bin/bash
 
 # クイックテスト - デバッグ用
-BASE_URL="http://localhost:8080"
-USERNAME="testuser"
-PASSWORD="password123"
+BASE_URL="https://exch-sim-953974838707.asia-northeast1.run.app"
+USERNAME="yukio001"
+PASSWORD="yukio001"
+JWT_CACHE_FILE="/tmp/quick_test_jwt_token"
+
+# JWT有効性チェック関数
+check_jwt_validity() {
+  local token="$1"
+  if [ -z "$token" ] || [ "$token" = "null" ]; then
+    return 1
+  fi
+  
+  # JWTの有効性をシンプルなテストで確認
+  local test_response=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${BASE_URL}/actuator/health" \
+    -H "Authorization: Bearer ${token}")
+  
+  # actuator/healthは認証不要なので、別の方法でJWTをテスト
+  # 代わりにJWTの期限をローカルでチェック
+  local jwt_payload=$(echo "$token" | cut -d'.' -f2)
+  # Base64パディングを追加
+  local padded_payload="${jwt_payload}$(printf '%*s' $(((4 - ${#jwt_payload} % 4) % 4)) '' | tr ' ' '=')"
+  
+  # JWTの有効期限をチェック（簡易版）
+  if command -v base64 &> /dev/null && command -v date &> /dev/null; then
+    local decoded=$(echo "$padded_payload" | base64 -d 2>/dev/null)
+    if [[ $? -eq 0 ]]; then
+      # JWTが正しい形式なら有効とみなす（簡易チェック）
+      return 0
+    fi
+  fi
+  
+  # フォールバック: 常に新しいトークンを取得
+  return 1
+}
+
+# JWT取得またはキャッシュから読み込み
+get_jwt_token() {
+  local cached_token=""
+  
+  # キャッシュファイルから既存トークンを読み込み
+  if [ -f "$JWT_CACHE_FILE" ]; then
+    cached_token=$(cat "$JWT_CACHE_FILE" 2>/dev/null)
+    echo "🔍 キャッシュされたトークンをチェック中..."
+    
+    if check_jwt_validity "$cached_token"; then
+      echo "✅ キャッシュされたトークンが有効です"
+      echo "$cached_token"
+      return 0
+    else
+      echo "⚠️ キャッシュされたトークンが無効です。新しいトークンを取得します。"
+      rm -f "$JWT_CACHE_FILE"
+    fi
+  fi
+  
+  # 新しいトークンを取得
+  echo "🔐 ログイン中..."
+  local login_response=$(curl -s -X POST "${BASE_URL}/api/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\": \"${USERNAME}\", \"password\": \"${PASSWORD}\"}")
+
+  echo "Login response: $login_response"
+
+  local jwt_token=$(echo "$login_response" | jq -r '.token')
+
+  if [ "$jwt_token" = "null" ] || [ -z "$jwt_token" ]; then
+    echo "❌ ログイン失敗"
+    return 1
+  fi
+
+  # トークンをキャッシュファイルに保存
+  echo "$jwt_token" > "$JWT_CACHE_FILE"
+  echo "✅ ログイン成功 - トークンをキャッシュしました"
+  echo "JWT: ${jwt_token}"
+  echo "$jwt_token"
+  return 0
+}
 
 # JWTトークン取得
-echo "🔐 ログイン中..."
-JWT_TOKEN=$(curl -s -X POST "${BASE_URL}/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\": \"${USERNAME}\", \"password\": \"${PASSWORD}\"}" | \
-  jq -r '.token')
-
-if [ "$JWT_TOKEN" = "null" ]; then
-  echo "❌ ログイン失敗"
+JWT_TOKEN=$(get_jwt_token)
+if [ $? -ne 0 ]; then
+  echo "❌ JWT取得に失敗しました"
   exit 1
 fi
 
-echo "✅ ログイン成功"
-echo "JWT: ${JWT_TOKEN:0:50}..."
+echo "🔑 Using JWT Token: ${JWT_TOKEN:0:50}..." # Show first 50 chars
 
 # 引数に応じて処理を分岐
 case "$1" in
@@ -55,8 +122,11 @@ case "$1" in
     ;;
   "queue-size")
     echo "📊 キューサイズ確認..."
-    curl -s -X GET "${BASE_URL}/api/executions/queue-size" \
-      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    RESPONSE=$(curl -s -X GET "${BASE_URL}/api/executions/queue-size" \
+      -H "Authorization: Bearer ${JWT_TOKEN}")
+    echo "Raw response: $RESPONSE"
+    echo "Formatted response:"
+    echo "$RESPONSE" | jq '.' 2>/dev/null || echo "❌ Invalid JSON response"
     ;;
   "board")
     SYMBOL=${2:-"B_FX_BTCJPY"}
@@ -177,6 +247,32 @@ case "$1" in
     curl -s -X GET "${BASE_URL}/api/executions/volume?symbol=${SYMBOL}&fromTime=${FROM_TIME}&toTime=${TO_TIME}" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
     ;;
+  "position-summary")
+    echo "📊 ポートフォリオサマリー取得..."
+    RESPONSE=$(curl -s -X GET "${BASE_URL}/api/positions/summary" \
+      -H "Authorization: Bearer ${JWT_TOKEN}")
+    echo "Raw response: $RESPONSE"
+    echo "Formatted response:"
+    echo "$RESPONSE" | jq '.' 2>/dev/null || echo "❌ Invalid JSON response"
+    ;;
+  "position")
+    SYMBOL=${2:-"B_FX_BTCJPY"}
+    echo "📈 銘柄別ポジション取得 (symbol: ${SYMBOL})..."
+    curl -s -X GET "${BASE_URL}/api/positions/${SYMBOL}" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    ;;
+  "trade-history")
+    LIMIT=${2:-"20"}
+    SYMBOL=${3}
+    echo "📜 取引履歴取得 (limit: ${LIMIT}, symbol: ${SYMBOL})..."
+    if [ -n "$SYMBOL" ]; then
+      curl -s -X GET "${BASE_URL}/api/positions/trades?limit=${LIMIT}&symbol=${SYMBOL}" \
+        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    else
+      curl -s -X GET "${BASE_URL}/api/positions/trades?limit=${LIMIT}" \
+        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    fi
+    ;;
   "full-test")
     echo "🔄 フルテスト実行..."
     echo "1️⃣ 初期キューサイズ:"
@@ -206,6 +302,20 @@ case "$1" in
     echo "6️⃣ 最終キューサイズ:"
     curl -s -X GET "${BASE_URL}/api/executions/queue-size" -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
     ;;
+  "position-test")
+    echo "📊 ポジション関連テスト実行..."
+    echo "1️⃣ ポートフォリオサマリー:"
+    curl -s -X GET "${BASE_URL}/api/positions/summary" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    
+    echo "2️⃣ B_FX_BTCJPYのポジション:"
+    curl -s -X GET "${BASE_URL}/api/positions/B_FX_BTCJPY" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    
+    echo "3️⃣ 取引履歴（最新10件）:"
+    curl -s -X GET "${BASE_URL}/api/positions/trades?limit=10" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    ;;
   *)
     echo "使用方法:"
     echo "  $0 market-buy      - 成行買い注文"
@@ -219,9 +329,13 @@ case "$1" in
     echo "  $0 history-all [PAGE] [SIZE] [SYMBOL] - 全約定履歴取得（デバッグ用）"
     echo "  $0 all-history [PAGE] [SIZE] [SYMBOL] - 全体約定履歴取得（全ユーザー）"
     echo "  $0 volume [SYMBOL] [FROM_TIME] [TO_TIME] - 約定量計算"
+    echo "  $0 position-summary - ポートフォリオサマリー取得"
+    echo "  $0 position [SYMBOL] - 銘柄別ポジション取得"
+    echo "  $0 trade-history [LIMIT] [SYMBOL] - 取引履歴取得"
     echo "  $0 debug           - デバッグ情報取得"
     echo "  $0 db-info         - データベース情報とタイムゾーン確認"
     echo "  $0 trade-insert [SYMBOL] [PRICE] [QUANTITY] [SIDE] - トレード挿入"
     echo "  $0 full-test       - フルテスト実行"
+    echo "  $0 position-test   - ポジション関連テスト実行"
     ;;
 esac

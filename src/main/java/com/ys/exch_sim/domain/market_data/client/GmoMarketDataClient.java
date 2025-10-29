@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.ys.exch_sim.domain.market_data.config.MarketDataClientConfig;
 import com.ys.exch_sim.domain.market_data.dto.ExternalMarketBoardData;
 import com.ys.exch_sim.domain.market_data.dto.ExternalTradeData;
-import com.ys.exch_sim.domain.market_data.service.DirectMarketDataService;
+import com.ys.exch_sim.domain.market_data.service.MarketDataService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.net.URI;
@@ -48,7 +48,7 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
   private static final String SYMBOL_BTC = "BTC";
 
   public GmoMarketDataClient(
-      DirectMarketDataService marketDataService,
+      MarketDataService marketDataService,
       MarketDataClientConfig clientConfig,
       WebSocketClient webSocketClient) {
     super(

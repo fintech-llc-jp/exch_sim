@@ -1,7 +1,7 @@
 package com.ys.exch_sim.domain.market_data.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ys.exch_sim.domain.market_data.service.DirectMarketDataService;
+import com.ys.exch_sim.domain.market_data.service.MarketDataService;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.Disposable;
 
@@ -18,7 +18,7 @@ import reactor.core.Disposable;
 @Slf4j
 public abstract class MarketDataWebSocketClient {
     
-    protected final DirectMarketDataService marketDataService;
+    protected final MarketDataService marketDataService;
     protected final String wsUrl;
     protected final String exchange;
     protected final ObjectMapper objectMapper;
@@ -48,7 +48,7 @@ public abstract class MarketDataWebSocketClient {
     protected volatile Instant lastNetworkErrorTime;
     
     protected MarketDataWebSocketClient(
-            DirectMarketDataService marketDataService,
+            MarketDataService marketDataService,
             String wsUrl,
             String exchange,
             long reconnectDelay,

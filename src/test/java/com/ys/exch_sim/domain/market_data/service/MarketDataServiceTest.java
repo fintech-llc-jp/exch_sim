@@ -11,7 +11,7 @@ import com.ys.exch_sim.domain.market_data.config.MarketDataClientConfig;
 import com.ys.exch_sim.domain.market_data.dto.ExternalMarketBoardData;
 import com.ys.exch_sim.domain.market_data.dto.ExternalTradeData;
 import com.ys.exch_sim.domain.market_data.queue.OrderedTradeProcessor;
-import com.ys.exch_sim.domain.service.MarketDataSyncService;
+import com.ys.exch_sim.domain.service.OrderService;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
@@ -22,9 +22,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class DirectMarketDataServiceTest {
+class MarketDataServiceTest {
 
-  @Mock private MarketDataSyncService marketDataSyncService;
+  @Mock private OrderService orderService;
 
   @Mock private InstrumentConfig instrumentConfig;
 
@@ -32,13 +32,13 @@ class DirectMarketDataServiceTest {
 
   @Mock private OrderedTradeProcessor orderedTradeProcessor;
 
-  private DirectMarketDataService service;
+  private MarketDataService service;
 
   @BeforeEach
   void setUp() {
     service =
-        new DirectMarketDataService(
-            marketDataSyncService, instrumentConfig, clientConfig, orderedTradeProcessor);
+        new MarketDataService(
+            orderService, instrumentConfig, clientConfig, orderedTradeProcessor, null);
   }
 
   @Test
@@ -62,7 +62,6 @@ class DirectMarketDataServiceTest {
     service.processMarketBoard(boardData);
 
     // Then
-    verify(marketDataSyncService, times(1)).updateMarketBoard(any(ExternalMarketBoardData.class));
     verify(clientConfig, times(1)).mapSymbol("BITFLYER", "BTC_JPY");
   }
 
@@ -80,7 +79,6 @@ class DirectMarketDataServiceTest {
     service.processMarketBoard(boardData);
 
     // Then
-    verify(marketDataSyncService, never()).updateMarketBoard(any(ExternalMarketBoardData.class));
     verify(clientConfig, times(1)).mapSymbol("BITFLYER", "UNKNOWN");
   }
 
@@ -98,8 +96,7 @@ class DirectMarketDataServiceTest {
     // When
     service.processMarketBoard(boardData);
 
-    // Then
-    verify(marketDataSyncService, never()).updateMarketBoard(any(ExternalMarketBoardData.class));
+    // Then - invalid symbols should not cause errors
   }
 
   @Test
@@ -112,7 +109,7 @@ class DirectMarketDataServiceTest {
     when(instrumentConfig.isValidSymbol("G_BTCJPY")).thenReturn(true);
 
     // When
-    service.B_processTrade(tradeData);
+    service.processTrade(tradeData);
 
     // Then
     verify(orderedTradeProcessor, times(1)).submitTrade("G_BTCJPY", tradeData);
@@ -128,7 +125,7 @@ class DirectMarketDataServiceTest {
     when(clientConfig.mapSymbol("BITFLYER", "UNKNOWN")).thenReturn(null);
 
     // When
-    service.B_processTrade(tradeData);
+    service.processTrade(tradeData);
 
     // Then
     verify(orderedTradeProcessor, never()).submitTrade(any(), any());
@@ -145,7 +142,7 @@ class DirectMarketDataServiceTest {
     when(instrumentConfig.isValidSymbol("INVALID_SYMBOL")).thenReturn(false);
 
     // When
-    service.B_processTrade(tradeData);
+    service.processTrade(tradeData);
 
     // Then
     verify(orderedTradeProcessor, never()).submitTrade(any(), any());
@@ -161,7 +158,7 @@ class DirectMarketDataServiceTest {
         .thenThrow(new RuntimeException("Test error"));
 
     // When & Then - エラーが発生しても処理が継続されることを確認
-    assertDoesNotThrow(() -> service.B_processTrade(tradeData));
+    assertDoesNotThrow(() -> service.processTrade(tradeData));
   }
 
   @Test
@@ -190,9 +187,8 @@ class DirectMarketDataServiceTest {
 
     // Then
     assertNotNull(stats);
-    assertTrue(stats.contains("DirectMarketDataService"));
-    assertTrue(stats.contains("Active: true"));
-    assertTrue(stats.contains("Instrument count: 1"));
+    assertTrue(stats.contains("MarketDataService"));
+    assertTrue(stats.contains("Instruments: 1"));
     verify(instrumentConfig, atLeastOnce()).getInstruments();
   }
 
@@ -206,9 +202,8 @@ class DirectMarketDataServiceTest {
 
     // Then
     assertNotNull(stats);
-    assertTrue(stats.contains("DirectMarketDataService"));
-    assertTrue(stats.contains("Active: true"));
-    assertTrue(stats.contains("Instrument count: 0"));
+    assertTrue(stats.contains("MarketDataService"));
+    assertTrue(stats.contains("Instruments: 0"));
     verify(instrumentConfig, atLeastOnce()).getInstruments();
   }
 }

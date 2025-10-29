@@ -2,6 +2,7 @@ package com.ys.exch_sim.domain.service;
 
 import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryService;
+import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,8 +37,9 @@ public class ExecutionQueueService {
         .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
         .offer(execution);
 
-    // MarketMaker以外の約定をBigQueryに永続化
-    if (!execution.getIsMarketMaker()) {
+    // MarketMaker以外の「実際の約定」のみをBigQueryに永続化
+    // PARTIAL_FILL と FILLED のみを記録対象（NEW, REJECTED, CANCELED は除外）
+    if (!execution.getIsMarketMaker() && isActualExecution(execution)) {
       try {
         // BigQueryにも非同期保存
         if (bigQueryEnabled && bigQueryService != null) {
@@ -118,5 +120,15 @@ public class ExecutionQueueService {
     } catch (Exception e) {
       log.error("Error preparing execution for BigQuery (async): {}", execution.getExecID(), e);
     }
+  }
+
+  /**
+   * 実際の約定かどうかを判定
+   * PARTIAL_FILL と FILLED のみが実際の約定
+   * NEW, REJECTED, CANCELED は約定ではなく注文状態変化
+   */
+  private boolean isActualExecution(Execution execution) {
+    ExecStatus status = execution.getExecStatus();
+    return status == ExecStatus.PARTIAL_FILL || status == ExecStatus.FILLED;
   }
 }

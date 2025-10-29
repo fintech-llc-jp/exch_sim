@@ -106,6 +106,83 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 ### 1. 注文管理 API
 
+#### 注文リスト取得（注文中の注文）
+**GET** `/api/orders/list?symbol=B_FX_BTCJPY`
+
+注文中（未約定）の注文一覧を取得します。
+
+```bash
+# 全銘柄の注文中の注文を取得
+curl -X GET "http://localhost:8080/api/orders/list" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 特定銘柄の注文中の注文を取得
+curl -X GET "http://localhost:8080/api/orders/list?symbol=B_FX_BTCJPY" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+**Query Parameters:**
+- `symbol` (string, optional): 銘柄フィルタ
+
+**Response:**
+```json
+{
+  "username": "trader001",
+  "totalOrders": 2,
+  "orders": [
+    {
+      "clOrdID": "order-123",
+      "symbol": "B_FX_BTCJPY",
+      "side": "BUY",
+      "ordType": "LIMIT",
+      "ordStatus": "NEW",
+      "orderPx": 5000000.0,
+      "orderQty": 0.1,
+      "leavesQty": 0.1,
+      "filledQty": 0.0,
+      "tif": "GTC",
+      "timestamp": "2025-10-06T12:00:00"
+    },
+    {
+      "clOrdID": "order-456",
+      "symbol": "G_FX_BTCJPY",
+      "side": "SELL",
+      "ordType": "LIMIT",
+      "ordStatus": "PARTIAL_FILL",
+      "orderPx": 5100000.0,
+      "orderQty": 0.5,
+      "leavesQty": 0.3,
+      "filledQty": 0.2,
+      "tif": "GTC",
+      "timestamp": "2025-10-06T11:30:00"
+    }
+  ]
+}
+```
+
+**Response Fields:**
+- `username` (string): ユーザー名
+- `totalOrders` (number): 注文中の注文総数
+- `orders` (array): 注文詳細のリスト
+  - `clOrdID` (string): 注文ID
+  - `symbol` (string): 銘柄名
+  - `side` (string): 売買区分（BUY/SELL）
+  - `ordType` (string): 注文タイプ（LIMIT/MARKET）
+  - `ordStatus` (string): 注文ステータス（NEW/PARTIAL_FILL）
+  - `orderPx` (number): 注文価格
+  - `orderQty` (number): 注文数量
+  - `leavesQty` (number): 未約定数量
+  - `filledQty` (number): 約定済み数量
+  - `tif` (string): 注文有効期限（GTC/IOC/FOK）
+  - `timestamp` (string): 注文作成日時
+
+**特徴:**
+- ✅ **注文中のみ表示**: NEW、PARTIAL_FILLステータスの注文のみ
+- ✅ **リアルタイム**: MarketBoardから直接取得
+- ✅ **時系列ソート**: 新しい注文から降順で表示
+- ✅ **約定状況表示**: 注文数量、未約定数量、約定済み数量を確認可能
+- ✅ **JWT認証必須**: ユーザー自身の注文のみ取得
+
 #### 新規注文
 **POST** `/api/orders/new`
 
@@ -307,8 +384,74 @@ curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY/simple"
 
 ### 4. ポジション管理 API
 
+#### ポジション一覧取得
+**GET** `/api/positions`
+
+全銘柄のポジション情報を一覧で取得します。
+
+```bash
+curl -X GET "http://localhost:8080/api/positions" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+**Response:**
+```json
+[
+  {
+    "username": "trader001",
+    "symbol": "G_FX_BTCJPY",
+    "unit": "BTC",
+    "totalBuyQty": 10.0,
+    "totalBuyAmount": 49500000.0,
+    "totalSellQty": 5.0,
+    "totalSellAmount": 25000000.0,
+    "netQty": 5.0,
+    "averageBuyPrice": 4950000.0,
+    "averageSellPrice": 5000000.0,
+    "realizedPnL": 500.0,
+    "unrealizedPnL": -200.0,
+    "totalPnL": 300.0,
+    "lastUpdated": "2025-06-30T12:00:00"
+  },
+  {
+    "username": "trader001",
+    "symbol": "B_FX_BTCJPY",
+    "unit": "BTC",
+    "totalBuyQty": 5.0,
+    "totalBuyAmount": 77600000.0,
+    "totalSellQty": 2.5,
+    "totalSellAmount": 38900000.0,
+    "netQty": 2.5,
+    "averageBuyPrice": 15520000.0,
+    "averageSellPrice": 15560000.0,
+    "realizedPnL": 1000.0,
+    "unrealizedPnL": 150.0,
+    "totalPnL": 1150.0,
+    "lastUpdated": "2025-06-30T12:00:00"
+  }
+]
+```
+
+**Response Fields:**
+- `username` (string): ユーザー名
+- `symbol` (string): 銘柄名
+- `unit` (string): 数量の単位（例: BTC）
+- `totalBuyQty` (number): 累計買い数量
+- `totalBuyAmount` (number): 累計買い金額
+- `totalSellQty` (number): 累計売り数量
+- `totalSellAmount` (number): 累計売り金額
+- `netQty` (number): ネットポジション数量（買い-売り）
+- `averageBuyPrice` (number): 平均買い単価
+- `averageSellPrice` (number): 平均売り単価
+- `realizedPnL` (number): 実現損益
+- `unrealizedPnL` (number): 未実現損益
+- `totalPnL` (number): 合計損益（実現+未実現）
+- `lastUpdated` (string): 最終更新日時
+
 #### ポートフォリオサマリー取得
 **GET** `/api/positions/summary`
+
+全ポジションのサマリー情報を取得します。
 
 ```bash
 curl -X GET "http://localhost:8080/api/positions/summary" \
@@ -319,6 +462,8 @@ curl -X GET "http://localhost:8080/api/positions/summary" \
 ```json
 {
   "username": "trader001",
+  "cashBalance": 1000000.0,
+  "totalValue": 1001300.0,
   "totalRealizedPnL": 1500.0,
   "totalUnrealizedPnL": -200.0,
   "totalPnL": 1300.0,
@@ -326,12 +471,20 @@ curl -X GET "http://localhost:8080/api/positions/summary" \
   "totalTradingVolume": 50000000.0,
   "positions": [
     {
+      "username": "trader001",
       "symbol": "G_FX_BTCJPY",
-      "netQty": 5,
+      "unit": "BTC",
+      "totalBuyQty": 10.0,
+      "totalBuyAmount": 49500000.0,
+      "totalSellQty": 5.0,
+      "totalSellAmount": 25000000.0,
+      "netQty": 5.0,
       "averageBuyPrice": 4950000.0,
+      "averageSellPrice": 5000000.0,
       "realizedPnL": 500.0,
       "unrealizedPnL": -200.0,
-      "totalPnL": 300.0
+      "totalPnL": 300.0,
+      "lastUpdated": "2025-06-30T12:00:00"
     }
   ],
   "symbolTradeCounts": {
@@ -340,21 +493,66 @@ curl -X GET "http://localhost:8080/api/positions/summary" \
 }
 ```
 
+**Response Fields:**
+- `username` (string): ユーザー名
+- `cashBalance` (number): 現金残高
+- `totalValue` (number): 総資産（現金 + ポジション評価額）
+- `totalRealizedPnL` (number): 全銘柄の実現損益合計
+- `totalUnrealizedPnL` (number): 全銘柄の未実現損益合計
+- `totalPnL` (number): 全銘柄の合計損益
+- `totalTradeCount` (number): 総取引回数
+- `totalTradingVolume` (number): 総取引金額
+- `positions` (array): 各銘柄のポジション詳細（PositionResponseオブジェクト）
+- `symbolTradeCounts` (object): 銘柄別取引回数
+
 #### 銘柄別ポジション取得
 **GET** `/api/positions/{symbol}`
+
+特定銘柄のポジション情報を取得します。
 
 ```bash
 curl -X GET "http://localhost:8080/api/positions/G_FX_BTCJPY" \
   -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
+**Response:**
+```json
+{
+  "username": "trader001",
+  "symbol": "G_FX_BTCJPY",
+  "unit": "BTC",
+  "totalBuyQty": 10.0,
+  "totalBuyAmount": 49500000.0,
+  "totalSellQty": 5.0,
+  "totalSellAmount": 25000000.0,
+  "netQty": 5.0,
+  "averageBuyPrice": 4950000.0,
+  "averageSellPrice": 5000000.0,
+  "realizedPnL": 500.0,
+  "unrealizedPnL": -200.0,
+  "totalPnL": 300.0,
+  "lastUpdated": "2025-06-30T12:00:00"
+}
+```
+
 #### 取引履歴取得
 **GET** `/api/positions/trades?limit=50&symbol=G_FX_BTCJPY`
 
+取引履歴を取得します。
+
 ```bash
+# 全銘柄の最新20件
+curl -X GET "http://localhost:8080/api/positions/trades?limit=20" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 特定銘柄の取引履歴
 curl -X GET "http://localhost:8080/api/positions/trades?limit=20&symbol=G_FX_BTCJPY" \
   -H "Authorization: Bearer <JWT_TOKEN>"
 ```
+
+**Query Parameters:**
+- `limit` (int, optional): 取得件数（デフォルト: 50）
+- `symbol` (string, optional): 銘柄フィルタ
 
 ### 5. Trade Insert API
 
@@ -624,12 +822,22 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 ./quick_test.sh poll                          # 約定ポーリング
 ./quick_test.sh queue-size                    # 約定キューサイズ確認
 ./quick_test.sh board [SYMBOL]                # 板情報取得
+./quick_test.sh order-list [SYMBOL]           # 注文中の注文リスト取得
 ./quick_test.sh history [PAGE] [SIZE] [SYMBOL] # 約定履歴取得（FILLED/PARTIAL_FILLのみ）
 ./quick_test.sh history-all [PAGE] [SIZE] [SYMBOL] # 全約定履歴取得（デバッグ用）
 ./quick_test.sh all-history [PAGE] [SIZE] [SYMBOL] # 全体約定履歴取得（全ユーザー）
 ./quick_test.sh volume [SYMBOL] [FROM_TIME] [TO_TIME] # 約定量計算
 ./quick_test.sh trade-insert [SYMBOL] [PRICE] [QUANTITY] [SIDE] # トレード挿入
 ./quick_test.sh full-test                     # フルテスト実行
+```
+
+**注文リストテストの例:**
+```bash
+# 全銘柄の注文中の注文を取得
+./quick_test.sh order-list
+
+# 特定銘柄の注文中の注文を取得
+./quick_test.sh order-list B_FX_BTCJPY
 ```
 
 **約定履歴テストの例:**

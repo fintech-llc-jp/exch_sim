@@ -7,7 +7,6 @@ import com.ys.exch_sim.domain.market_data.dto.ExternalTradeData;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.message.field.Side;
 import com.ys.exch_sim.domain.order_exec.Execution;
-import com.ys.exch_sim.domain.service.MarketDataSyncService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Map;
@@ -25,7 +24,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderedTradeProcessor {
 
-  private final MarketDataSyncService marketDataSyncService;
   private final InstrumentConfig instrumentConfig;
   private final Map<String, SingleThreadExecutor> symbolExecutors = new ConcurrentHashMap<>();
 
@@ -35,10 +33,8 @@ public class OrderedTradeProcessor {
   private final BigQueryService bigQueryService;
 
   public OrderedTradeProcessor(
-      @Autowired MarketDataSyncService marketDataSyncService,
       @Autowired InstrumentConfig instrumentConfig,
       @Autowired(required = false) BigQueryService bigQueryService) {
-    this.marketDataSyncService = marketDataSyncService;
     this.instrumentConfig = instrumentConfig;
     this.bigQueryService = bigQueryService;
     log.info("🔄 OrderedTradeProcessor initialized with BigQuery enabled: {}", bigQueryEnabled);
