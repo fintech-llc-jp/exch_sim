@@ -421,7 +421,7 @@ public class OrderService {
     if (marketBoard == null) {
       log.warn("MarketBoard not found for symbol: {}", symbolName);
       // 空の板情報を返す
-      return new MarketBoardResponse(symbolName, new ArrayList<>(), new ArrayList<>());
+      return new MarketBoardResponse(symbolName, new ArrayList<>(), new ArrayList<>(), 0L);
     }
 
     // 指定された深度まで板情報を取得
@@ -455,9 +455,12 @@ public class OrderService {
       }
     }
 
+    // 最後に注文が入ったときの時刻を取得
+    long asOf = marketBoard.getLastOrderTime();
+
     log.info(
-        "Retrieved market board for {}: {} bids, {} asks", symbolName, bids.size(), asks.size());
-    return new MarketBoardResponse(symbolName, bids, asks);
+        "Retrieved market board for {}: {} bids, {} asks, asOf: {}", symbolName, bids.size(), asks.size(), asOf);
+    return new MarketBoardResponse(symbolName, bids, asks, asOf);
   }
 
   /**

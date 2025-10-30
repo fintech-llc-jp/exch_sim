@@ -12,6 +12,7 @@ public class MarketBoardResponse {
   private String symbol;
   private List<PriceLevel> bids; // 買い注文（価格降順）
   private List<PriceLevel> asks; // 売り注文（価格昇順）
+  private Long asOf; // 最後に注文が入ったときの時刻（ナノ秒）
 
   @Data
   @AllArgsConstructor

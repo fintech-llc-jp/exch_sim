@@ -372,8 +372,57 @@ curl -X GET "http://localhost:8080/api/executions/queue-size" \
 
 #### 板情報取得
 **GET** `/api/market/board/{symbol}?depth=10`
+
+```bash
 curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY?depth=10"
 ```
+
+**Query Parameters:**
+- `symbol` (string, required): 銘柄名
+- `depth` (int, optional): 取得する深さ（デフォルト: 10、最大: 100）
+
+**Response:**
+```json
+{
+  "symbol": "G_FX_BTCJPY",
+  "bids": [
+    {
+      "price": 4999000.0,
+      "quantity": 1.5
+    },
+    {
+      "price": 4998000.0,
+      "quantity": 2.0
+    }
+  ],
+  "asks": [
+    {
+      "price": 5001000.0,
+      "quantity": 1.0
+    },
+    {
+      "price": 5002000.0,
+      "quantity": 3.0
+    }
+  ],
+  "asOf": 1056309286218750
+}
+```
+
+**Response Fields:**
+- `symbol` (string): 銘柄名
+- `bids` (array): 買い注文（価格降順）
+  - `price` (number): 買い値段
+  - `quantity` (number): 買い数量
+- `asks` (array): 売り注文（価格昇順）
+  - `price` (number): 売り値段
+  - `quantity` (number): 売り数量
+- `asOf` (long): **最後に注文が入ったときの時刻（ナノ秒単位）**
+
+**特徴:**
+- ✅ **深さ指定**: 1～100レベルの板情報を取得可能
+- ✅ **リアルタイム**: マーケットボードから直接取得
+- ✅ **asOfタイムスタンプ**: 最後の注文入力時刻をナノ秒精度で提供
 
 #### 簡易板情報取得
 **GET** `/api/market/board/{symbol}/simple`
@@ -381,6 +430,9 @@ curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY?depth=10"
 ```bash
 curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY/simple"
 ```
+
+**特徴:**
+- ✅ **デフォルト深さ5**: 深さパラメータなしで深さ5の板情報を取得（asOf含む）
 
 ### 4. ポジション管理 API
 

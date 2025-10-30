@@ -87,6 +87,7 @@ class MarketBoardControllerTest {
     assertEquals(symbol, marketBoard.getSymbol());
     assertThat(marketBoard.getBids()).isEmpty();
     assertThat(marketBoard.getAsks()).isEmpty();
+    assertEquals(0L, marketBoard.getAsOf()); // 空の場合は0
   }
 
   @Test
@@ -136,6 +137,9 @@ class MarketBoardControllerTest {
     MarketBoardResponse.PriceLevel ask = marketBoard.getAsks().get(0);
     assertEquals(102.0, ask.getPrice());
     assertEquals(5L, ask.getQuantity());
+
+    // asOfが設定されていることを確認（注文があるので0より大きい）
+    assertThat(marketBoard.getAsOf()).isGreaterThan(0L);
   }
 
   @Test
@@ -200,6 +204,9 @@ class MarketBoardControllerTest {
     assertThat(marketBoard.getAsks()).hasSize(2);
     assertEquals(101.0, marketBoard.getAsks().get(0).getPrice()); // 最低価格が最初
     assertEquals(102.0, marketBoard.getAsks().get(1).getPrice());
+
+    // asOfが設定されていることを確認（注文があるので0より大きい）
+    assertThat(marketBoard.getAsOf()).isGreaterThan(0L);
   }
 
   @Test
@@ -269,5 +276,8 @@ class MarketBoardControllerTest {
     assertThat(marketBoard.getBids()).hasSize(2);
     assertEquals(100.0, marketBoard.getBids().get(0).getPrice());
     assertEquals(99.0, marketBoard.getBids().get(1).getPrice());
+
+    // asOfが設定されていることを確認
+    assertThat(marketBoard.getAsOf()).isGreaterThan(0L);
   }
 }

@@ -46,6 +46,7 @@ public class MarketBoard {
           });
 
   Map<ClOrdID, Order> orderMap = new ConcurrentHashMap<>();
+  private volatile long lastOrderTime = 0L; // 最後に注文が入ったときの時刻（ナノ秒）
 
   public synchronized Pair<Long, Long> getAsk(long index) {
     int cnt = 0;
@@ -197,6 +198,9 @@ public class MarketBoard {
 
   public synchronized List<Execution> newOrder(Order order) {
     List<Execution> executions = new ArrayList<Execution>();
+    // 最後に注文が入った時刻を更新
+    updateLastOrderTime();
+
     // TODO Duplicate check
     if (orderMap.get(order.getClOrdID()) != null) {
       Execution e = createReject(order);
@@ -627,5 +631,19 @@ public class MarketBoard {
   // This simply delegates to newOrder to ensure proper matching logic
   public synchronized List<Execution> addMarketMakerOrder(Order order) {
     return newOrder(order);
+  }
+
+  /**
+   * 最後に注文が入ったときの時刻を取得します（ナノ秒）
+   */
+  public long getLastOrderTime() {
+    return lastOrderTime;
+  }
+
+  /**
+   * 最後に注文が入ったときの時刻を現在時刻で更新します
+   */
+  private void updateLastOrderTime() {
+    this.lastOrderTime = System.nanoTime();
   }
 }

@@ -50,6 +50,12 @@ public class PositionManager {
         this.memoryCacheEnabled = memoryCacheEnabled;
     }
 
+    // Test-only constructor with repositories (legacy support)
+    public PositionManager(PositionRepository positionRepository, TradeHistoryRepository tradeHistoryRepository, boolean memoryCacheEnabled) {
+        this.bigQueryService = null;
+        this.memoryCacheEnabled = memoryCacheEnabled;
+    }
+
     @Transactional
     public void processExecution(Execution execution) {
         if (execution == null || execution.getOrder() == null) {
