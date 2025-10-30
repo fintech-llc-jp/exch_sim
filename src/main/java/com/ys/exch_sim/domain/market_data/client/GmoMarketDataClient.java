@@ -128,7 +128,7 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
     try {
       // 基底クラスのメッセージカウンターを更新
       incrementMessageCount();
-      
+
       JsonNode json = objectMapper.readTree(message);
 
       // 通常のレスポンスメッセージ
@@ -141,12 +141,21 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
       // チャンネルデータの処理
       if (json.has("channel")) {
         String channel = json.get("channel").asText();
+        log.debug("📡 GMO Channel received: {}", channel);
 
         if (channel.equals("orderbooks")) {
           handleOrderbookMessage(json);
         } else if (channel.equals("trades")) {
           handleTradeMessage(json);
+        } else if (channel.equals("ticker")) {
+          log.debug("📡 GMO Ticker received (not yet implemented): {}", json.toPrettyString());
+        } else {
+          log.debug("📡 GMO Unknown channel (not orderbooks/trades/ticker): {}", channel);
         }
+      } else {
+        // JSONに"channel"がない場合、メッセージタイプを調査
+        log.debug("📡 GMO Message without channel field: {}",
+            message.length() > 200 ? message.substring(0, 200) + "..." : message);
       }
 
     } catch (Exception e) {
@@ -158,8 +167,9 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
       org.springframework.web.reactive.socket.WebSocketSession session) {
     return createOrderbookSubscription(session, SYMBOL_BTC_JPY)
         .concatWith(Mono.delay(Duration.ofSeconds(2)).then(createOrderbookSubscription(session, SYMBOL_BTC)))
-        .concatWith(Mono.delay(Duration.ofSeconds(2)).then(createTradesSubscription(session, SYMBOL_BTC_JPY)))
         .concatWith(Mono.delay(Duration.ofSeconds(2)).then(createTradesSubscription(session, SYMBOL_BTC)));
+    // NOTE: GMO API trades channel only supports BTC symbol, not BTC_JPY
+    // Removed: createTradesSubscription(session, SYMBOL_BTC_JPY)
   }
 
   private Mono<WebSocketMessage> createOrderbookSubscription(
@@ -381,9 +391,11 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
    */
   private void logSymbolMappingInfo() {
     log.info("🔍 GMO Symbol Mapping Verification:");
-    log.info("  - BTC_JPY (受信) → G_FX_BTCJPY (内部) - Expected: 現物 or FX?");
-    log.info("  - BTC (受信) → G_BTCJPY (内部) - Expected: FX or 現物?");
-    log.info("  - 注意: GMOの実際のAPI仕様と一致しているか確認が必要");
+    log.info("  - Orderbooks channel: BTC_JPY and BTC both supported");
+    log.info("  - Trades channel: ONLY BTC is supported (not BTC_JPY)");
+    log.info("  - BTC_JPY (受信: Orderbook) → G_FX_BTCJPY (内部)");
+    log.info("  - BTC (受信: Orderbook + Trades) → G_BTCJPY (内部)");
+    log.info("  - Symbol mapping note: GMO API has asymmetric channel support between orderbooks and trades");
   }
   
   @Override

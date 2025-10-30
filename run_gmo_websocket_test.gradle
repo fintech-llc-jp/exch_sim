@@ -1,0 +1,10 @@
+plugins {
+    id 'java'
+}
+
+task runGmoTest(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.ys.exch_sim.GmoWebSocketTest'
+    standardOutput = System.out
+    errorOutput = System.err
+}

@@ -405,7 +405,7 @@ curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY?depth=10"
       "quantity": 3.0
     }
   ],
-  "asOf": 1056309286218750
+  "asOf": 1729329360000000000
 }
 ```
 
@@ -417,7 +417,9 @@ curl -X GET "http://localhost:8080/api/market/board/G_FX_BTCJPY?depth=10"
 - `asks` (array): 売り注文（価格昇順）
   - `price` (number): 売り値段
   - `quantity` (number): 売り数量
-- `asOf` (long): **最後に注文が入ったときの時刻（ナノ秒単位）**
+- `asOf` (long): **最後に注文が入ったときの時刻（エポックからのナノ秒）**
+  - `System.currentTimeNano()` で取得したエポック時刻
+  - 例: `1729329360000000000` = 2024-10-19T01:16:00Z
 
 **特徴:**
 - ✅ **深さ指定**: 1～100レベルの板情報を取得可能

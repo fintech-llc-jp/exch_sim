@@ -642,8 +642,10 @@ public class MarketBoard {
 
   /**
    * 最後に注文が入ったときの時刻を現在時刻で更新します
+   * エポック（1970-01-01T00:00:00Z）からの経過時間（ナノ秒）
+   * Java 17互換のため、ミリ秒をナノ秒に変換
    */
   private void updateLastOrderTime() {
-    this.lastOrderTime = System.nanoTime();
+    this.lastOrderTime = System.currentTimeMillis() * 1_000_000;
   }
 }
