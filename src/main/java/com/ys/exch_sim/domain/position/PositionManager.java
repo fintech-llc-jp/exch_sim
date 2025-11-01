@@ -1,8 +1,10 @@
 package com.ys.exch_sim.domain.position;
 
+import com.ys.exch_sim.domain.bigquery.BigQueryEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryPositionEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.bigquery.BigQueryTradeHistoryEntity;
+import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.message.field.Side;
 import com.ys.exch_sim.domain.exception.InsufficientFundsException;
@@ -22,6 +24,7 @@ import java.util.stream.Collectors;
 public class PositionManager {
 
     private final BigQueryService bigQueryService;
+    private final BigQueryWriter bigQueryWriter;
 
     // Configuration flags
     @Value("${app.data-migration.memory-cache-enabled:true}")
@@ -40,19 +43,23 @@ public class PositionManager {
 
     // Main constructor for Spring
     @Autowired
-    public PositionManager(@Autowired(required = false) BigQueryService bigQueryService) {
+    public PositionManager(@Autowired(required = false) BigQueryService bigQueryService,
+                           @Autowired(required = false) BigQueryWriter bigQueryWriter) {
         this.bigQueryService = bigQueryService;
+        this.bigQueryWriter = bigQueryWriter;
     }
 
     // Test-only constructor
     public PositionManager(boolean memoryCacheEnabled) {
         this.bigQueryService = null;
+        this.bigQueryWriter = null;
         this.memoryCacheEnabled = memoryCacheEnabled;
     }
 
     // Test-only constructor with repositories (legacy support)
     public PositionManager(PositionRepository positionRepository, TradeHistoryRepository tradeHistoryRepository, boolean memoryCacheEnabled) {
         this.bigQueryService = null;
+        this.bigQueryWriter = null;
         this.memoryCacheEnabled = memoryCacheEnabled;
     }
 
@@ -534,24 +541,29 @@ public class PositionManager {
         log.info("Initialized user {} with cash balance: {}", username, initialAmount);
     }
     
-    // BigQuery保存メソッド
+    // BigQuery保存メソッド - キューベースの非ブロッキング処理
     private void savePositionToBigQuery(Position position) {
         try {
-            BigQueryPositionEntity bigQueryEntity = new BigQueryPositionEntity(position);
-            bigQueryService.insertPosition(bigQueryEntity);
-            log.debug("Position saved to BigQuery: {}_{}", position.getUsername(), position.getSymbol());
+            if (bigQueryWriter != null) {
+                // キューに追加（非ブロッキング）
+                bigQueryWriter.enqueue(BigQueryEntity.position(position));
+                log.debug("Position enqueued to BigQuery writer: {}_{}", position.getUsername(), position.getSymbol());
+            }
         } catch (Exception e) {
-            log.error("Error saving position to BigQuery: " + position.getUsername() + "_" + position.getSymbol(), e);
+            log.error("Error enqueuing position to BigQuery: " + position.getUsername() + "_" + position.getSymbol(), e);
         }
     }
     
+    // BigQuery保存メソッド - キューベースの非ブロッキング処理
     private void saveTradeHistoryToBigQuery(TradeHistory tradeHistory) {
         try {
-            BigQueryTradeHistoryEntity bigQueryEntity = new BigQueryTradeHistoryEntity(tradeHistory);
-            bigQueryService.insertTradeHistory(bigQueryEntity);
-            log.debug("Trade history saved to BigQuery: {}", tradeHistory.getExecID());
+            if (bigQueryWriter != null) {
+                // キューに追加（非ブロッキング）
+                bigQueryWriter.enqueue(BigQueryEntity.tradeHistory(tradeHistory));
+                log.debug("Trade history enqueued to BigQuery writer: {}", tradeHistory.getExecID());
+            }
         } catch (Exception e) {
-            log.error("Error saving trade history to BigQuery: " + tradeHistory.getExecID(), e);
+            log.error("Error enqueuing trade history to BigQuery: " + tradeHistory.getExecID(), e);
         }
     }
 }

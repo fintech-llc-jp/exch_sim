@@ -1,7 +1,9 @@
 package com.ys.exch_sim.domain.controller;
 
+import com.ys.exch_sim.domain.bigquery.BigQueryEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryService;
+import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
 import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
@@ -35,6 +37,7 @@ public class TradeController {
   private final OrderService orderService;
   private final InstrumentConfig instrumentConfig;
   private final BigQueryService bigQueryService;
+  private final BigQueryWriter bigQueryWriter;
   private final BigQueryVolumeCalculationService volumeCalculationService;
 
   @Value("${app.data-migration.bigquery-enabled:false}")
@@ -44,10 +47,12 @@ public class TradeController {
       OrderService orderService,
       InstrumentConfig instrumentConfig,
       @Autowired(required = false) BigQueryService bigQueryService,
+      @Autowired(required = false) BigQueryWriter bigQueryWriter,
       @Autowired(required = false) BigQueryVolumeCalculationService volumeCalculationService) {
     this.orderService = orderService;
     this.instrumentConfig = instrumentConfig;
     this.bigQueryService = bigQueryService;
+    this.bigQueryWriter = bigQueryWriter;
     this.volumeCalculationService = volumeCalculationService;
   }
 
@@ -518,29 +523,16 @@ public class TradeController {
     }
   }
 
-  // BigQuery非同期保存メソッド
+  // BigQuery キューベースの非ブロッキング保存メソッド
   private void saveExecutionToBigQueryAsync(Execution execution) {
     try {
-      BigQueryExecutionEntity bigQueryEntity = new BigQueryExecutionEntity(execution);
-      bigQueryService
-          .insertExecutionAsync(bigQueryEntity)
-          .thenRun(
-              () ->
-                  log.debug(
-                      "TradeInsert execution saved to BigQuery (async): {}", execution.getExecID()))
-          .exceptionally(
-              throwable -> {
-                log.error(
-                    "Error saving TradeInsert execution to BigQuery (async): {}",
-                    execution.getExecID(),
-                    throwable);
-                return null;
-              });
+      if (bigQueryWriter != null) {
+        // キューに追加（非ブロッキング）
+        bigQueryWriter.enqueue(BigQueryEntity.execution(execution));
+        log.debug("TradeInsert execution enqueued to BigQuery writer: {}", execution.getExecID());
+      }
     } catch (Exception e) {
-      log.error(
-          "Error preparing TradeInsert execution for BigQuery (async): {}",
-          execution.getExecID(),
-          e);
+      log.error("Error enqueuing TradeInsert execution to BigQuery: {}", execution.getExecID(), e);
     }
   }
 }

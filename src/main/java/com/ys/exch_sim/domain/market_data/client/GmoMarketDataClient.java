@@ -90,9 +90,22 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
                   // 接続成功時の処理
                   log.info("✅ GMO WebSocket session established");
                   onConnectionEstablished();
-                  
-                  // 購読メッセージの送信
-                  Flux<WebSocketMessage> subscriptionMessages = createSubscriptionMessages(session);
+
+                  // 購読メッセージの送信（別スレッドで2秒間隔）
+                  new Thread(() -> {
+                    try {
+                      sendSubscription(session, SYMBOL_BTC, "trades");
+                      Thread.sleep(2000);
+                      sendSubscription(session, SYMBOL_BTC_JPY, "orderbooks");
+                      Thread.sleep(2000);
+                      sendSubscription(session, SYMBOL_BTC, "orderbooks");
+                      Thread.sleep(2000);
+                      sendSubscription(session, SYMBOL_BTC_JPY, "trades");
+                    } catch (InterruptedException e) {
+                      log.error("❌ Subscription sequence interrupted", e);
+                      Thread.currentThread().interrupt();
+                    }
+                  }).start();
 
                   // メッセージ受信処理
                   Flux<String> messageFlux =
@@ -102,7 +115,7 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
                           .doOnNext(this::processMessage)
                           .doOnError(this::handleConnectionError);
 
-                  return session.send(subscriptionMessages).thenMany(messageFlux).then();
+                  return messageFlux.then();
                 })
             .retryWhen(
                 Retry.backoff(maxReconnectAttempts, Duration.ofMillis(reconnectDelay))
@@ -116,7 +129,7 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
                 result -> {
                     log.info("🔚 GMO WebSocket stream completed");
                     onConnectionClosed();
-                }, 
+                },
                 error -> {
                     log.error("❌ GMO WebSocket subscription error: {}", error.getMessage(), error);
                     handleConnectionError(error);
@@ -141,16 +154,17 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
       // チャンネルデータの処理
       if (json.has("channel")) {
         String channel = json.get("channel").asText();
-        log.debug("📡 GMO Channel received: {}", channel);
+        log.info("📡 GMO Channel received: {}", channel);
 
         if (channel.equals("orderbooks")) {
           handleOrderbookMessage(json);
         } else if (channel.equals("trades")) {
+          log.info("📡 GMO TRADES message received - processing...");
           handleTradeMessage(json);
         } else if (channel.equals("ticker")) {
           log.debug("📡 GMO Ticker received (not yet implemented): {}", json.toPrettyString());
         } else {
-          log.debug("📡 GMO Unknown channel (not orderbooks/trades/ticker): {}", channel);
+          log.warn("📡 GMO Unknown channel (not orderbooks/trades/ticker): {}", channel);
         }
       } else {
         // JSONに"channel"がない場合、メッセージタイプを調査
@@ -163,50 +177,23 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
     }
   }
 
-  private Flux<WebSocketMessage> createSubscriptionMessages(
-      org.springframework.web.reactive.socket.WebSocketSession session) {
-    return createOrderbookSubscription(session, SYMBOL_BTC_JPY)
-        .concatWith(Mono.delay(Duration.ofSeconds(2)).then(createOrderbookSubscription(session, SYMBOL_BTC)))
-        .concatWith(Mono.delay(Duration.ofSeconds(2)).then(createTradesSubscription(session, SYMBOL_BTC)));
-    // NOTE: GMO API trades channel only supports BTC symbol, not BTC_JPY
-    // Removed: createTradesSubscription(session, SYMBOL_BTC_JPY)
-  }
-
-  private Mono<WebSocketMessage> createOrderbookSubscription(
-      org.springframework.web.reactive.socket.WebSocketSession session, String symbol) {
+  private void sendSubscription(
+      org.springframework.web.reactive.socket.WebSocketSession session,
+      String symbol,
+      String channel) {
     try {
       Map<String, Object> subscribeRequest =
           Map.of(
               "command", "subscribe",
-              "channel", "orderbooks",
+              "channel", channel,
               "symbol", symbol);
 
       String requestJson = objectMapper.writeValueAsString(subscribeRequest);
-      log.info("📡 GMO subscribing to orderbooks: {}", symbol);
+      log.info("📡 GMO subscribing to {}: {}", channel, symbol);
 
-      return Mono.just(session.textMessage(requestJson));
+      session.send(Mono.just(session.textMessage(requestJson))).block();
     } catch (Exception e) {
-      log.error("❌ Error creating GMO orderbook subscription for: {}", symbol, e);
-      return Mono.empty();
-    }
-  }
-
-  private Mono<WebSocketMessage> createTradesSubscription(
-      org.springframework.web.reactive.socket.WebSocketSession session, String symbol) {
-    try {
-      Map<String, Object> subscribeRequest =
-          Map.of(
-              "command", "subscribe",
-              "channel", "trades",
-              "symbol", symbol);
-
-      String requestJson = objectMapper.writeValueAsString(subscribeRequest);
-      log.info("📡 GMO subscribing to trades: {}", symbol);
-
-      return Mono.just(session.textMessage(requestJson));
-    } catch (Exception e) {
-      log.error("❌ Error creating GMO trades subscription for: {}", symbol, e);
-      return Mono.empty();
+      log.error("❌ Error sending GMO {} subscription for: {}", channel, symbol, e);
     }
   }
 
@@ -276,10 +263,11 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
       JsonNode tradesArray = message.get("trades");
 
       if (tradesArray != null && tradesArray.isArray()) {
+        log.info("✅ GMO {} trades received: {} items", symbol, tradesArray.size());
         for (JsonNode trade : tradesArray) {
           ExternalTradeData tradeData = convertGmoTrade(symbol, trade);
           if (tradeData != null) {
-            log.debug(
+            log.info(
                 "💰 GMO Trade: {} - {} {} @ {}",
                 symbol,
                 tradeData.side(),
@@ -287,8 +275,12 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
                 tradeData.price());
 
             marketDataService.processTradeAsync(tradeData);
+          } else {
+            log.warn("⚠️ GMO Trade conversion failed for {}: {}", symbol, trade);
           }
         }
+      } else {
+        log.warn("⚠️ GMO {} trades array is null or not array", symbol);
       }
     } catch (Exception e) {
       log.error("❌ Error processing GMO trade message", e);

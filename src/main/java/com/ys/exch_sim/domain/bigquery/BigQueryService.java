@@ -7,12 +7,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -68,81 +66,6 @@ public class BigQueryService {
     }
   }
 
-  /** Insert execution data into BigQuery asynchronously with retry logic */
-  @Async("bigQueryAsyncExecutor")
-  public CompletableFuture<Void> insertExecutionAsync(BigQueryExecutionEntity execution) {
-    int maxRetries = 3;
-    int retryDelayMs = 1000;
-
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        log.debug("Starting async BigQuery execution insert (attempt {}/{}): {}",
-                  attempt, maxRetries, execution.getExecId());
-
-        TableId tableId = BigQueryExecutionEntity.getTableId(projectId, datasetName);
-        Map<String, Object> row = execution.toBigQueryRow();
-
-        InsertAllRequest insertRequest = InsertAllRequest.newBuilder(tableId).addRow(row).build();
-
-        InsertAllResponse response = bigQuery.insertAll(insertRequest);
-
-        if (response.hasErrors()) {
-          log.error("Error inserting execution to BigQuery (async, attempt {}/{}): {}",
-                    attempt, maxRetries, response.getInsertErrors());
-
-          if (attempt == maxRetries) {
-            return CompletableFuture.failedFuture(
-                new RuntimeException("Failed to insert execution to BigQuery after " + maxRetries + " attempts"));
-          }
-
-          // Retry on BigQuery API errors
-          Thread.sleep(retryDelayMs * attempt);
-          continue;
-        }
-
-        log.debug("Successfully inserted execution to BigQuery (async, attempt {}): {}",
-                  attempt, execution.getExecId());
-        return CompletableFuture.completedFuture(null);
-
-      } catch (BigQueryException e) {
-        // Handle BigQuery-specific exceptions (including Broken pipe)
-        log.warn("BigQuery exception on attempt {}/{} for execution {}: {}",
-                 attempt, maxRetries, execution.getExecId(), e.getMessage());
-
-        if (attempt == maxRetries) {
-          log.error("Failed to insert execution to BigQuery after {} attempts: {}",
-                    maxRetries, execution.getExecId(), e);
-          return CompletableFuture.failedFuture(e);
-        }
-
-        try {
-          Thread.sleep(retryDelayMs * attempt);
-        } catch (InterruptedException ie) {
-          Thread.currentThread().interrupt();
-          return CompletableFuture.failedFuture(ie);
-        }
-
-      } catch (Exception e) {
-        log.error("Unexpected error inserting execution to BigQuery (async, attempt {}/{}): {}",
-                  attempt, maxRetries, execution.getExecId(), e);
-
-        if (attempt == maxRetries) {
-          return CompletableFuture.failedFuture(e);
-        }
-
-        try {
-          Thread.sleep(retryDelayMs * attempt);
-        } catch (InterruptedException ie) {
-          Thread.currentThread().interrupt();
-          return CompletableFuture.failedFuture(ie);
-        }
-      }
-    }
-
-    // Should not reach here, but just in case
-    return CompletableFuture.failedFuture(
-        new RuntimeException("Failed to insert execution after retries"));
-  }
 
   /** Upsert position data into BigQuery (synchronous version) */
   public void insertPosition(BigQueryPositionEntity position) {
@@ -242,33 +165,6 @@ public class BigQueryService {
     }
   }
 
-  /** Upsert position data into BigQuery asynchronously */
-  @Async("bigQueryAsyncExecutor")
-  public CompletableFuture<Void> insertPositionAsync(BigQueryPositionEntity position) {
-    try {
-      log.debug(
-          "Starting async BigQuery position upsert: {}_{}",
-          position.getUsername(),
-          position.getSymbol());
-
-      // Call the synchronous upsert method
-      insertPosition(position);
-      
-      log.debug(
-          "Successfully upserted position to BigQuery (async): {}_{}",
-          position.getUsername(),
-          position.getSymbol());
-      return CompletableFuture.completedFuture(null);
-
-    } catch (Exception e) {
-      log.error(
-          "Error inserting position to BigQuery (async): {}_{}",
-          position.getUsername(),
-          position.getSymbol(),
-          e);
-      return CompletableFuture.failedFuture(e);
-    }
-  }
 
   /** Insert trade history data into BigQuery (synchronous version) */
   public void insertTradeHistory(BigQueryTradeHistoryEntity tradeHistory) {
@@ -292,36 +188,6 @@ public class BigQueryService {
     }
   }
 
-  /** Insert trade history data into BigQuery asynchronously */
-  @Async("bigQueryAsyncExecutor")
-  public CompletableFuture<Void> insertTradeHistoryAsync(BigQueryTradeHistoryEntity tradeHistory) {
-    try {
-      log.debug("Starting async BigQuery trade history insert: {}", tradeHistory.getExecId());
-
-      TableId tableId = BigQueryTradeHistoryEntity.getTableId(projectId, datasetName);
-      Map<String, Object> row = tradeHistory.toBigQueryRow();
-
-      InsertAllRequest insertRequest = InsertAllRequest.newBuilder(tableId).addRow(row).build();
-
-      InsertAllResponse response = bigQuery.insertAll(insertRequest);
-
-      if (response.hasErrors()) {
-        log.error(
-            "Error inserting trade history to BigQuery (async): {}", response.getInsertErrors());
-        return CompletableFuture.failedFuture(
-            new RuntimeException("Failed to insert trade history to BigQuery"));
-      }
-
-      log.debug(
-          "Successfully inserted trade history to BigQuery (async): {}", tradeHistory.getExecId());
-      return CompletableFuture.completedFuture(null);
-
-    } catch (Exception e) {
-      log.error(
-          "Error inserting trade history to BigQuery (async): {}", tradeHistory.getExecId(), e);
-      return CompletableFuture.failedFuture(e);
-    }
-  }
 
   /** Query position by username and symbol from BigQuery */
   public BigQueryPositionEntity queryPosition(String username, String symbol) {
@@ -726,6 +592,93 @@ public class BigQueryService {
     } catch (Exception e) {
       log.error("Error creating BigQuery table: " + tableId, e);
       throw new RuntimeException("Failed to create BigQuery table: " + tableId, e);
+    }
+  }
+
+  /**
+   * ポジションをBigQueryにUPSERT（INSERT or UPDATE）する同期メソッド
+   * BigQueryWriterスレッドから呼ばれる
+   */
+  public void upsertPosition(BigQueryPositionEntity position) {
+    try {
+      Map<String, Object> row = position.toBigQueryRow();
+
+      String mergeQuery = String.format(
+        """
+        MERGE `%s.%s.positions` AS target
+        USING (
+          SELECT
+            @username AS username,
+            @symbol AS symbol,
+            @total_buy_qty AS total_buy_qty,
+            @total_buy_amount AS total_buy_amount,
+            @total_sell_qty AS total_sell_qty,
+            @total_sell_amount AS total_sell_amount,
+            @net_qty AS net_qty,
+            @average_buy_price AS average_buy_price,
+            @average_sell_price AS average_sell_price,
+            @realized_pnl AS realized_pnl,
+            @last_updated AS last_updated
+        ) AS source
+        ON target.username = source.username AND target.symbol = source.symbol
+        WHEN MATCHED THEN
+          UPDATE SET
+            total_buy_qty = source.total_buy_qty,
+            total_buy_amount = source.total_buy_amount,
+            total_sell_qty = source.total_sell_qty,
+            total_sell_amount = source.total_sell_amount,
+            net_qty = source.net_qty,
+            average_buy_price = source.average_buy_price,
+            average_sell_price = source.average_sell_price,
+            realized_pnl = source.realized_pnl,
+            last_updated = source.last_updated
+        WHEN NOT MATCHED THEN
+          INSERT (username, symbol, total_buy_qty, total_buy_amount, total_sell_qty,
+                  total_sell_amount, net_qty, average_buy_price, average_sell_price,
+                  realized_pnl, last_updated)
+          VALUES (source.username, source.symbol, source.total_buy_qty,
+                  source.total_buy_amount, source.total_sell_qty, source.total_sell_amount,
+                  source.net_qty, source.average_buy_price, source.average_sell_price,
+                  source.realized_pnl, source.last_updated)
+        """,
+        projectId, datasetName);
+
+      // Convert timestamp from seconds (double) to microseconds (long) for BigQuery
+      Double lastUpdatedSeconds = (Double) row.get("last_updated");
+      Long lastUpdatedMicros = (long) (lastUpdatedSeconds * 1_000_000);
+
+      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(mergeQuery)
+        .addNamedParameter("username", com.google.cloud.bigquery.QueryParameterValue.string((String) row.get("username")))
+        .addNamedParameter("symbol", com.google.cloud.bigquery.QueryParameterValue.string((String) row.get("symbol")))
+        .addNamedParameter("total_buy_qty", com.google.cloud.bigquery.QueryParameterValue.int64((Long) row.get("total_buy_qty")))
+        .addNamedParameter("total_buy_amount", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("total_buy_amount")))
+        .addNamedParameter("total_sell_qty", com.google.cloud.bigquery.QueryParameterValue.int64((Long) row.get("total_sell_qty")))
+        .addNamedParameter("total_sell_amount", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("total_sell_amount")))
+        .addNamedParameter("net_qty", com.google.cloud.bigquery.QueryParameterValue.int64((Long) row.get("net_qty")))
+        .addNamedParameter("average_buy_price", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("average_buy_price")))
+        .addNamedParameter("average_sell_price", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("average_sell_price")))
+        .addNamedParameter("realized_pnl", com.google.cloud.bigquery.QueryParameterValue.float64((Double) row.get("realized_pnl")))
+        .addNamedParameter("last_updated", com.google.cloud.bigquery.QueryParameterValue.timestamp(lastUpdatedMicros))
+        .build();
+
+      JobId jobId = JobId.of(java.util.UUID.randomUUID().toString());
+      Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
+
+      queryJob = queryJob.waitFor();
+
+      if (queryJob == null || queryJob.getStatus().getError() != null) {
+        String error = queryJob != null ? queryJob.getStatus().getError().toString() : "Unknown error";
+        log.error("Error upserting position to BigQuery: {}", error);
+        throw new RuntimeException("Failed to upsert position to BigQuery: " + error);
+      }
+
+      log.debug("Successfully upserted position to BigQuery: {}_{}",
+                position.getUsername(), position.getSymbol());
+
+    } catch (Exception e) {
+      log.error("Error upserting position to BigQuery: {}_{}",
+                position.getUsername(), position.getSymbol(), e);
+      throw new RuntimeException("Failed to upsert position to BigQuery", e);
     }
   }
 }

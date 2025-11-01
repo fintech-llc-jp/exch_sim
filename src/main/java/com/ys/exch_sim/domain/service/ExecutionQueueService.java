@@ -1,7 +1,9 @@
 package com.ys.exch_sim.domain.service;
 
+import com.ys.exch_sim.domain.bigquery.BigQueryEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryService;
+import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import java.util.ArrayList;
@@ -23,6 +25,9 @@ public class ExecutionQueueService {
   private BigQueryService bigQueryService;
 
   @Autowired(required = false)
+  private BigQueryWriter bigQueryWriter;
+
+  @Autowired(required = false)
   private BigQueryVolumeCalculationService volumeCalculationService;
 
   @Value("${app.data-migration.bigquery-enabled:false}")
@@ -41,8 +46,8 @@ public class ExecutionQueueService {
     // PARTIAL_FILL と FILLED のみを記録対象（NEW, REJECTED, CANCELED は除外）
     if (!execution.getIsMarketMaker() && isActualExecution(execution)) {
       try {
-        // BigQueryにも非同期保存
-        if (bigQueryEnabled && bigQueryService != null) {
+        // BigQueryにキューイング
+        if (bigQueryWriter != null) {
           saveExecutionToBigQueryAsync(execution);
           log.info("Persisted non-MarketMaker execution to BigQuery for user: {}", username);
         }
@@ -101,24 +106,16 @@ public class ExecutionQueueService {
     }
   }
 
-  // BigQuery非同期保存メソッド
+  // BigQuery キューベースの非ブロッキング保存メソッド
   private void saveExecutionToBigQueryAsync(Execution execution) {
     try {
-      BigQueryExecutionEntity bigQueryEntity = new BigQueryExecutionEntity(execution);
-      bigQueryService
-          .insertExecutionAsync(bigQueryEntity)
-          .thenRun(
-              () -> log.debug("Execution saved to BigQuery (async): {}", execution.getExecID()))
-          .exceptionally(
-              throwable -> {
-                log.error(
-                    "Error saving execution to BigQuery (async): {}",
-                    execution.getExecID(),
-                    throwable);
-                return null;
-              });
+      if (bigQueryWriter != null) {
+        // キューに追加（非ブロッキング）
+        bigQueryWriter.enqueue(BigQueryEntity.execution(execution));
+        log.debug("Execution enqueued to BigQuery writer: {}", execution.getExecID());
+      }
     } catch (Exception e) {
-      log.error("Error preparing execution for BigQuery (async): {}", execution.getExecID(), e);
+      log.error("Error enqueuing execution to BigQuery: {}", execution.getExecID(), e);
     }
   }
 
