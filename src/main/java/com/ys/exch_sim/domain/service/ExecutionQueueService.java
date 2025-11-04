@@ -38,13 +38,13 @@ public class ExecutionQueueService {
       new ConcurrentHashMap<>();
 
   public void addExecution(String username, Execution execution) {
-    userExecutionQueues
-        .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
-        .offer(execution);
-
-    // MarketMaker以外の「実際の約定」のみをBigQueryに永続化
+    // MarketMaker以外の「実際の約定」のみをメモリキャッシュとBigQueryに保存
     // PARTIAL_FILL と FILLED のみを記録対象（NEW, REJECTED, CANCELED は除外）
     if (!execution.getIsMarketMaker() && isActualExecution(execution)) {
+      userExecutionQueues
+          .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
+          .offer(execution);
+
       try {
         // BigQueryにキューイング
         if (bigQueryWriter != null) {
@@ -59,9 +59,13 @@ public class ExecutionQueueService {
       } catch (Exception e) {
         log.error("Failed to persist execution to BigQuery for user: {}", username, e);
       }
-    }
 
-    log.info("Added execution to queue for user: {}", username);
+      log.info("Added actual execution to queue for user: {}", username);
+    } else {
+      // MarketMaker注文またはNEW/REJECTED/CANCELED状態は記録しない
+      log.debug("Skipped non-actual execution: isMarketMaker={}, execStatus={}",
+          execution.getIsMarketMaker(), execution.getExecStatus());
+    }
   }
 
   public List<Execution> pollExecutions(String username, int maxCount) {
@@ -120,6 +124,72 @@ public class ExecutionQueueService {
   }
 
   /**
+   * ユーザーの約定履歴を取得（ページネーション対応）
+   * @param username ユーザー名
+   * @param page ページ番号（0から始まる）
+   * @param size 1ページあたりの件数
+   * @return ExecutionHistoryResponse用の履歴データ
+   */
+  public ExecutionHistoryData getExecutionHistory(String username, int page, int size) {
+    BlockingQueue<Execution> userQueue = userExecutionQueues.get(username);
+    if (userQueue == null) {
+      return new ExecutionHistoryData(username, page, size, 0, 0L, Collections.emptyList());
+    }
+
+    // キューから全ての約定を取得（キューは破壊されない）
+    List<Execution> allExecutions = new ArrayList<>(userQueue);
+
+    // 全体の件数
+    long totalElements = allExecutions.size();
+    int totalPages = (int) Math.ceil((double) totalElements / size);
+
+    // ページネーション
+    int fromIndex = page * size;
+    int toIndex = Math.min(fromIndex + size, allExecutions.size());
+
+    List<Execution> pageData = fromIndex < allExecutions.size()
+        ? allExecutions.subList(fromIndex, toIndex)
+        : Collections.emptyList();
+
+    log.info("Retrieved execution history for user: {}, page: {}, size: {}, totalElements: {}, totalPages: {}",
+        username, page, size, totalElements, totalPages);
+
+    return new ExecutionHistoryData(username, page, size, totalPages, totalElements, pageData);
+  }
+
+  /**
+   * 全ユーザーの約定履歴を取得（ページネーション対応）
+   * @param page ページ番号（0から始まる）
+   * @param size 1ページあたりの件数
+   * @return ExecutionHistoryResponse用の履歴データ
+   */
+  public ExecutionHistoryData getAllExecutionHistory(int page, int size) {
+    List<Execution> allUserExecutions = new ArrayList<>();
+
+    // 全ユーザーの約定を集約
+    for (BlockingQueue<Execution> queue : userExecutionQueues.values()) {
+      allUserExecutions.addAll(queue);
+    }
+
+    // 全体の件数
+    long totalElements = allUserExecutions.size();
+    int totalPages = (int) Math.ceil((double) totalElements / size);
+
+    // ページネーション
+    int fromIndex = page * size;
+    int toIndex = Math.min(fromIndex + size, allUserExecutions.size());
+
+    List<Execution> pageData = fromIndex < allUserExecutions.size()
+        ? allUserExecutions.subList(fromIndex, toIndex)
+        : Collections.emptyList();
+
+    log.info("Retrieved all execution history, page: {}, size: {}, totalElements: {}, totalPages: {}",
+        page, size, totalElements, totalPages);
+
+    return new ExecutionHistoryData("ALL_USERS", page, size, totalPages, totalElements, pageData);
+  }
+
+  /**
    * 実際の約定かどうかを判定
    * PARTIAL_FILL と FILLED のみが実際の約定
    * NEW, REJECTED, CANCELED は約定ではなく注文状態変化
@@ -127,5 +197,28 @@ public class ExecutionQueueService {
   private boolean isActualExecution(Execution execution) {
     ExecStatus status = execution.getExecStatus();
     return status == ExecStatus.PARTIAL_FILL || status == ExecStatus.FILLED;
+  }
+
+  /**
+   * 約定履歴データを保持するInnerクラス
+   */
+  public static class ExecutionHistoryData {
+    public final String username;
+    public final int page;
+    public final int size;
+    public final int totalPages;
+    public final long totalElements;
+    public final List<Execution> executions;
+
+    public ExecutionHistoryData(String username, int page, int size,
+                                int totalPages, long totalElements,
+                                List<Execution> executions) {
+      this.username = username;
+      this.page = page;
+      this.size = size;
+      this.totalPages = totalPages;
+      this.totalElements = totalElements;
+      this.executions = executions;
+    }
   }
 }
