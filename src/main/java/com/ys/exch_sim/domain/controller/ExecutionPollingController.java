@@ -207,21 +207,83 @@ public class ExecutionPollingController {
       }
 
       String username = authentication.getName();
-      log.warn("⚠️ ExecutionHistory endpoint no longer supported - H2 database removed");
 
-      // Return empty response
+      // メモリキャッシュから約定履歴を取得
+      ExecutionQueueService.ExecutionHistoryData historyData =
+          executionQueueService.getExecutionHistory(username, page, size);
+
+      // ExecutionをDTOに変換
+      List<ExecutionHistoryResponse.ExecutionHistoryDto> executionDtos =
+          historyData.executions.stream()
+              .map(exec -> {
+                try {
+                  // Non-persisted executionの場合
+                  return new ExecutionHistoryResponse.ExecutionHistoryDto(
+                      exec.getExecID().getId(),
+                      exec.getOrder().getClOrdID().getId(),
+                      exec.getOrder().getSymbol().getName(),
+                      exec.getExecStatus().toString(),
+                      getPxValue(exec.getLastPx()),
+                      getQtyValue(exec.getLastQty()),
+                      exec.getCounterPartyUsername(),
+                      exec.getOrder().getSide().toString(),
+                      exec.getCreatedAt() != null ? exec.getCreatedAt() : LocalDateTime.now());
+                } catch (UnsupportedOperationException e) {
+                  // Persisted executionの場合
+                  return new ExecutionHistoryResponse.ExecutionHistoryDto(
+                      exec.getExecID().getId(),
+                      exec.getOrderID(),
+                      exec.getSymbol(),
+                      exec.getExecStatus().toString(),
+                      getPxValueFromRaw(exec.getLastPxRaw()),
+                      getQtyValueFromRaw(exec.getLastQtyRaw()),
+                      exec.getCounterPartyUsername(),
+                      determineSideFromExecution(exec),
+                      LocalDateTime.now());
+                }
+              })
+              .collect(Collectors.toList());
+
+      // symbol フィルタリング
+      if (symbol != null && !symbol.trim().isEmpty()) {
+        String symbolFilter = symbol.toUpperCase();
+        executionDtos = executionDtos.stream()
+            .filter(dto -> dto.getSymbol() != null && dto.getSymbol().toUpperCase().contains(symbolFilter))
+            .collect(Collectors.toList());
+
+        // フィルタリング後の件数で応答を構成
+        // ページネーションを再計算（フィルタリング後のデータに基づく）
+        int filteredTotal = executionDtos.size();
+        int filteredPages = (int) Math.ceil((double) filteredTotal / size);
+
+        ExecutionHistoryResponse response = new ExecutionHistoryResponse(
+            username,
+            page,
+            size,
+            filteredPages,
+            filteredTotal,
+            executionDtos
+        );
+
+        long totalProcessingTime = System.currentTimeMillis() - startTime;
+        log.info("✅ ExecutionHistory API Response [{}] - Retrieved {} executions (filtered by {}), totalElements: {}, processingTime: {}ms",
+                 requestId, executionDtos.size(), symbol, filteredTotal, totalProcessingTime);
+
+        return ResponseEntity.ok(response);
+      }
+
       ExecutionHistoryResponse response = new ExecutionHistoryResponse(
           username,
           page,
           size,
-          0, // totalPages
-          0L, // totalElements
-          List.of() // empty list
+          historyData.totalPages,
+          historyData.totalElements,
+          executionDtos
       );
 
       long totalProcessingTime = System.currentTimeMillis() - startTime;
-      log.info("✅ ExecutionHistory API Response [{}] - H2 removed, returning empty response, processingTime: {}ms",
-               requestId, totalProcessingTime);
+      log.info("✅ ExecutionHistory API Response [{}] - Retrieved {} executions, totalElements: {}, processingTime: {}ms",
+               requestId, executionDtos.size(), historyData.totalElements, totalProcessingTime);
 
       return ResponseEntity.ok(response);
 
@@ -247,21 +309,82 @@ public class ExecutionPollingController {
       log.info("📊 GlobalExecutionHistory API Request [{}] - page: {}, size: {}, symbol: {}",
                requestId, page, size, symbol);
 
-      log.warn("⚠️ GlobalExecutionHistory endpoint no longer supported - H2 database removed");
+      // メモリキャッシュから全ユーザーの約定履歴を取得
+      ExecutionQueueService.ExecutionHistoryData historyData =
+          executionQueueService.getAllExecutionHistory(page, size);
 
-      // Return empty response
+      // ExecutionをDTOに変換
+      List<ExecutionHistoryResponse.ExecutionHistoryDto> executionDtos =
+          historyData.executions.stream()
+              .map(exec -> {
+                try {
+                  // Non-persisted executionの場合
+                  return new ExecutionHistoryResponse.ExecutionHistoryDto(
+                      exec.getExecID().getId(),
+                      exec.getOrder().getClOrdID().getId(),
+                      exec.getOrder().getSymbol().getName(),
+                      exec.getExecStatus().toString(),
+                      getPxValue(exec.getLastPx()),
+                      getQtyValue(exec.getLastQty()),
+                      exec.getCounterPartyUsername(),
+                      exec.getOrder().getSide().toString(),
+                      exec.getCreatedAt() != null ? exec.getCreatedAt() : LocalDateTime.now());
+                } catch (UnsupportedOperationException e) {
+                  // Persisted executionの場合
+                  return new ExecutionHistoryResponse.ExecutionHistoryDto(
+                      exec.getExecID().getId(),
+                      exec.getOrderID(),
+                      exec.getSymbol(),
+                      exec.getExecStatus().toString(),
+                      getPxValueFromRaw(exec.getLastPxRaw()),
+                      getQtyValueFromRaw(exec.getLastQtyRaw()),
+                      exec.getCounterPartyUsername(),
+                      determineSideFromExecution(exec),
+                      LocalDateTime.now());
+                }
+              })
+              .collect(Collectors.toList());
+
+      // symbol フィルタリング
+      if (symbol != null && !symbol.trim().isEmpty()) {
+        String symbolFilter = symbol.toUpperCase();
+        executionDtos = executionDtos.stream()
+            .filter(dto -> dto.getSymbol() != null && dto.getSymbol().toUpperCase().contains(symbolFilter))
+            .collect(Collectors.toList());
+
+        // フィルタリング後の件数で応答を構成
+        // ページネーションを再計算（フィルタリング後のデータに基づく）
+        int filteredTotal = executionDtos.size();
+        int filteredPages = (int) Math.ceil((double) filteredTotal / size);
+
+        ExecutionHistoryResponse response = new ExecutionHistoryResponse(
+            "ALL_USERS",
+            page,
+            size,
+            filteredPages,
+            filteredTotal,
+            executionDtos
+        );
+
+        long totalProcessingTime = System.currentTimeMillis() - startTime;
+        log.info("✅ GlobalExecutionHistory API Response [{}] - Retrieved {} executions (filtered by {}), totalElements: {}, processingTime: {}ms",
+                 requestId, executionDtos.size(), symbol, filteredTotal, totalProcessingTime);
+
+        return ResponseEntity.ok(response);
+      }
+
       ExecutionHistoryResponse response = new ExecutionHistoryResponse(
           "ALL_USERS",
           page,
           size,
-          0, // totalPages
-          0L, // totalElements
-          List.of() // empty list
+          historyData.totalPages,
+          historyData.totalElements,
+          executionDtos
       );
 
       long totalProcessingTime = System.currentTimeMillis() - startTime;
-      log.info("✅ GlobalExecutionHistory API Response [{}] - H2 removed, returning empty response, processingTime: {}ms",
-               requestId, totalProcessingTime);
+      log.info("✅ GlobalExecutionHistory API Response [{}] - Retrieved {} executions, totalElements: {}, processingTime: {}ms",
+               requestId, executionDtos.size(), historyData.totalElements, totalProcessingTime);
 
       return ResponseEntity.ok(response);
 

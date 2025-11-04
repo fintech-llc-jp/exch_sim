@@ -434,6 +434,49 @@ public class BigQueryService {
     log.info("Query executions method called with whereClause: {}", whereClause);
   }
 
+  /** Query recent executions from BigQuery (last 24 hours) */
+  public List<BigQueryExecutionEntity> queryRecentExecutions() {
+    try {
+      String query = String.format(
+        "SELECT * FROM `%s.%s.executions` WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR) ORDER BY created_at DESC",
+        projectId, datasetName);
+
+      QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(query).build();
+
+      JobId jobId = JobId.of(java.util.UUID.randomUUID().toString());
+      Job queryJob = bigQuery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
+
+      queryJob = queryJob.waitFor();
+
+      if (queryJob == null || queryJob.getStatus().getError() != null) {
+        log.error("Error querying recent executions from BigQuery");
+        return List.of();
+      }
+
+      TableResult result = queryJob.getQueryResults();
+      List<BigQueryExecutionEntity> executions = new ArrayList<>();
+
+      for (com.google.cloud.bigquery.FieldValueList row : result.iterateAll()) {
+        Map<String, Object> rowMap = new HashMap<>();
+        for (com.google.cloud.bigquery.Field field : result.getSchema().getFields()) {
+          String fieldName = field.getName();
+          com.google.cloud.bigquery.FieldValue fieldValue = row.get(fieldName);
+          if (!fieldValue.isNull()) {
+            rowMap.put(fieldName, fieldValue.getValue());
+          }
+        }
+        executions.add(BigQueryExecutionEntity.fromBigQueryRow(rowMap));
+      }
+
+      log.info("📊 Query recent executions completed - Found {} executions from last 24 hours", executions.size());
+      return executions;
+
+    } catch (Exception e) {
+      log.error("Error querying recent executions from BigQuery: {}", e.getMessage(), e);
+      return List.of();
+    }
+  }
+
   /** Register a new user in BigQuery */
   public void registerUser(String username, String encodedPassword, List<String> roles) {
     try {

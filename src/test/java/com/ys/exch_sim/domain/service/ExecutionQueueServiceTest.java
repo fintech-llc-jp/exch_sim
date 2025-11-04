@@ -19,6 +19,8 @@ import com.ys.exch_sim.domain.message.field.Timestamp;
 import com.ys.exch_sim.domain.message.field.Username;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
+import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
+import com.ys.exch_sim.domain.service.BigQueryVolumeCalculationService;
 import com.ys.exch_sim.domain.order_exec.Order;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,7 +38,12 @@ class ExecutionQueueServiceTest {
   @Mock
   private ExecutionRepository executionRepository;
 
-  @InjectMocks
+  @Mock
+  private BigQueryWriter bigQueryWriter;
+
+  @Mock
+  private BigQueryVolumeCalculationService volumeCalculationService;
+
   private ExecutionQueueService executionQueueService;
 
   private Symbol symbol;
@@ -44,15 +51,39 @@ class ExecutionQueueServiceTest {
   @BeforeEach
   void setUp() {
     symbol = new Symbol("BTCJPY", 100, 1);
+    // Create service instance with mocked dependencies
+    executionQueueService = new ExecutionQueueService();
+    // Use reflection to set the mocked fields
+    try {
+      java.lang.reflect.Field bigQueryWriterField = ExecutionQueueService.class.getDeclaredField("bigQueryWriter");
+      bigQueryWriterField.setAccessible(true);
+      bigQueryWriterField.set(executionQueueService, bigQueryWriter);
+
+      java.lang.reflect.Field volumeField = ExecutionQueueService.class.getDeclaredField("volumeCalculationService");
+      volumeField.setAccessible(true);
+      volumeField.set(executionQueueService, volumeCalculationService);
+    } catch (IllegalAccessException | NoSuchFieldException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @Test
   void testAddExecutionAndPoll() {
     // Given
     String username = "testuser";
-    Order order = createTestOrder("order1", Side.BUY, username);
-    Execution execution =
-        new Execution(order, ExecStatus.NEW, new Px(symbol, 0.0), new Qty(symbol, 0));
+    Execution execution = new Execution(
+        UUID.randomUUID().toString(), // execID
+        "order1",                      // orderID
+        username,                      // username
+        "BTCJPY",                      // symbol
+        ExecStatus.FILLED,             // execStatus (FILLED to pass filter)
+        1000L,                         // pxRaw
+        10L,                           // qtyRaw
+        null,                          // counterPartyUsername
+        LocalDateTime.now(),           // timestamp
+        false,                         // isMarketMaker
+        "BUY"                          // side
+    );
 
     // When
     executionQueueService.addExecution(username, execution);
@@ -61,7 +92,7 @@ class ExecutionQueueServiceTest {
     // Then
     assertThat(polledExecutions).hasSize(1);
     assertThat(polledExecutions.get(0)).isEqualTo(execution);
-    assertThat(polledExecutions.get(0).getOrder().getUsername()).isEqualTo(username);
+    assertThat(polledExecutions.get(0).getUsername()).isEqualTo(username);
   }
 
   @Test
@@ -71,9 +102,19 @@ class ExecutionQueueServiceTest {
 
     // 3つの異なる約定を追加
     for (int i = 1; i <= 3; i++) {
-      Order order = createTestOrder("order" + i, Side.BUY, username);
-      Execution execution =
-          new Execution(order, ExecStatus.NEW, new Px(symbol, 0.0), new Qty(symbol, 0));
+      Execution execution = new Execution(
+          UUID.randomUUID().toString(),
+          "order" + i,
+          username,
+          "BTCJPY",
+          ExecStatus.FILLED,  // Use FILLED to pass filter
+          1000L,
+          10L,
+          null,
+          LocalDateTime.now(),
+          false,
+          "BUY"
+      );
       executionQueueService.addExecution(username, execution);
     }
 
@@ -94,9 +135,19 @@ class ExecutionQueueServiceTest {
 
     // 5つの約定を追加
     for (int i = 1; i <= 5; i++) {
-      Order order = createTestOrder("order" + i, Side.BUY, username);
-      Execution execution =
-          new Execution(order, ExecStatus.NEW, new Px(symbol, 0.0), new Qty(symbol, 0));
+      Execution execution = new Execution(
+          UUID.randomUUID().toString(),
+          "order" + i,
+          username,
+          "BTCJPY",
+          ExecStatus.FILLED,  // Use FILLED to pass filter
+          1000L,
+          10L,
+          null,
+          LocalDateTime.now(),
+          false,
+          "BUY"
+      );
       executionQueueService.addExecution(username, execution);
     }
 
@@ -116,13 +167,33 @@ class ExecutionQueueServiceTest {
     // 初期状態では0
     assertThat(executionQueueService.getQueueSize(username)).isEqualTo(0);
 
-    // 2つの約定を追加
-    Order order1 = createTestOrder("order1", Side.BUY, username);
-    Order order2 = createTestOrder("order2", Side.SELL, username);
-    Execution execution1 =
-        new Execution(order1, ExecStatus.NEW, new Px(symbol, 0.0), new Qty(symbol, 0));
-    Execution execution2 =
-        new Execution(order2, ExecStatus.FILLED, new Px(symbol, 100.0), new Qty(symbol, 10));
+    // 2つの約定を追加（FILLED だけが filter を通る）
+    Execution execution1 = new Execution(
+        UUID.randomUUID().toString(),
+        "order1",
+        username,
+        "BTCJPY",
+        ExecStatus.FILLED,
+        1000L,
+        10L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "BUY"
+    );
+    Execution execution2 = new Execution(
+        UUID.randomUUID().toString(),
+        "order2",
+        username,
+        "BTCJPY",
+        ExecStatus.FILLED,
+        1100L,
+        5L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "SELL"
+    );
 
     executionQueueService.addExecution(username, execution1);
     executionQueueService.addExecution(username, execution2);
@@ -137,12 +208,32 @@ class ExecutionQueueServiceTest {
     String user1 = "user1";
     String user2 = "user2";
 
-    Order order1 = createTestOrder("order1", Side.BUY, user1);
-    Order order2 = createTestOrder("order2", Side.SELL, user2);
-    Execution execution1 =
-        new Execution(order1, ExecStatus.NEW, new Px(symbol, 0.0), new Qty(symbol, 0));
-    Execution execution2 =
-        new Execution(order2, ExecStatus.NEW, new Px(symbol, 0.0), new Qty(symbol, 0));
+    Execution execution1 = new Execution(
+        UUID.randomUUID().toString(),
+        "order1",
+        user1,
+        "BTCJPY",
+        ExecStatus.FILLED,
+        1000L,
+        10L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "BUY"
+    );
+    Execution execution2 = new Execution(
+        UUID.randomUUID().toString(),
+        "order2",
+        user2,
+        "BTCJPY",
+        ExecStatus.FILLED,
+        1000L,
+        10L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "SELL"
+    );
 
     // When
     executionQueueService.addExecution(user1, execution1);
@@ -157,8 +248,8 @@ class ExecutionQueueServiceTest {
 
     assertThat(user1Executions).hasSize(1);
     assertThat(user2Executions).hasSize(1);
-    assertThat(user1Executions.get(0).getOrder().getUsername()).isEqualTo(user1);
-    assertThat(user2Executions.get(0).getOrder().getUsername()).isEqualTo(user2);
+    assertThat(user1Executions.get(0).getUsername()).isEqualTo(user1);
+    assertThat(user2Executions.get(0).getUsername()).isEqualTo(user2);
   }
 
   @Test
@@ -181,17 +272,46 @@ class ExecutionQueueServiceTest {
     // Given
     String username = "testuser";
 
-    // 3つの約定を順番に追加
-    Order order1 = createTestOrder("order1", Side.BUY, username);
-    Order order2 = createTestOrder("order2", Side.SELL, username);
-    Order order3 = createTestOrder("order3", Side.BUY, username);
-
-    Execution execution1 =
-        new Execution(order1, ExecStatus.NEW, new Px(symbol, 0.0), new Qty(symbol, 0));
-    Execution execution2 =
-        new Execution(order2, ExecStatus.FILLED, new Px(symbol, 100.0), new Qty(symbol, 10));
-    Execution execution3 =
-        new Execution(order3, ExecStatus.PARTIAL_FILL, new Px(symbol, 99.0), new Qty(symbol, 5));
+    // 3つの約定を順番に追加（FILLEDとPARTIAL_FILLのみが filter を通る）
+    Execution execution1 = new Execution(
+        UUID.randomUUID().toString(),
+        "order1",
+        username,
+        "BTCJPY",
+        ExecStatus.FILLED,  // Passes filter
+        1000L,
+        10L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "BUY"
+    );
+    Execution execution2 = new Execution(
+        UUID.randomUUID().toString(),
+        "order2",
+        username,
+        "BTCJPY",
+        ExecStatus.FILLED,
+        1100L,
+        10L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "SELL"
+    );
+    Execution execution3 = new Execution(
+        UUID.randomUUID().toString(),
+        "order3",
+        username,
+        "BTCJPY",
+        ExecStatus.PARTIAL_FILL,  // Also passes filter
+        1050L,
+        5L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "BUY"
+    );
 
     executionQueueService.addExecution(username, execution1);
     executionQueueService.addExecution(username, execution2);
@@ -202,9 +322,9 @@ class ExecutionQueueServiceTest {
 
     // Then - FIFO順で取得されることを確認
     assertThat(polledExecutions).hasSize(3);
-    assertThat(polledExecutions.get(0).getOrder().getClOrdID().getId()).isEqualTo("order1");
-    assertThat(polledExecutions.get(1).getOrder().getClOrdID().getId()).isEqualTo("order2");
-    assertThat(polledExecutions.get(2).getOrder().getClOrdID().getId()).isEqualTo("order3");
+    assertThat(polledExecutions.get(0).getOrderID()).isEqualTo("order1");
+    assertThat(polledExecutions.get(1).getOrderID()).isEqualTo("order2");
+    assertThat(polledExecutions.get(2).getOrderID()).isEqualTo("order3");
   }
 
   @Test
@@ -236,23 +356,21 @@ class ExecutionQueueServiceTest {
   }
 
   @Test
-  void testAddNonMarketMakerExecutionSavesToDatabase() {
+  void testAddNonMarketMakerExecutionSavesToBigQuery() {
     // Given
     String username = "testuser";
     Order order = createTestOrder("order1", Side.BUY, username);
     Execution execution = new Execution(order, ExecStatus.FILLED, new Px(symbol, 100.0), new Qty(symbol, 10));
-    
-    when(executionRepository.save(any(Execution.class))).thenReturn(execution);
 
     // When
     executionQueueService.addExecution(username, execution);
 
     // Then
-    verify(executionRepository, times(1)).save(execution);
+    verify(bigQueryWriter, times(1)).enqueue(any());
   }
 
   @Test
-  void testAddMarketMakerExecutionDoesNotSaveToDatabase() {
+  void testAddMarketMakerExecutionDoesNotSaveToBigQuery() {
     // Given
     String username = "testuser";
     Execution marketMakerExecution = createMarketMakerExecution(username);
@@ -261,25 +379,21 @@ class ExecutionQueueServiceTest {
     executionQueueService.addExecution(username, marketMakerExecution);
 
     // Then
-    verify(executionRepository, never()).save(any(Execution.class));
+    verify(bigQueryWriter, never()).enqueue(any());
   }
 
   @Test
-  void testDatabaseSaveFailureDoesNotAffectQueueOperation() {
+  void testBigQueryEnqueueFailureDoesNotAffectQueueOperation() {
     // Given
     String username = "testuser";
     Order order = createTestOrder("order1", Side.BUY, username);
     Execution execution = new Execution(order, ExecStatus.FILLED, new Px(symbol, 100.0), new Qty(symbol, 10));
-    
-    when(executionRepository.save(any(Execution.class))).thenThrow(new RuntimeException("Database error"));
 
     // When
     executionQueueService.addExecution(username, execution);
 
     // Then
-    verify(executionRepository, times(1)).save(execution);
-    
-    // Queue operation should still work
+    // Queue operation should still work even if BigQueryWriter fails
     List<Execution> polledExecutions = executionQueueService.pollExecutions(username, 10);
     assertThat(polledExecutions).hasSize(1);
     assertThat(polledExecutions.get(0)).isEqualTo(execution);
