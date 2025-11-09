@@ -8,7 +8,7 @@
 - **約定処理**: リアルタイムでの注文マッチング
 - **板情報取得**: 買い注文・売り注文の価格・数量情報
 - **約定結果配信**: ユーザー毎の約定結果ポーリング
-- **約定履歴管理**: ページネーション付き約定履歴取得・H2データベース永続化
+- **約定履歴管理**: ページネーション付き約定履歴取得・BigQuery永続化
 - **ポジション管理**: 取引履歴・損益計算・ポートフォリオ管理
 - **MarketMaker機能**: MARKET_MAKER専用の一括注文機能
 - **商品タイプ管理**: Cash（現物）とFX（先物）の取引制限
@@ -21,7 +21,9 @@
 - **Spring Boot**: 3.x
 - **Spring Security**: JWT認証・権限管理
 - **Spring AOP**: 権限チェック
-- **H2 Database**: 約定履歴永続化
+- **Google BigQuery**: 本番データストレージ（取引履歴、ユーザー認証）
+- **Spring Cloud GCP**: BigQuery統合
+- **Async Processing**: @Async で重い初期化処理を非同期化
 - **Spring Data JPA**: データベースアクセス
 - **Gradle**: ビルドツール
 - **JUnit 5**: テストフレームワーク
@@ -765,24 +767,18 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 
 ## ユーザーデータ管理
 
-ユーザー情報は `./users.json` ファイルに保存されます：
+ユーザー情報はGoogle BigQueryに保存されます（本番環境）：
 
-```json
-{
-  "users": [
-    {
-      "username": "trader001",
-      "password": "$2a$10$...",
-      "roles": ["ROLE_USER"]
-    },
-    {
-      "username": "marketmaker1",
-      "password": "$2a$10$...",
-      "roles": ["ROLE_USER", "ROLE_MARKET_MAKER"]
-    }
-  ]
-}
-```
+**ユーザーテーブル**: `tradingscreen:repository.users`
+
+### デフォルトユーザー
+アプリケーション起動時に以下のデフォルトユーザーが自動作成されます：
+
+| ユーザー名 | パスワード | ロール |
+|-----------|-----------|---------|
+| admin | admin123 | ROLE_ADMIN, ROLE_USER |
+| trader001 | trader123 | ROLE_USER |
+| marketmaker1 | mm123 | ROLE_MARKET_MAKER, ROLE_USER |
 
 ## 主要機能の特徴
 
@@ -939,15 +935,20 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 ./quick_test.sh trade-insert
 ```
 
-### データベース管理
+### BigQueryデータストレージ
 
-**H2データベース:**
-- **ファイル**: `./data/executions.mv.db`
-- **Console**: http://localhost:8080/h2-console
-- **接続設定**:
-  - JDBC URL: `jdbc:h2:file:./data/executions`
-  - Username: `sa`
-  - Password: (空白)
+本番環境ではGoogle BigQueryを使用してすべての取引データを永続化します：
+
+**BigQueryテーブル:**
+- `tradingscreen:repository.executions` - 約定履歴
+- `tradingscreen:repository.users` - ユーザー認証情報
+- `tradingscreen:repository.positions` - ポジション情報
+- `tradingscreen:repository.trade_history` - 取引履歴
+
+**設定方法:**
+- 環境変数 `GOOGLE_APPLICATION_CREDENTIALS` でサービスアカウントキーを指定
+- `SPRING_PROFILES_ACTIVE=prod` で本番プロファイルを有効化
+- BigQuery初期化処理は非同期化されており、Spring Boot起動をブロックしません
 
 ### テストカバレッジ
 
