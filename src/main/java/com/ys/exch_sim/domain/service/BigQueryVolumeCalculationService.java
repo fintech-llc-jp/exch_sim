@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -54,8 +55,14 @@ public class BigQueryVolumeCalculationService {
       return;
     }
 
-    log.info("Initializing BigQuery-based volume calculation service");
+    log.info("Initializing BigQuery-based volume calculation service (async)");
+    // Start async initialization to avoid blocking Spring Boot startup
+    initializeAsync();
+  }
 
+  /** Async initialization of volume data */
+  @Async
+  private void initializeAsync() {
     try {
       loadInitialVolumeDataFromBigQuery();
       log.info("Successfully initialized volume calculation service with data from BigQuery");

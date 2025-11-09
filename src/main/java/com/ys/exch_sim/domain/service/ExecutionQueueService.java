@@ -18,6 +18,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -45,9 +46,16 @@ public class ExecutionQueueService {
   private final ConcurrentHashMap<String, ConcurrentLinkedDeque<Execution>>
       executionHistoryBySymbol = new ConcurrentHashMap<>();
 
-  /** 起動時に24時間以内の約定をBigQueryから読み込む */
+  /** 起動時に24時間以内の約定をBigQueryから読み込む (非同期) */
   @PostConstruct
   public void initializeExecutionHistory() {
+    // Start async initialization to avoid blocking Spring Boot startup
+    initializeExecutionHistoryAsync();
+  }
+
+  /** Async initialization of execution history from BigQuery */
+  @Async
+  private void initializeExecutionHistoryAsync() {
     try {
       log.info("🔄 Initializing execution history from BigQuery...");
 
