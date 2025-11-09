@@ -6,8 +6,8 @@ import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.order_exec.Execution;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,7 +15,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,13 +40,12 @@ public class ExecutionQueueService {
   private final ConcurrentHashMap<String, BlockingQueue<Execution>> userExecutionQueues =
       new ConcurrentHashMap<>();
 
-  // 全約定履歴（BigQueryから読み込んだデータ + 新規約定）
+  // 銘柄ごとの約定履歴（BigQueryから読み込んだデータ + 新規約定）
   // メモリ内でのみ管理し、/allエンドポイント用
-  private final ConcurrentLinkedDeque<Execution> executionHistory = new ConcurrentLinkedDeque<>();
+  private final ConcurrentHashMap<String, ConcurrentLinkedDeque<Execution>>
+      executionHistoryBySymbol = new ConcurrentHashMap<>();
 
-  /**
-   * 起動時に24時間以内の約定をBigQueryから読み込む
-   */
+  /** 起動時に24時間以内の約定をBigQueryから読み込む */
   @PostConstruct
   public void initializeExecutionHistory() {
     try {
@@ -59,31 +57,46 @@ public class ExecutionQueueService {
           List<BigQueryExecutionEntity> recentExecutions = bigQueryService.queryRecentExecutions();
 
           if (recentExecutions != null && !recentExecutions.isEmpty()) {
-            // BigQueryExecutionEntity をExecution に変換して履歴リストに追加
+            // BigQueryExecutionEntity をExecution に変換して銘柄別履歴と各ユーザーキューに追加
             for (BigQueryExecutionEntity bqEntity : recentExecutions) {
               Execution execution = convertBigQueryEntityToExecution(bqEntity);
-              executionHistory.addLast(execution);
+
+              // 銘柄別履歴リストに追加（/allエンドポイント用）
+              String symbol = bqEntity.getSymbol();
+              executionHistoryBySymbol
+                  .computeIfAbsent(symbol, k -> new ConcurrentLinkedDeque<>())
+                  .addLast(execution);
+
+              // ユーザーキューにも追加（/pollエンドポイント用）
+              String username = bqEntity.getUsername();
+              userExecutionQueues
+                  .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
+                  .offer(execution);
             }
-            log.info("✅ Loaded {} recent executions from BigQuery into memory", recentExecutions.size());
+            log.info(
+                "✅ Loaded {} recent executions from BigQuery into memory and user queues",
+                recentExecutions.size());
           } else {
             log.info("⏭️ No recent executions found in BigQuery (last 24 hours)");
           }
         } catch (Exception e) {
-          log.warn("⚠️ BigQuery is enabled but failed to load execution history: {}", e.getMessage());
+          log.warn(
+              "⚠️ BigQuery is enabled but failed to load execution history: {}", e.getMessage());
         }
       } else {
         log.info("⏭️ BigQuery disabled, starting with empty execution history");
       }
 
-      log.info("✅ Execution history initialization completed. Total: {}", executionHistory.size());
+      log.info(
+          "✅ Execution history initialization completed. Total symbols: {}, Total users: {}",
+          executionHistoryBySymbol.size(),
+          userExecutionQueues.size());
     } catch (Exception e) {
       log.error("❌ Error initializing execution history", e);
     }
   }
 
-  /**
-   * BigQueryExecutionEntity をExecution に変換する
-   */
+  /** BigQueryExecutionEntity をExecution に変換する */
   private Execution convertBigQueryEntityToExecution(BigQueryExecutionEntity entity) {
     return new Execution(
         entity.getExecId(),
@@ -96,26 +109,29 @@ public class ExecutionQueueService {
         entity.getCounterPartyUsername(),
         LocalDateTime.parse(entity.getCreatedAt()),
         entity.getIsMarketMaker(),
-        entity.getSide()
-    );
+        entity.getSide());
   }
 
   public void addExecution(String username, Execution execution) {
-    // MarketMaker以外の「実際の約定」のみをメモリキャッシュとBigQueryに保存
+    // 「実際の約定」のみをメモリキャッシュに保存
     // PARTIAL_FILL と FILLED のみを記録対象（NEW, REJECTED, CANCELED は除外）
-    if (!execution.getIsMarketMaker() && isActualExecution(execution)) {
+    if (isActualExecution(execution)) {
       userExecutionQueues
           .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
           .offer(execution);
 
-      // 履歴リストに追加（/allエンドポイント用）
-      executionHistory.addLast(execution);
+      // 銘柄別履歴リストに追加（/allエンドポイント用）
+      // MarketMaker約定も含めてすべての実際の約定を記録
+      String symbol = execution.getSymbol();
+      executionHistoryBySymbol
+          .computeIfAbsent(symbol, k -> new ConcurrentLinkedDeque<>())
+          .addLast(execution);
 
       try {
-        // BigQueryにキューイング
-        if (bigQueryWriter != null) {
+        // BigQueryにはMarketMaker以外のみをキューイング
+        if (!execution.getIsMarketMaker() && bigQueryWriter != null) {
           saveExecutionToBigQueryAsync(execution);
-          log.info("Persisted non-MarketMaker execution to BigQuery for user: {}", username);
+          log.info("Persisted execution to BigQuery for user: {}", username);
         }
 
         // 取引量を更新
@@ -126,13 +142,27 @@ public class ExecutionQueueService {
         log.error("Failed to persist execution to BigQuery for user: {}", username, e);
       }
 
-      log.info("✅ Added actual execution to queue for user: {}, symbol: {}, status: {}, px: {}, qty: {}",
-          username, execution.getSymbol(), execution.getExecStatus(),
-          execution.getLastPxRaw(), execution.getLastQtyRaw());
+      // キャッシュサイズをログに出力
+      int userQueueSize = userExecutionQueues.get(username).size();
+      int symbolCacheSize = executionHistoryBySymbol.get(symbol).size();
+      log.info(
+          "✅ Added actual execution to cache - user: {}, symbol: {}, status: {}, px: {}, qty: {}, "
+              + "isMarketMaker: {}, userQueueSize: {}, symbolCacheSize: {}",
+          username,
+          symbol,
+          execution.getExecStatus(),
+          execution.getLastPxRaw(),
+          execution.getLastQtyRaw(),
+          execution.getIsMarketMaker(),
+          userQueueSize,
+          symbolCacheSize);
     } else {
-      // MarketMaker注文またはNEW/REJECTED/CANCELED状態は記録しない
-      log.debug("⏭️ Skipped non-actual execution: symbol={}, isMarketMaker={}, execStatus={}",
-          execution.getSymbol(), execution.getIsMarketMaker(), execution.getExecStatus());
+      // NEW/REJECTED/CANCELED状態は記録しない
+      log.debug(
+          "⏭️ Skipped non-actual execution: symbol={}, isMarketMaker={}, execStatus={}",
+          execution.getSymbol(),
+          execution.getIsMarketMaker(),
+          execution.getExecStatus());
     }
   }
 
@@ -193,6 +223,7 @@ public class ExecutionQueueService {
 
   /**
    * ユーザーの約定履歴を取得（ページネーション対応）
+   *
    * @param username ユーザー名
    * @param page ページ番号（0から始まる）
    * @param size 1ページあたりの件数
@@ -215,26 +246,37 @@ public class ExecutionQueueService {
     int fromIndex = page * size;
     int toIndex = Math.min(fromIndex + size, allExecutions.size());
 
-    List<Execution> pageData = fromIndex < allExecutions.size()
-        ? allExecutions.subList(fromIndex, toIndex)
-        : Collections.emptyList();
+    List<Execution> pageData =
+        fromIndex < allExecutions.size()
+            ? allExecutions.subList(fromIndex, toIndex)
+            : Collections.emptyList();
 
-    log.info("Retrieved execution history for user: {}, page: {}, size: {}, totalElements: {}, totalPages: {}",
-        username, page, size, totalElements, totalPages);
+    log.info(
+        "Retrieved execution history for user: {}, page: {}, size: {}, totalElements: {},"
+            + " totalPages: {}",
+        username,
+        page,
+        size,
+        totalElements,
+        totalPages);
 
     return new ExecutionHistoryData(username, page, size, totalPages, totalElements, pageData);
   }
 
   /**
-   * 全ユーザーの約定履歴を取得（ページネーション対応）
-   * メモリ内の履歴リストから読み込む（Poll不可、Pollされない）
+   * 指定銘柄の約定履歴を取得（ページネーション対応）
+   * メモリ内の銘柄別履歴リストから読み込む（Poll不可、Pollされない）
+   *
+   * @param symbol 銘柄名（必須）
    * @param page ページ番号（0から始まる）
    * @param size 1ページあたりの件数
    * @return ExecutionHistoryResponse用の履歴データ
    */
-  public ExecutionHistoryData getAllExecutionHistory(int page, int size) {
-    // メモリ内の履歴リストをコピー
-    List<Execution> allExecutions = new ArrayList<>(executionHistory);
+  public ExecutionHistoryData getExecutionsBySymbol(String symbol, int page, int size) {
+    // 銘柄別履歴リストをコピー
+    ConcurrentLinkedDeque<Execution> symbolDeque = executionHistoryBySymbol.get(symbol);
+    List<Execution> allExecutions =
+        symbolDeque != null ? new ArrayList<>(symbolDeque) : Collections.emptyList();
 
     // 全体の件数
     long totalElements = allExecutions.size();
@@ -244,29 +286,30 @@ public class ExecutionQueueService {
     int fromIndex = page * size;
     int toIndex = Math.min(fromIndex + size, allExecutions.size());
 
-    List<Execution> pageData = fromIndex < allExecutions.size()
-        ? allExecutions.subList(fromIndex, toIndex)
-        : Collections.emptyList();
+    List<Execution> pageData =
+        fromIndex < allExecutions.size()
+            ? allExecutions.subList(fromIndex, toIndex)
+            : Collections.emptyList();
 
-    log.info("Retrieved all execution history from memory, page: {}, size: {}, totalElements: {}, totalPages: {}",
-        page, size, totalElements, totalPages);
+    log.info(
+        "📊 Retrieved execution history for symbol: {}, totalElements: {}, totalPages: {}, "
+            + "page: {}, size: {}",
+        symbol,
+        totalElements,
+        totalPages,
+        page,
+        size);
 
-    return new ExecutionHistoryData("ALL_USERS", page, size, totalPages, totalElements, pageData);
+    return new ExecutionHistoryData(symbol, page, size, totalPages, totalElements, pageData);
   }
 
-  /**
-   * 実際の約定かどうかを判定
-   * PARTIAL_FILL と FILLED のみが実際の約定
-   * NEW, REJECTED, CANCELED は約定ではなく注文状態変化
-   */
+  /** 実際の約定かどうかを判定 PARTIAL_FILL と FILLED のみが実際の約定 NEW, REJECTED, CANCELED は約定ではなく注文状態変化 */
   private boolean isActualExecution(Execution execution) {
     ExecStatus status = execution.getExecStatus();
     return status == ExecStatus.PARTIAL_FILL || status == ExecStatus.FILLED;
   }
 
-  /**
-   * 約定履歴データを保持するInnerクラス
-   */
+  /** 約定履歴データを保持するInnerクラス */
   public static class ExecutionHistoryData {
     public final String username;
     public final int page;
@@ -275,9 +318,13 @@ public class ExecutionQueueService {
     public final long totalElements;
     public final List<Execution> executions;
 
-    public ExecutionHistoryData(String username, int page, int size,
-                                int totalPages, long totalElements,
-                                List<Execution> executions) {
+    public ExecutionHistoryData(
+        String username,
+        int page,
+        int size,
+        int totalPages,
+        long totalElements,
+        List<Execution> executions) {
       this.username = username;
       this.page = page;
       this.size = size;

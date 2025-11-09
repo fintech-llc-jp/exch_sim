@@ -379,7 +379,25 @@ class ExecutionQueueServiceTest {
     executionQueueService.addExecution(username, marketMakerExecution);
 
     // Then
+    // BigQueryには保存されない
     verify(bigQueryWriter, never()).enqueue(any());
+  }
+
+  @Test
+  void testAddMarketMakerExecutionSavesToMemoryCache() {
+    // Given
+    String username = "testuser";
+    Execution marketMakerExecution = createMarketMakerExecution(username);
+
+    // When
+    executionQueueService.addExecution(username, marketMakerExecution);
+
+    // Then
+    // メモリキャッシュには保存される（ユーザーキューに追加される）
+    List<Execution> polledExecutions = executionQueueService.pollExecutions(username, 10);
+    assertThat(polledExecutions).hasSize(1);
+    assertThat(polledExecutions.get(0)).isEqualTo(marketMakerExecution);
+    assertThat(polledExecutions.get(0).getIsMarketMaker()).isTrue();
   }
 
   @Test
@@ -397,6 +415,56 @@ class ExecutionQueueServiceTest {
     List<Execution> polledExecutions = executionQueueService.pollExecutions(username, 10);
     assertThat(polledExecutions).hasSize(1);
     assertThat(polledExecutions.get(0)).isEqualTo(execution);
+  }
+
+  @Test
+  void testSymbolBasedExecutionHistory() {
+    // Given
+    String username = "testuser";
+
+    Execution execution1 = new Execution(
+        UUID.randomUUID().toString(),
+        "order1",
+        username,
+        "BTCJPY",
+        ExecStatus.FILLED,
+        1000L,
+        10L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "BUY"
+    );
+
+    Execution execution2 = new Execution(
+        UUID.randomUUID().toString(),
+        "order2",
+        username,
+        "ETHJPY",
+        ExecStatus.FILLED,
+        500L,
+        20L,
+        null,
+        LocalDateTime.now(),
+        false,
+        "SELL"
+    );
+
+    // When
+    executionQueueService.addExecution(username, execution1);
+    executionQueueService.addExecution(username, execution2);
+
+    // Then - 銘柄ごとに取得できることを確認
+    ExecutionQueueService.ExecutionHistoryData btcHistory =
+        executionQueueService.getExecutionsBySymbol("BTCJPY", 0, 10);
+    ExecutionQueueService.ExecutionHistoryData ethHistory =
+        executionQueueService.getExecutionsBySymbol("ETHJPY", 0, 10);
+
+    assertThat(btcHistory.executions).hasSize(1);
+    assertThat(btcHistory.executions.get(0).getSymbol()).isEqualTo("BTCJPY");
+
+    assertThat(ethHistory.executions).hasSize(1);
+    assertThat(ethHistory.executions.get(0).getSymbol()).isEqualTo("ETHJPY");
   }
 
   private Execution createMarketMakerExecution(String username) {

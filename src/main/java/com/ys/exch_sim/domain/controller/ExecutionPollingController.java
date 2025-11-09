@@ -247,6 +247,7 @@ public class ExecutionPollingController {
       // symbol フィルタリング
       if (symbol != null && !symbol.trim().isEmpty()) {
         String symbolFilter = symbol.toUpperCase();
+        int beforeFilterCount = executionDtos.size();
         executionDtos = executionDtos.stream()
             .filter(dto -> dto.getSymbol() != null && dto.getSymbol().toUpperCase().contains(symbolFilter))
             .collect(Collectors.toList());
@@ -266,8 +267,10 @@ public class ExecutionPollingController {
         );
 
         long totalProcessingTime = System.currentTimeMillis() - startTime;
-        log.info("✅ ExecutionHistory API Response [{}] - Retrieved {} executions (filtered by {}), totalElements: {}, processingTime: {}ms",
-                 requestId, executionDtos.size(), symbol, filteredTotal, totalProcessingTime);
+        log.info("✅ ExecutionHistory API Response [{}] - user: {}, symbol: {}, beforeFilterSize: {}, " +
+                "afterFilterSize: {}, totalElements: {}, responseSize: {}, processingTime: {}ms",
+                 requestId, username, symbolFilter, beforeFilterCount, filteredTotal,
+                 historyData.totalElements, executionDtos.size(), totalProcessingTime);
 
         return ResponseEntity.ok(response);
       }
@@ -282,8 +285,9 @@ public class ExecutionPollingController {
       );
 
       long totalProcessingTime = System.currentTimeMillis() - startTime;
-      log.info("✅ ExecutionHistory API Response [{}] - Retrieved {} executions, totalElements: {}, processingTime: {}ms",
-               requestId, executionDtos.size(), historyData.totalElements, totalProcessingTime);
+      log.info("✅ ExecutionHistory API Response [{}] - user: {}, responseSize: {}, totalElements: {}, " +
+              "processingTime: {}ms",
+               requestId, username, executionDtos.size(), historyData.totalElements, totalProcessingTime);
 
       return ResponseEntity.ok(response);
 
@@ -300,18 +304,29 @@ public class ExecutionPollingController {
   public ResponseEntity<?> getAllExecutionHistory(
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size,
-      @RequestParam(required = false) String symbol) {
+      @RequestParam(required = true) String symbol) {
 
     long startTime = System.currentTimeMillis();
     String requestId = java.util.UUID.randomUUID().toString().substring(0, 8);
 
     try {
-      log.info("📊 GlobalExecutionHistory API Request [{}] - page: {}, size: {}, symbol: {}",
-               requestId, page, size, symbol);
+      log.info("📊 ExecutionHistory API Request [{}] - symbol: {}, page: {}, size: {}",
+               requestId, symbol, page, size);
 
-      // メモリキャッシュから全ユーザーの約定履歴を取得
+      // symbol パラメータの検証
+      if (symbol == null || symbol.trim().isEmpty()) {
+        long processingTime = System.currentTimeMillis() - startTime;
+        log.warn("❌ ExecutionHistory API Error [{}] - processingTime: {}ms, error: symbol parameter is required",
+                 requestId, processingTime);
+        return ResponseEntity.badRequest()
+            .body("Error: symbol parameter is required");
+      }
+
+      String normalizedSymbol = symbol.trim().toUpperCase();
+
+      // メモリキャッシュから指定銘柄の約定履歴を取得
       ExecutionQueueService.ExecutionHistoryData historyData =
-          executionQueueService.getAllExecutionHistory(page, size);
+          executionQueueService.getExecutionsBySymbol(normalizedSymbol, page, size);
 
       // ExecutionをDTOに変換
       List<ExecutionHistoryResponse.ExecutionHistoryDto> executionDtos =
@@ -345,36 +360,8 @@ public class ExecutionPollingController {
               })
               .collect(Collectors.toList());
 
-      // symbol フィルタリング
-      if (symbol != null && !symbol.trim().isEmpty()) {
-        String symbolFilter = symbol.toUpperCase();
-        executionDtos = executionDtos.stream()
-            .filter(dto -> dto.getSymbol() != null && dto.getSymbol().toUpperCase().contains(symbolFilter))
-            .collect(Collectors.toList());
-
-        // フィルタリング後の件数で応答を構成
-        // ページネーションを再計算（フィルタリング後のデータに基づく）
-        int filteredTotal = executionDtos.size();
-        int filteredPages = (int) Math.ceil((double) filteredTotal / size);
-
-        ExecutionHistoryResponse response = new ExecutionHistoryResponse(
-            "ALL_USERS",
-            page,
-            size,
-            filteredPages,
-            filteredTotal,
-            executionDtos
-        );
-
-        long totalProcessingTime = System.currentTimeMillis() - startTime;
-        log.info("✅ GlobalExecutionHistory API Response [{}] - Retrieved {} executions (filtered by {}), totalElements: {}, processingTime: {}ms",
-                 requestId, executionDtos.size(), symbol, filteredTotal, totalProcessingTime);
-
-        return ResponseEntity.ok(response);
-      }
-
       ExecutionHistoryResponse response = new ExecutionHistoryResponse(
-          "ALL_USERS",
+          normalizedSymbol,
           page,
           size,
           historyData.totalPages,
@@ -383,17 +370,18 @@ public class ExecutionPollingController {
       );
 
       long totalProcessingTime = System.currentTimeMillis() - startTime;
-      log.info("✅ GlobalExecutionHistory API Response [{}] - Retrieved {} executions, totalElements: {}, processingTime: {}ms",
-               requestId, executionDtos.size(), historyData.totalElements, totalProcessingTime);
+      log.info("✅ ExecutionHistory API Response [{}] - symbol: {}, responseSize: {}, totalElements: {}, " +
+              "processingTime: {}ms",
+               requestId, normalizedSymbol, executionDtos.size(), historyData.totalElements, totalProcessingTime);
 
       return ResponseEntity.ok(response);
 
     } catch (Exception e) {
       long processingTime = System.currentTimeMillis() - startTime;
-      log.error("❌ GlobalExecutionHistory API Error [{}] - processingTime: {}ms, error: {}",
+      log.error("❌ ExecutionHistory API Error [{}] - processingTime: {}ms, error: {}",
                 requestId, processingTime, e.getMessage(), e);
       return ResponseEntity.internalServerError()
-          .body("Error getting global execution history: " + e.getMessage());
+          .body("Error getting execution history: " + e.getMessage());
     }
   }
 

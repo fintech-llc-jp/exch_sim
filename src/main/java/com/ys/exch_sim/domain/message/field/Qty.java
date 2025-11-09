@@ -11,13 +11,13 @@ public class Qty {
 
   public Qty(Symbol symbol, double dblQty) {
     this.symbol = symbol;
-    log.info(
+    log.debug(
         "Qty calculation: dblQty={}, qtyMultiplier={}, calculation={}",
         dblQty,
         symbol.getQtyMultiplier(),
         dblQty * symbol.getQtyMultiplier());
     this.longQty = (long) (dblQty * symbol.getQtyMultiplier());
-    log.info("Qty result: longQty={}", this.longQty);
+    log.debug("Qty result: longQty={}", this.longQty);
   }
 
   public Qty(Symbol symbol, long longQty) {
