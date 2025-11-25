@@ -394,6 +394,8 @@ public class OrderService {
       if (username != null) {
         executionQueueService.addExecution(username, execution);
 
+        // ポジション更新は約定した注文（PARTIAL_FILL/FILLED）のみ
+        // CANCELEDやREJECTEDの場合はポジションに影響しない
         if (execution.getExecStatus() == ExecStatus.PARTIAL_FILL
             || execution.getExecStatus() == ExecStatus.FILLED) {
           // Skip executions with zero quantity to avoid position validation errors
@@ -404,6 +406,7 @@ public class OrderService {
                 username, execution.getSymbol(), execution.getExecStatus());
           }
         }
+        // Note: CANCELED, REJECTED, NEW の場合はポジション処理をスキップ（ポジションに影響しない）
       }
     }
   }
@@ -552,4 +555,5 @@ public class OrderService {
               username, requiredAmount, availableFunds);
     }
   }
+
 }

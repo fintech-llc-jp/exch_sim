@@ -4,6 +4,7 @@ import com.ys.exch_sim.domain.bigquery.BigQueryEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
 import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
+import com.ys.exch_sim.domain.database.DatabaseService;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import jakarta.annotation.PostConstruct;
@@ -26,6 +27,9 @@ import org.springframework.stereotype.Service;
 public class ExecutionQueueService {
 
   @Autowired(required = false)
+  private DatabaseService databaseService;
+
+  @Autowired(required = false)
   private BigQueryService bigQueryService;
 
   @Autowired(required = false)
@@ -41,27 +45,61 @@ public class ExecutionQueueService {
   private final ConcurrentHashMap<String, BlockingQueue<Execution>> userExecutionQueues =
       new ConcurrentHashMap<>();
 
-  // 銘柄ごとの約定履歴（BigQueryから読み込んだデータ + 新規約定）
+  // 銘柄ごとの約定履歴（データベースから読み込んだデータ + 新規約定）
   // メモリ内でのみ管理し、/allエンドポイント用
   private final ConcurrentHashMap<String, ConcurrentLinkedDeque<Execution>>
       executionHistoryBySymbol = new ConcurrentHashMap<>();
 
-  /** 起動時に24時間以内の約定をBigQueryから読み込む (非同期) */
+  /** 起動時に24時間以内の約定をデータベースから読み込む (非同期) */
   @PostConstruct
   public void initializeExecutionHistory() {
     // Start async initialization to avoid blocking Spring Boot startup
     initializeExecutionHistoryAsync();
   }
 
-  /** Async initialization of execution history from BigQuery */
+  /** Async initialization of execution history from database */
   @Async
   private void initializeExecutionHistoryAsync() {
     try {
-      log.info("🔄 Initializing execution history from BigQuery...");
+      log.info("🔄 Initializing execution history from database...");
 
-      if (bigQueryEnabled && bigQueryService != null) {
+      LocalDateTime fromTime = LocalDateTime.now().minusHours(24);
+
+      // DatabaseServiceを優先的に使用
+      if (databaseService != null) {
         try {
-          // BigQueryから24時間以内の約定を読み込む
+          List<Execution> recentExecutions = databaseService.queryRecentExecutions(fromTime);
+
+          if (recentExecutions != null && !recentExecutions.isEmpty()) {
+            // Executionを銘柄別履歴と各ユーザーキューに追加
+            for (Execution execution : recentExecutions) {
+              // 銘柄別履歴リストに追加（/allエンドポイント用）
+              String symbol = execution.getSymbol();
+              executionHistoryBySymbol
+                  .computeIfAbsent(symbol, k -> new ConcurrentLinkedDeque<>())
+                  .addLast(execution);
+
+              // ユーザーキューにも追加（/pollエンドポイント用）
+              String username = execution.getUsername();
+              userExecutionQueues
+                  .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
+                  .offer(execution);
+            }
+            log.info(
+                "✅ Loaded {} recent executions from database into memory and user queues",
+                recentExecutions.size());
+          } else {
+            log.info("⏭️ No recent executions found in database (last 24 hours)");
+          }
+        } catch (Exception e) {
+          log.warn(
+              "⚠️ DatabaseService is available but failed to load execution history: {}",
+              e.getMessage());
+        }
+      } else if (bigQueryEnabled && bigQueryService != null) {
+        // 後方互換性のため、BigQueryServiceを直接使用する場合
+        try {
+          log.info("⚠️ Using BigQueryService directly (DatabaseService not available)");
           List<BigQueryExecutionEntity> recentExecutions = bigQueryService.queryRecentExecutions();
 
           if (recentExecutions != null && !recentExecutions.isEmpty()) {
@@ -92,7 +130,7 @@ public class ExecutionQueueService {
               "⚠️ BigQuery is enabled but failed to load execution history: {}", e.getMessage());
         }
       } else {
-        log.info("⏭️ BigQuery disabled, starting with empty execution history");
+        log.info("⏭️ Database service not available, starting with empty execution history");
       }
 
       log.info(
@@ -136,10 +174,16 @@ public class ExecutionQueueService {
           .addLast(execution);
 
       try {
-        // BigQueryにはMarketMaker以外のみをキューイング
-        if (!execution.getIsMarketMaker() && bigQueryWriter != null) {
-          saveExecutionToBigQueryAsync(execution);
-          log.info("Persisted execution to BigQuery for user: {}", username);
+        // DatabaseServiceを使用して約定を保存（MarketMaker以外のみ）
+        if (!execution.getIsMarketMaker()) {
+          if (databaseService != null) {
+            databaseService.insertExecution(execution);
+            log.info("Persisted execution to database for user: {}", username);
+          } else if (bigQueryWriter != null) {
+            // 後方互換性のため、BigQueryWriterを使用する場合
+            saveExecutionToBigQueryAsync(execution);
+            log.info("Persisted execution to BigQuery for user: {}", username);
+          }
         }
 
         // 取引量を更新
@@ -147,7 +191,7 @@ public class ExecutionQueueService {
           volumeCalculationService.updateVolumeOnTrade(execution);
         }
       } catch (Exception e) {
-        log.error("Failed to persist execution to BigQuery for user: {}", username, e);
+        log.error("Failed to persist execution to database for user: {}", username, e);
       }
 
       // キャッシュサイズをログに出力
@@ -272,8 +316,7 @@ public class ExecutionQueueService {
   }
 
   /**
-   * 指定銘柄の約定履歴を取得（ページネーション対応）
-   * メモリ内の銘柄別履歴リストから読み込む（Poll不可、Pollされない）
+   * 指定銘柄の約定履歴を取得（ページネーション対応） メモリ内の銘柄別履歴リストから読み込む（Poll不可、Pollされない）
    *
    * @param symbol 銘柄名（必須）
    * @param page ページ番号（0から始まる）
