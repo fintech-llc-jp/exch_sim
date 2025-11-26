@@ -1,9 +1,5 @@
 package com.ys.exch_sim.domain.market_data.queue;
 
-import com.ys.exch_sim.domain.bigquery.BigQueryEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryService;
-import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
 import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.market_data.dto.ExternalTradeData;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
@@ -16,7 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,19 +27,12 @@ public class OrderedTradeProcessor {
   private final ExecutionQueueService executionQueueService;
   private final Map<String, SingleThreadExecutor> symbolExecutors = new ConcurrentHashMap<>();
 
-  @Value("${app.data-migration.bigquery-enabled:false}")
-  private boolean bigQueryEnabled;
-
-  private final BigQueryWriter bigQueryWriter;
-
   public OrderedTradeProcessor(
       @Autowired InstrumentConfig instrumentConfig,
-      @Autowired ExecutionQueueService executionQueueService,
-      @Autowired(required = false) BigQueryWriter bigQueryWriter) {
+      @Autowired ExecutionQueueService executionQueueService) {
     this.instrumentConfig = instrumentConfig;
     this.executionQueueService = executionQueueService;
-    this.bigQueryWriter = bigQueryWriter;
-    log.info("🔄 OrderedTradeProcessor initialized with BigQuery enabled: {}", bigQueryEnabled);
+    log.info("🔄 OrderedTradeProcessor initialized");
   }
 
   /** シンボル別に専用スレッドで順序処理 同一シンボルの取引は常に同じスレッドで順番に処理される */
@@ -111,11 +100,6 @@ public class OrderedTradeProcessor {
       // メモリキャッシュに保存
       executionQueueService.addExecution("EXTERNAL_FEED", execution);
 
-      // BigQueryに保存（有効な場合）
-      if (bigQueryWriter != null) {
-        bigQueryWriter.enqueue(BigQueryEntity.execution(execution));
-      }
-
       log.info(
           "✅ External trade converted to Execution: {} - {} {} @ {} (execID: {})",
           symbol,
@@ -150,8 +134,8 @@ public class OrderedTradeProcessor {
         symbolExecutors.values().stream().filter(executor -> !executor.isShutdown()).count();
 
     return String.format(
-        "OrderedTradeProcessor [Total Executors: %d, Active: %d, Symbols: %s, BigQuery: %s]",
-        totalExecutors, activeExecutors, symbolExecutors.keySet(), bigQueryEnabled);
+        "OrderedTradeProcessor [Total Executors: %d, Active: %d, Symbols: %s]",
+        totalExecutors, activeExecutors, symbolExecutors.keySet());
   }
 
   /** アプリケーション停止時に全てのエグゼキューターを適切に停止 */

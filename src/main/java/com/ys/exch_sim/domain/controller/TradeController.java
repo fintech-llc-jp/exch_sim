@@ -1,9 +1,5 @@
 package com.ys.exch_sim.domain.controller;
 
-import com.ys.exch_sim.domain.bigquery.BigQueryEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryService;
-import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
 import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.dto.NewOrderRequest;
 import com.ys.exch_sim.domain.dto.OrderResponse;
@@ -13,7 +9,6 @@ import com.ys.exch_sim.domain.market_board.MarketBoard;
 import com.ys.exch_sim.domain.message.field.*;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
-import com.ys.exch_sim.domain.service.BigQueryVolumeCalculationService;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
 import com.ys.exch_sim.domain.service.OrderService;
 import java.time.LocalDateTime;
@@ -38,26 +33,14 @@ public class TradeController {
   private final OrderService orderService;
   private final InstrumentConfig instrumentConfig;
   private final ExecutionQueueService executionQueueService;
-  private final BigQueryService bigQueryService;
-  private final BigQueryWriter bigQueryWriter;
-  private final BigQueryVolumeCalculationService volumeCalculationService;
-
-  @Value("${app.data-migration.bigquery-enabled:false}")
-  private boolean bigQueryEnabled;
 
   public TradeController(
       OrderService orderService,
       InstrumentConfig instrumentConfig,
-      ExecutionQueueService executionQueueService,
-      @Autowired(required = false) BigQueryService bigQueryService,
-      @Autowired(required = false) BigQueryWriter bigQueryWriter,
-      @Autowired(required = false) BigQueryVolumeCalculationService volumeCalculationService) {
+      ExecutionQueueService executionQueueService) {
     this.orderService = orderService;
     this.instrumentConfig = instrumentConfig;
     this.executionQueueService = executionQueueService;
-    this.bigQueryService = bigQueryService;
-    this.bigQueryWriter = bigQueryWriter;
-    this.volumeCalculationService = volumeCalculationService;
   }
 
   @PostMapping("/insert")
@@ -338,28 +321,6 @@ public class TradeController {
       log.info(
           "💾 TradeInsert [{}] - Execution added to queue for database persistence", requestId);
 
-      // BigQueryに非同期保存（後方互換性のため）
-      if (bigQueryEnabled && bigQueryService != null) {
-        long bigQueryStart = System.currentTimeMillis();
-        saveExecutionToBigQueryAsync(execution);
-        long bigQueryTime = System.currentTimeMillis() - bigQueryStart;
-        log.info(
-            "☁️ TradeInsert [{}] - BigQuery async save initiated - initTime: {}ms",
-            requestId,
-            bigQueryTime);
-      }
-
-      // 取引量を更新（BigQueryが無効でもvolumeCalculationServiceが利用可能な場合は更新）
-      if (volumeCalculationService != null) {
-        long volumeUpdateStart = System.currentTimeMillis();
-        volumeCalculationService.updateVolumeOnTrade(execution);
-        long volumeUpdateTime = System.currentTimeMillis() - volumeUpdateStart;
-        log.info(
-            "📊 TradeInsert [{}] - Volume update completed - updateTime: {}ms",
-            requestId,
-            volumeUpdateTime);
-      }
-
       TradeInsertResponse.ExecutionSummary executionSummary =
           new TradeInsertResponse.ExecutionSummary(
               execution.getExecID().getId(), execution.getExecStatus().toString(), price, quantity);
@@ -521,27 +482,4 @@ public class TradeController {
     }
   }
 
-  // BigQuery保存メソッド（同期版）
-  private void saveExecutionToBigQuery(Execution execution) {
-    try {
-      BigQueryExecutionEntity bigQueryEntity = new BigQueryExecutionEntity(execution);
-      bigQueryService.insertExecution(bigQueryEntity);
-      log.debug("TradeInsert execution saved to BigQuery: {}", execution.getExecID());
-    } catch (Exception e) {
-      log.error("Error saving TradeInsert execution to BigQuery: " + execution.getExecID(), e);
-    }
-  }
-
-  // BigQuery キューベースの非ブロッキング保存メソッド
-  private void saveExecutionToBigQueryAsync(Execution execution) {
-    try {
-      if (bigQueryWriter != null) {
-        // キューに追加（非ブロッキング）
-        bigQueryWriter.enqueue(BigQueryEntity.execution(execution));
-        log.debug("TradeInsert execution enqueued to BigQuery writer: {}", execution.getExecID());
-      }
-    } catch (Exception e) {
-      log.error("Error enqueuing TradeInsert execution to BigQuery: {}", execution.getExecID(), e);
-    }
-  }
 }

@@ -1,9 +1,5 @@
 package com.ys.exch_sim.domain.service;
 
-import com.ys.exch_sim.domain.bigquery.BigQueryEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryExecutionEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryService;
-import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
 import com.ys.exch_sim.domain.database.DatabaseService;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
 import com.ys.exch_sim.domain.order_exec.Execution;
@@ -29,18 +25,6 @@ public class ExecutionQueueService {
   @Autowired(required = false)
   private DatabaseService databaseService;
 
-  @Autowired(required = false)
-  private BigQueryService bigQueryService;
-
-  @Autowired(required = false)
-  private BigQueryWriter bigQueryWriter;
-
-  @Autowired(required = false)
-  private BigQueryVolumeCalculationService volumeCalculationService;
-
-  @Value("${app.data-migration.bigquery-enabled:false}")
-  private boolean bigQueryEnabled;
-
   // ユーザーごとの約定結果キュー（リアルタイム通知用）
   private final ConcurrentHashMap<String, BlockingQueue<Execution>> userExecutionQueues =
       new ConcurrentHashMap<>();
@@ -65,21 +49,17 @@ public class ExecutionQueueService {
 
       LocalDateTime fromTime = LocalDateTime.now().minusHours(24);
 
-      // DatabaseServiceを優先的に使用
       if (databaseService != null) {
         try {
           List<Execution> recentExecutions = databaseService.queryRecentExecutions(fromTime);
 
           if (recentExecutions != null && !recentExecutions.isEmpty()) {
-            // Executionを銘柄別履歴と各ユーザーキューに追加
             for (Execution execution : recentExecutions) {
-              // 銘柄別履歴リストに追加（/allエンドポイント用）
               String symbol = execution.getSymbol();
               executionHistoryBySymbol
                   .computeIfAbsent(symbol, k -> new ConcurrentLinkedDeque<>())
                   .addLast(execution);
 
-              // ユーザーキューにも追加（/pollエンドポイント用）
               String username = execution.getUsername();
               userExecutionQueues
                   .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
@@ -93,41 +73,8 @@ public class ExecutionQueueService {
           }
         } catch (Exception e) {
           log.warn(
-              "⚠️ DatabaseService is available but failed to load execution history: {}",
+              "⚠️ DatabaseService failed to load execution history: {}",
               e.getMessage());
-        }
-      } else if (bigQueryEnabled && bigQueryService != null) {
-        // 後方互換性のため、BigQueryServiceを直接使用する場合
-        try {
-          log.info("⚠️ Using BigQueryService directly (DatabaseService not available)");
-          List<BigQueryExecutionEntity> recentExecutions = bigQueryService.queryRecentExecutions();
-
-          if (recentExecutions != null && !recentExecutions.isEmpty()) {
-            // BigQueryExecutionEntity をExecution に変換して銘柄別履歴と各ユーザーキューに追加
-            for (BigQueryExecutionEntity bqEntity : recentExecutions) {
-              Execution execution = convertBigQueryEntityToExecution(bqEntity);
-
-              // 銘柄別履歴リストに追加（/allエンドポイント用）
-              String symbol = bqEntity.getSymbol();
-              executionHistoryBySymbol
-                  .computeIfAbsent(symbol, k -> new ConcurrentLinkedDeque<>())
-                  .addLast(execution);
-
-              // ユーザーキューにも追加（/pollエンドポイント用）
-              String username = bqEntity.getUsername();
-              userExecutionQueues
-                  .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
-                  .offer(execution);
-            }
-            log.info(
-                "✅ Loaded {} recent executions from BigQuery into memory and user queues",
-                recentExecutions.size());
-          } else {
-            log.info("⏭️ No recent executions found in BigQuery (last 24 hours)");
-          }
-        } catch (Exception e) {
-          log.warn(
-              "⚠️ BigQuery is enabled but failed to load execution history: {}", e.getMessage());
         }
       } else {
         log.info("⏭️ Database service not available, starting with empty execution history");
@@ -142,59 +89,26 @@ public class ExecutionQueueService {
     }
   }
 
-  /** BigQueryExecutionEntity をExecution に変換する */
-  private Execution convertBigQueryEntityToExecution(BigQueryExecutionEntity entity) {
-    return new Execution(
-        entity.getExecId(),
-        entity.getOrderId(),
-        entity.getUsername(),
-        entity.getSymbol(),
-        ExecStatus.valueOf(entity.getExecStatus()),
-        entity.getLastPx(),
-        entity.getLastQty(),
-        entity.getCounterPartyUsername(),
-        LocalDateTime.parse(entity.getCreatedAt()),
-        entity.getIsMarketMaker(),
-        entity.getSide());
-  }
-
   public void addExecution(String username, Execution execution) {
-    // 「実際の約定」のみをメモリキャッシュに保存
-    // PARTIAL_FILL と FILLED のみを記録対象（NEW, REJECTED, CANCELED は除外）
     if (isActualExecution(execution)) {
       userExecutionQueues
           .computeIfAbsent(username, k -> new LinkedBlockingQueue<>())
           .offer(execution);
 
-      // 銘柄別履歴リストに追加（/allエンドポイント用）
-      // MarketMaker約定も含めてすべての実際の約定を記録
       String symbol = execution.getSymbol();
       executionHistoryBySymbol
           .computeIfAbsent(symbol, k -> new ConcurrentLinkedDeque<>())
           .addLast(execution);
 
       try {
-        // DatabaseServiceを使用して約定を保存（MarketMaker以外のみ）
-        if (!execution.getIsMarketMaker()) {
-          if (databaseService != null) {
-            databaseService.insertExecution(execution);
-            log.info("Persisted execution to database for user: {}", username);
-          } else if (bigQueryWriter != null) {
-            // 後方互換性のため、BigQueryWriterを使用する場合
-            saveExecutionToBigQueryAsync(execution);
-            log.info("Persisted execution to BigQuery for user: {}", username);
-          }
-        }
-
-        // 取引量を更新
-        if (bigQueryEnabled && volumeCalculationService != null) {
-          volumeCalculationService.updateVolumeOnTrade(execution);
+        if (!execution.getIsMarketMaker() && databaseService != null) {
+          databaseService.insertExecution(execution);
+          log.info("Persisted execution to database for user: {}", username);
         }
       } catch (Exception e) {
         log.error("Failed to persist execution to database for user: {}", username, e);
       }
 
-      // キャッシュサイズをログに出力
       int userQueueSize = userExecutionQueues.get(username).size();
       int symbolCacheSize = executionHistoryBySymbol.get(symbol).size();
       log.info(
@@ -209,7 +123,6 @@ public class ExecutionQueueService {
           userQueueSize,
           symbolCacheSize);
     } else {
-      // NEW/REJECTED/CANCELED状態は記録しない
       log.debug(
           "⏭️ Skipped non-actual execution: symbol={}, isMarketMaker={}, execStatus={}",
           execution.getSymbol(),
@@ -247,30 +160,6 @@ public class ExecutionQueueService {
   public int getQueueSize(String username) {
     BlockingQueue<Execution> userQueue = userExecutionQueues.get(username);
     return userQueue != null ? userQueue.size() : 0;
-  }
-
-  // BigQuery保存メソッド（同期版）
-  private void saveExecutionToBigQuery(Execution execution) {
-    try {
-      BigQueryExecutionEntity bigQueryEntity = new BigQueryExecutionEntity(execution);
-      bigQueryService.insertExecution(bigQueryEntity);
-      log.debug("Execution saved to BigQuery: {}", execution.getExecID());
-    } catch (Exception e) {
-      log.error("Error saving execution to BigQuery: " + execution.getExecID(), e);
-    }
-  }
-
-  // BigQuery キューベースの非ブロッキング保存メソッド
-  private void saveExecutionToBigQueryAsync(Execution execution) {
-    try {
-      if (bigQueryWriter != null) {
-        // キューに追加（非ブロッキング）
-        bigQueryWriter.enqueue(BigQueryEntity.execution(execution));
-        log.debug("Execution enqueued to BigQuery writer: {}", execution.getExecID());
-      }
-    } catch (Exception e) {
-      log.error("Error enqueuing execution to BigQuery: {}", execution.getExecID(), e);
-    }
   }
 
   /**

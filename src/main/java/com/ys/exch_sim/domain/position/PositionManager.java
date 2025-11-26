@@ -1,10 +1,5 @@
 package com.ys.exch_sim.domain.position;
 
-import com.ys.exch_sim.domain.bigquery.BigQueryEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryPositionEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryService;
-import com.ys.exch_sim.domain.bigquery.BigQueryTradeHistoryEntity;
-import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
 import com.ys.exch_sim.domain.database.DatabaseService;
 import com.ys.exch_sim.domain.exception.InsufficientFundsException;
 import com.ys.exch_sim.domain.message.field.Side;
@@ -22,25 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PositionManager {
 
-  // DatabaseServiceインターフェースを使用（BigQueryまたはPostgreSQL）
+  // DatabaseServiceインターフェースを使用（PostgreSQL）
   @Autowired(required = false)
   private DatabaseService databaseService;
-
-  // 後方互換性のため、既存のBigQueryServiceとBigQueryWriterも保持
-  @Autowired(required = false)
-  private BigQueryService bigQueryService;
-
-  @Autowired(required = false)
-  private BigQueryWriter bigQueryWriter;
 
   // Configuration flags
   @Value("${app.data-migration.memory-cache-enabled:true}")
   private boolean memoryCacheEnabled;
-
-  // Removed: databasePersistenceEnabled flag - BigQuery is now the primary storage
-
-  @Value("${app.data-migration.bigquery-enabled:false}")
-  private boolean bigQueryEnabled;
 
   // ユーザー別・銘柄別のポジション管理（メモリキャッシュ）
   private final ConcurrentHashMap<String, ConcurrentHashMap<String, Position>> positionsCache =
@@ -52,19 +35,12 @@ public class PositionManager {
 
   // Main constructor for Spring
   @Autowired
-  public PositionManager(
-      @Autowired(required = false) DatabaseService databaseService,
-      @Autowired(required = false) BigQueryService bigQueryService,
-      @Autowired(required = false) BigQueryWriter bigQueryWriter) {
+  public PositionManager(@Autowired(required = false) DatabaseService databaseService) {
     this.databaseService = databaseService;
-    this.bigQueryService = bigQueryService;
-    this.bigQueryWriter = bigQueryWriter;
   }
 
   // Test-only constructor
   public PositionManager(boolean memoryCacheEnabled) {
-    this.bigQueryService = null;
-    this.bigQueryWriter = null;
     this.memoryCacheEnabled = memoryCacheEnabled;
   }
 
@@ -73,8 +49,6 @@ public class PositionManager {
       PositionRepository positionRepository,
       TradeHistoryRepository tradeHistoryRepository,
       boolean memoryCacheEnabled) {
-    this.bigQueryService = null;
-    this.bigQueryWriter = null;
     this.memoryCacheEnabled = memoryCacheEnabled;
   }
 
@@ -130,17 +104,13 @@ public class PositionManager {
         updateCashBalance(username, amount);
       }
 
-      // DatabaseServiceに保存（DatabaseServiceが利用可能な場合）
+      // DatabaseServiceに保存
       if (databaseService != null) {
         try {
           databaseService.upsertPosition(position);
         } catch (Exception e) {
           log.error("Error saving position via DatabaseService", e);
         }
-      }
-      // 後方互換性のため、BigQueryServiceが直接利用可能な場合もサポート
-      else if (bigQueryEnabled && bigQueryService != null) {
-        savePositionToBigQuery(position);
       }
 
       // 取引履歴を記録
@@ -160,17 +130,13 @@ public class PositionManager {
         tradeHistoriesCache.add(tradeHistory);
       }
 
-      // DatabaseServiceに保存（DatabaseServiceが利用可能な場合）
+      // DatabaseServiceに保存
       if (databaseService != null) {
         try {
           databaseService.insertTradeHistory(tradeHistory);
         } catch (Exception e) {
           log.error("Error saving trade history via DatabaseService", e);
         }
-      }
-      // 後方互換性のため、BigQueryServiceが直接利用可能な場合もサポート
-      else if (bigQueryEnabled && bigQueryService != null) {
-        saveTradeHistoryToBigQuery(tradeHistory);
       }
 
       log.info(
@@ -193,12 +159,8 @@ public class PositionManager {
       }
     }
 
-    if (bigQueryEnabled && bigQueryService != null) {
-      BigQueryPositionEntity bigQueryPosition =
-          bigQueryService.queryPosition(username, symbol.toUpperCase());
-      if (bigQueryPosition != null) {
-        return bigQueryPosition.toPosition();
-      }
+    if (databaseService != null) {
+      return databaseService.queryPosition(username, symbol.toUpperCase());
     }
 
     return null;
@@ -207,11 +169,7 @@ public class PositionManager {
   public List<Position> getAllPositions(String username) {
     List<Position> positions = new ArrayList<>();
 
-    log.debug(
-        "Getting positions for user: {} - bigQueryEnabled: {}, memoryCacheEnabled: {}",
-        username,
-        bigQueryEnabled,
-        memoryCacheEnabled);
+    log.debug("Getting positions for user: {} - memoryCacheEnabled: {}", username, memoryCacheEnabled);
 
     if (memoryCacheEnabled) {
       ConcurrentHashMap<String, Position> userPositions = positionsCache.get(username);
@@ -221,7 +179,7 @@ public class PositionManager {
       }
     }
 
-    // DatabaseServiceから取得を試みる
+    // DatabaseServiceから取得
     if (databaseService != null && positions.isEmpty()) {
       log.debug("Querying DatabaseService for positions for user: {}", username);
       positions = databaseService.queryAllPositions(username);
@@ -237,27 +195,6 @@ public class PositionManager {
               "Cached position from DatabaseService: {}_{}",
               position.getUsername(),
               position.getSymbol());
-        }
-      }
-    }
-    // 後方互換性のため、BigQueryServiceが直接利用可能な場合もサポート
-    else if (bigQueryService != null && positions.isEmpty()) {
-      log.debug("Querying BigQuery for positions for user: {}", username);
-      List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
-      log.debug("Found {} positions in BigQuery for user: {}", bigQueryPositions.size(), username);
-      positions =
-          bigQueryPositions.stream()
-              .map(BigQueryPositionEntity::toPosition)
-              .collect(Collectors.toList());
-
-      // BigQueryから読み込んだデータをメモリキャッシュに保存
-      if (memoryCacheEnabled && !positions.isEmpty()) {
-        ConcurrentHashMap<String, Position> userPositions =
-            positionsCache.computeIfAbsent(username, k -> new ConcurrentHashMap<>());
-        for (Position position : positions) {
-          userPositions.put(position.getSymbol(), position);
-          log.debug(
-              "Cached position from BigQuery: {}_{}", position.getUsername(), position.getSymbol());
         }
       }
     }
@@ -280,15 +217,10 @@ public class PositionManager {
       }
     }
 
-    if (bigQueryService != null) {
-      List<BigQueryTradeHistoryEntity> bigQueryTradeHistories =
-          bigQueryService.queryTradeHistory(username);
-      trades =
-          bigQueryTradeHistories.stream()
-              .map(BigQueryTradeHistoryEntity::toTradeHistory)
-              .collect(Collectors.toList());
+    if (databaseService != null) {
+      trades = databaseService.queryTradeHistory(username);
 
-      // BigQueryから読み込んだデータをメモリキャッシュに追加（重複チェック）
+      // DatabaseServiceから読み込んだデータをメモリキャッシュに追加（重複チェック）
       if (memoryCacheEnabled && !trades.isEmpty()) {
         Set<String> existingExecIds =
             tradeHistoriesCache.stream().map(TradeHistory::getExecID).collect(Collectors.toSet());
@@ -326,15 +258,10 @@ public class PositionManager {
       }
     }
 
-    if (bigQueryService != null) {
-      List<BigQueryTradeHistoryEntity> bigQueryTradeHistories =
-          bigQueryService.queryTradeHistory(username, symbol);
-      trades =
-          bigQueryTradeHistories.stream()
-              .map(BigQueryTradeHistoryEntity::toTradeHistory)
-              .collect(Collectors.toList());
+    if (databaseService != null) {
+      trades = databaseService.queryTradeHistory(username, symbol);
 
-      // BigQueryから読み込んだデータをメモリキャッシュに追加（重複チェック）
+      // DatabaseServiceから読み込んだデータをメモリキャッシュに追加（重複チェック）
       if (memoryCacheEnabled && !trades.isEmpty()) {
         Set<String> existingExecIds =
             tradeHistoriesCache.stream().map(TradeHistory::getExecID).collect(Collectors.toSet());
@@ -370,15 +297,10 @@ public class PositionManager {
       }
     }
 
-    if (bigQueryService != null) {
-      List<BigQueryTradeHistoryEntity> bigQueryTradeHistories =
-          bigQueryService.queryTradeHistory(username, limit);
-      trades =
-          bigQueryTradeHistories.stream()
-              .map(BigQueryTradeHistoryEntity::toTradeHistory)
-              .collect(Collectors.toList());
+    if (databaseService != null) {
+      trades = databaseService.queryTradeHistory(username, limit);
 
-      // BigQueryから読み込んだデータをメモリキャッシュに追加（重複チェック）
+      // DatabaseServiceから読み込んだデータをメモリキャッシュに追加（重複チェック）
       if (memoryCacheEnabled && !trades.isEmpty()) {
         Set<String> existingExecIds =
             tradeHistoriesCache.stream().map(TradeHistory::getExecID).collect(Collectors.toSet());
@@ -407,11 +329,11 @@ public class PositionManager {
       }
     }
 
-    if (bigQueryEnabled && bigQueryService != null) {
-      List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
-      return bigQueryPositions.stream()
+    if (databaseService != null) {
+      List<Position> positions = databaseService.queryAllPositions(username);
+      return positions.stream()
           .mapToDouble(
-              position -> position.getRealizedPnL() != null ? position.getRealizedPnL() : 0.0)
+              position -> (position.getRealizedPnL() > 0) ? position.getRealizedPnL() : 0.0)
           .sum();
     }
 
@@ -432,10 +354,9 @@ public class PositionManager {
       }
     }
 
-    if (bigQueryEnabled && bigQueryService != null) {
-      List<BigQueryPositionEntity> bigQueryPositions = bigQueryService.queryAllPositions(username);
-      return bigQueryPositions.stream()
-          .map(BigQueryPositionEntity::toPosition)
+    if (databaseService != null) {
+      List<Position> positions = databaseService.queryAllPositions(username);
+      return positions.stream()
           .mapToDouble(
               position -> {
                 Double currentPrice = currentPrices.get(position.getSymbol());
@@ -458,16 +379,15 @@ public class PositionManager {
           .computeIfAbsent(
               symbol.toUpperCase(),
               k -> {
-                // Check BigQuery before creating new position
-                if (bigQueryEnabled && bigQueryService != null) {
-                  BigQueryPositionEntity bigQueryPosition =
-                      bigQueryService.queryPosition(username, symbol.toUpperCase());
-                  if (bigQueryPosition != null) {
+                // Check DatabaseService before creating new position
+                if (databaseService != null) {
+                  Position position = databaseService.queryPosition(username, symbol.toUpperCase());
+                  if (position != null) {
                     log.info(
-                        "Loaded existing position from BigQuery for user: {}, symbol: {}",
+                        "Loaded existing position from database for user: {}, symbol: {}",
                         username,
                         symbol);
-                    return bigQueryPosition.toPosition();
+                    return position;
                   }
                 }
 
@@ -476,12 +396,11 @@ public class PositionManager {
               });
     }
 
-    // If memory cache is disabled, check BigQuery first
-    if (bigQueryEnabled && bigQueryService != null) {
-      BigQueryPositionEntity bigQueryPosition =
-          bigQueryService.queryPosition(username, symbol.toUpperCase());
-      if (bigQueryPosition != null) {
-        return bigQueryPosition.toPosition();
+    // If memory cache is disabled, check database first
+    if (databaseService != null) {
+      Position position = databaseService.queryPosition(username, symbol.toUpperCase());
+      if (position != null) {
+        return position;
       }
     }
 
@@ -499,10 +418,9 @@ public class PositionManager {
               .count();
     }
 
-    if (bigQueryEnabled && bigQueryService != null) {
-      List<BigQueryTradeHistoryEntity> bigQueryTradeHistories =
-          bigQueryService.queryTradeHistory(username);
-      return bigQueryTradeHistories.size();
+    if (databaseService != null) {
+      List<TradeHistory> tradeHistories = databaseService.queryTradeHistory(username);
+      return tradeHistories.size();
     }
 
     return 0;
@@ -516,11 +434,10 @@ public class PositionManager {
           .sum();
     }
 
-    if (bigQueryEnabled && bigQueryService != null) {
-      List<BigQueryTradeHistoryEntity> bigQueryTradeHistories =
-          bigQueryService.queryTradeHistory(username);
-      return bigQueryTradeHistories.stream()
-          .mapToDouble(trade -> trade.getAmount() != null ? trade.getAmount() : 0.0)
+    if (databaseService != null) {
+      List<TradeHistory> tradeHistories = databaseService.queryTradeHistory(username);
+      return tradeHistories.stream()
+          .mapToDouble(trade -> (trade.getAmount() > 0) ? trade.getAmount() : 0.0)
           .sum();
     }
 
@@ -534,12 +451,10 @@ public class PositionManager {
           .collect(Collectors.groupingBy(TradeHistory::getSymbol, Collectors.counting()));
     }
 
-    if (bigQueryEnabled && bigQueryService != null) {
-      List<BigQueryTradeHistoryEntity> bigQueryTradeHistories =
-          bigQueryService.queryTradeHistory(username);
-      return bigQueryTradeHistories.stream()
-          .collect(
-              Collectors.groupingBy(BigQueryTradeHistoryEntity::getSymbol, Collectors.counting()));
+    if (databaseService != null) {
+      List<TradeHistory> tradeHistories = databaseService.queryTradeHistory(username);
+      return tradeHistories.stream()
+          .collect(Collectors.groupingBy(TradeHistory::getSymbol, Collectors.counting()));
     }
 
     return new HashMap<>();
@@ -594,9 +509,13 @@ public class PositionManager {
       }
     }
 
-    // BigQueryに保存
-    if (bigQueryEnabled && bigQueryService != null) {
-      savePositionToBigQuery(cashPosition);
+    // DatabaseServiceに保存
+    if (databaseService != null) {
+      try {
+        databaseService.upsertPosition(cashPosition);
+      } catch (Exception e) {
+        log.error("Error saving cash position via DatabaseService", e);
+      }
     }
 
     log.info(
@@ -621,45 +540,16 @@ public class PositionManager {
           .put(CASH_SYMBOL, cashPosition);
     }
 
-    // BigQueryに保存
-    if (bigQueryEnabled && bigQueryService != null) {
-      savePositionToBigQuery(cashPosition);
+    // DatabaseServiceに保存
+    if (databaseService != null) {
+      try {
+        databaseService.upsertPosition(cashPosition);
+      } catch (Exception e) {
+        log.error("Error saving cash position via DatabaseService", e);
+      }
     }
 
     log.info("Initialized user {} with cash balance: {}", username, initialAmount);
   }
 
-  // BigQuery保存メソッド - キューベースの非ブロッキング処理
-  private void savePositionToBigQuery(Position position) {
-    try {
-      if (bigQueryWriter != null) {
-        // キューに追加（非ブロッキング）
-        bigQueryWriter.enqueue(BigQueryEntity.position(position));
-        log.debug(
-            "Position enqueued to BigQuery writer: {}_{}",
-            position.getUsername(),
-            position.getSymbol());
-      }
-    } catch (Exception e) {
-      log.error(
-          "Error enqueuing position to BigQuery: "
-              + position.getUsername()
-              + "_"
-              + position.getSymbol(),
-          e);
-    }
-  }
-
-  // BigQuery保存メソッド - キューベースの非ブロッキング処理
-  private void saveTradeHistoryToBigQuery(TradeHistory tradeHistory) {
-    try {
-      if (bigQueryWriter != null) {
-        // キューに追加（非ブロッキング）
-        bigQueryWriter.enqueue(BigQueryEntity.tradeHistory(tradeHistory));
-        log.debug("Trade history enqueued to BigQuery writer: {}", tradeHistory.getExecID());
-      }
-    } catch (Exception e) {
-      log.error("Error enqueuing trade history to BigQuery: " + tradeHistory.getExecID(), e);
-    }
-  }
 }

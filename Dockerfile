@@ -1,5 +1,6 @@
 # Simple single-stage build for Cloud Build
-FROM openjdk:17-jdk-slim
+# Using official openjdk image available on Docker Hub
+FROM openjdk:17.0.2-jdk-slim
 
 # Install required packages
 RUN apt-get update && apt-get install -y \
@@ -41,8 +42,9 @@ ENV JAVA_OPTS="-Xmx768m -Xms256m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Djava.se
     SPRING_PROFILES_ACTIVE=prod \
     SERVER_PORT=8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# Health check with extended startup period for Cloud Run (Cloud Run has separate health checks)
+# Increased start-period to 120s to give the application more time to start
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8080/actuator/health || exit 1
 
 # Run the application

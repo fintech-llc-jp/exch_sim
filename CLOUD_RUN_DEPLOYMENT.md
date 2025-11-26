@@ -1,192 +1,259 @@
-# Google Cloud Run Deployment Guide
+# Cloud Run へのデプロイメント ガイド
 
-## Prerequisites
+このドキュメントでは、Exchange Simulator を Google Cloud Run にデプロイする手順を説明します。
 
-1. **Google Cloud Project**: Ensure you have a GCP project with billing enabled
-2. **Docker**: Install Docker on your local machine
-3. **Google Cloud CLI**: Install and authenticate `gcloud` CLI
-4. **BigQuery Setup**: Ensure BigQuery dataset and tables are created
-5. **Redis Instance**: Set up Redis instance (Cloud Memorystore or external)
+## 目次
 
-## Build and Deploy
+1. [前提条件](#前提条件)
+2. [準備](#準備)
+3. [デプロイ手順](#デプロイ手順)
+4. [環境設定](#環境設定)
+5. [トラブルシューティング](#トラブルシューティング)
+6. [本番運用](#本番運用)
 
-### 1. Build Docker Image
+## 前提条件
+
+### 必須ツール
+
+- **Google Cloud SDK** (gcloud CLI)
+  - インストール: https://cloud.google.com/sdk/docs/install
+  - バージョン確認: `gcloud --version`
+
+- **Docker**
+  - インストール: https://www.docker.com/products/docker-desktop
+  - バージョン確認: `docker --version`
+
+- **Java 17**
+  - バージョン確認: `java -version`
+
+### Google Cloud 環境
+
+- **GCP プロジェクト**が設定されていること
+- **BigQuery API** が有効化されていること
+- **Cloud Run API** が有効化されていること
+- **Container Registry** が有効化されていること
+
+### 認証情報
+
+- BigQuery へのアクセス権を持つサービスアカウント
+- サービスアカウントキー JSON ファイル
+
+## 準備
+
+### 1. Google Cloud SDK のセットアップ
 
 ```bash
-# Set Java version
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17
+# gcloud CLI のインストール
+# macOS の場合
+brew install google-cloud-sdk
 
-# Build the Docker image
-docker build -t exch-sim:latest .
+# ログイン
+gcloud auth login
 
-# Tag for Google Container Registry
-docker tag exch-sim:latest gcr.io/YOUR_PROJECT_ID/exch-sim:latest
+# プロジェクトの確認・設定
+gcloud config list
+gcloud config set project YOUR_PROJECT_ID
 ```
 
-### 2. Push to Container Registry
+### 2. Docker 認証の設定
 
 ```bash
-# Configure Docker to use gcloud as credential helper
-gcloud auth configure-docker
+# Google Container Registry への認証を設定
+gcloud auth configure-docker gcr.io
+```
 
-# Push the image
+### 3. プロジェクト構成の確認
+
+デプロイ前に、以下のファイルが存在することを確認してください：
+
+- `Dockerfile` - Docker イメージの定義
+- `.dockerignore` - Docker ビルド時に除外するファイル
+- `build.gradle` - Gradle ビルド設定
+- `src/main/resources/application-prod.properties` - 本番環境設定
+
+## デプロイ手順
+
+### 自動デプロイスクリプトを使用（推奨）
+
+```bash
+# プロジェクトディレクトリに移動
+cd /path/to/exch_sim
+
+# デプロイスクリプトを実行
+./deploy-to-cloud-run.sh
+```
+
+スクリプトが以下を自動的に行います：
+1. Google Cloud 認証確認
+2. 必要な API の有効化
+3. サービスアカウントの作成
+4. Docker イメージの構築
+5. Google Container Registry へのプッシュ
+6. Cloud Run へのデプロイ
+7. ヘルスチェック実行
+
+### オプション付きデプロイ
+
+```bash
+# 特定のプロジェクトとリージョンを指定
+./deploy-to-cloud-run.sh \
+  -p my-project-id \
+  -r asia-northeast1 \
+  -m 2Gi \
+  -c 4
+
+# ビルドをスキップ（既存イメージを再利用）
+./deploy-to-cloud-run.sh --skip-build
+
+# 完全なヘルプを表示
+./deploy-to-cloud-run.sh --help
+```
+
+### 手動デプロイ
+
+自動スクリプトが使用できない場合は、以下の手順で手動デプロイできます。
+
+#### ステップ 1: Google Cloud の初期化
+
+```bash
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable cloudbuild.googleapis.com run.googleapis.com containerregistry.googleapis.com bigquery.googleapis.com
+```
+
+#### ステップ 2: サービスアカウントの作成
+
+```bash
+gcloud iam service-accounts create exch-sim
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:exch-sim@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/bigquery.dataEditor"
+```
+
+#### ステップ 3: Docker イメージの構築とプッシュ
+
+```bash
+docker build -t gcr.io/YOUR_PROJECT_ID/exch-sim:latest .
 docker push gcr.io/YOUR_PROJECT_ID/exch-sim:latest
 ```
 
-### 3. Deploy to Cloud Run
+#### ステップ 4: Cloud Run へのデプロイ
 
 ```bash
 gcloud run deploy exch-sim \
   --image gcr.io/YOUR_PROJECT_ID/exch-sim:latest \
   --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --port 8080 \
+  --region asia-northeast1 \
   --memory 1Gi \
-  --cpu 1 \
-  --timeout 300s \
-  --concurrency 1000 \
-  --min-instances 0 \
+  --cpu 2 \
+  --timeout 3600 \
   --max-instances 10 \
-  --set-env-vars="SPRING_PROFILES_ACTIVE=prod" \
-  --set-env-vars="REDIS_HOST=10.233.140.211" \
-  --set-env-vars="REDIS_PORT=6379" \
-  --set-env-vars="GCP_PROJECT_ID=tradingscreen" \
-  --set-env-vars="BIGQUERY_DATASET=repository" \
-  --set-env-vars="JWT_SECRET=your-secure-256-bit-secret-key-here" \
-  --service-account=YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com
+  --allow-unauthenticated \
+  --set-env-vars="SPRING_PROFILES_ACTIVE=prod,DATA_MIGRATION_ENABLED=true" \
+  --service-account=exch-sim@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
-## Environment Variables
+## デプロイ後の確認
 
-### Required Variables
-- `REDIS_HOST`: Redis server hostname (10.233.140.211)
-- `REDIS_PORT`: Redis server port (6379)
-- `GCP_PROJECT_ID`: Google Cloud project ID
-- `BIGQUERY_DATASET`: BigQuery dataset name
-- `JWT_SECRET`: Secret key for JWT token signing
-
-### Optional Variables
-- `REDIS_PASSWORD`: Redis password (if required)
-- `REDIS_DATABASE`: Redis database number (default: 0)
-- `SERVER_PORT`: Application port (default: 8080)
-- `AUTH_CACHE_TTL_MINUTES`: User cache TTL in minutes (default: 5)
-- `AUTH_CACHE_MAX_SIZE`: Maximum cache size (default: 1000)
-- `LOG_LEVEL`: Application log level (default: INFO)
-
-## Service Account Setup
-
-Create a service account with necessary permissions:
+### 1. ヘルスチェック
 
 ```bash
-# Create service account
-gcloud iam service-accounts create exch-sim-service \
-  --description="Service account for Exchange Simulator" \
-  --display-name="Exchange Simulator Service Account"
+SERVICE_URL=$(gcloud run services describe exch-sim \
+  --region asia-northeast1 \
+  --format='value(status.url)')
 
-# Grant BigQuery permissions
+curl ${SERVICE_URL}/actuator/health
+```
+
+### 2. ログの確認
+
+```bash
+gcloud run logs read exch-sim --region asia-northeast1 --limit 50 --follow
+```
+
+### 3. API のテスト
+
+```bash
+curl -X POST ${SERVICE_URL}/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+```
+
+## 環境設定
+
+### 環境変数の設定
+
+```bash
+gcloud run deploy exch-sim \
+  --set-env-vars="
+    SPRING_PROFILES_ACTIVE=prod,
+    DATA_MIGRATION_ENABLED=true,
+    AUTH_BIGQUERY_ENABLED=true,
+    JWT_SECRET=your-secure-secret-key
+  " \
+  --region asia-northeast1
+```
+
+### 主要な環境変数
+
+| 環境変数 | 説明 | デフォルト値 |
+|---------|------|-----------|
+| `SPRING_PROFILES_ACTIVE` | Spring Boot プロファイル | prod |
+| `DATA_MIGRATION_ENABLED` | データ移行の有効化 | true |
+| `AUTH_BIGQUERY_ENABLED` | BigQuery 認証の有効化 | true |
+| `GCP_PROJECT_ID` | GCP プロジェクト ID | tradingscreen |
+| `JWT_SECRET` | JWT トークンの署名キー | 必須 |
+
+## トラブルシューティング
+
+### デプロイに失敗する
+
+```bash
+# Docker ビルドの確認（ローカルで実行）
+./gradlew clean build -x test
+
+# Docker キャッシュをクリア
+docker system prune -a
+```
+
+### Cloud Run でアプリが起動しない
+
+```bash
+# ログを確認
+gcloud run logs read exch-sim --region asia-northeast1 --limit 100
+```
+
+### BigQuery への接続がエラーになる
+
+```bash
+# サービスアカウントのロール確認
+gcloud projects get-iam-policy YOUR_PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:serviceAccount:exch-sim@*"
+
+# BigQuery へのアクセス権を付与
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:exch-sim-service@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/bigquery.dataEditor"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:exch-sim-service@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/bigquery.jobUser"
+  --member="serviceAccount:exch-sim@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/bigquery.dataOwner"
 ```
 
-## BigQuery Tables Setup
+## よくある質問（FAQ）
 
-Ensure the following tables exist in your BigQuery dataset:
+### Q: メモリ・CPU 割り当ての推奨値は?
 
-### users table
-```sql
-CREATE TABLE `tradingscreen.repository.users` (
-  username STRING NOT NULL,
-  password STRING NOT NULL,
-  roles ARRAY<STRING> NOT NULL
-);
-```
+A: 以下のガイドラインを参考にしてください：
 
-### executions table
-```sql
-CREATE TABLE `tradingscreen.repository.executions` (
-  execution_id STRING NOT NULL,
-  order_id STRING NOT NULL,
-  username STRING NOT NULL,
-  symbol STRING NOT NULL,
-  exec_status STRING NOT NULL,
-  last_px_raw INT64 NOT NULL,
-  last_qty_raw INT64 NOT NULL,
-  side STRING,
-  created_at TIMESTAMP NOT NULL,
-  is_market_maker BOOLEAN NOT NULL
-);
-```
+| ユースケース | メモリ | CPU |
+|-----------|--------|-----|
+| 開発環境 | 1Gi | 2 |
+| 本番環境（低負荷） | 2Gi | 2 |
+| 本番環境（中負荷） | 4Gi | 4 |
 
-### positions table
-```sql
-CREATE TABLE `tradingscreen.repository.positions` (
-  username STRING NOT NULL,
-  symbol STRING NOT NULL,
-  quantity INT64 NOT NULL,
-  average_price FLOAT64 NOT NULL,
-  unrealized_pnl FLOAT64 NOT NULL,
-  realized_pnl FLOAT64 NOT NULL,
-  last_updated TIMESTAMP NOT NULL
-);
-```
+### Q: コスト削減のためには?
 
-### trade_history table
-```sql
-CREATE TABLE `tradingscreen.repository.trade_history` (
-  trade_id STRING NOT NULL,
-  username STRING NOT NULL,
-  symbol STRING NOT NULL,
-  side STRING NOT NULL,
-  quantity INT64 NOT NULL,
-  price FLOAT64 NOT NULL,
-  trade_time TIMESTAMP NOT NULL,
-  is_market_maker BOOLEAN NOT NULL,
-  order_id STRING NOT NULL
-);
-```
+A: 以下の対策を検討してください：
+- `--min-instances=0` で最小インスタンスをゼロに設定
+- 不要な時間帯に削除
 
-## Monitoring and Troubleshooting
+---
 
-### View Logs
-```bash
-gcloud run services logs read exch-sim --platform managed --region us-central1
-```
-
-### Check Service Status
-```bash
-gcloud run services describe exch-sim --platform managed --region us-central1
-```
-
-### Update Service
-```bash
-gcloud run services update exch-sim \
-  --platform managed \
-  --region us-central1 \
-  --set-env-vars="NEW_VAR=value"
-```
-
-## Health Check
-
-The application includes a health check endpoint at `/actuator/health` that Cloud Run will use to determine service health.
-
-## Security Considerations
-
-1. **Service Account**: Use least-privilege principle for service account permissions
-2. **JWT Secret**: Use a strong, randomly generated secret key
-3. **Network**: Consider using VPC connector for secure Redis access
-4. **Authentication**: BigQuery-based user authentication with caching
-5. **Secrets**: Store sensitive information in Google Secret Manager
-
-## Performance Tuning
-
-- **Memory**: Start with 1Gi, adjust based on usage
-- **CPU**: 1 CPU should handle moderate load
-- **Concurrency**: Adjust based on Redis and BigQuery capacity
-- **Min/Max Instances**: Configure based on expected traffic patterns
-- **Cache Settings**: Tune auth cache TTL and size for your use case
+**最終更新**: 2025-11-09

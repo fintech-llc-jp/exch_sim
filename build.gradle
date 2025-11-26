@@ -31,9 +31,12 @@ dependencies {
 	// H2 Database - REMOVED (using BigQuery only)
 	// runtimeOnly 'com.h2database:h2'
 	
-	// BigQuery
-	implementation 'com.google.cloud:google-cloud-bigquery:2.34.2'
+	// H2 Database - for testing only
+	testRuntimeOnly 'com.h2database:h2'
 
+	// PostgreSQL Driver
+	runtimeOnly 'org.postgresql:postgresql'
+	
 	// Netty DNS resolver for macOS
 	runtimeOnly 'io.netty:netty-resolver-dns-native-macos:4.1.94.Final:osx-aarch_64'
 	

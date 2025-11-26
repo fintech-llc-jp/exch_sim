@@ -38,7 +38,7 @@ class MarketDataServiceTest {
   void setUp() {
     service =
         new MarketDataService(
-            orderService, instrumentConfig, clientConfig, orderedTradeProcessor, null);
+            orderService, instrumentConfig, clientConfig, orderedTradeProcessor);
   }
 
   @Test

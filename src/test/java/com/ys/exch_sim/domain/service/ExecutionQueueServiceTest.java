@@ -19,9 +19,8 @@ import com.ys.exch_sim.domain.message.field.Timestamp;
 import com.ys.exch_sim.domain.message.field.Username;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
-import com.ys.exch_sim.domain.bigquery.BigQueryWriter;
-import com.ys.exch_sim.domain.service.BigQueryVolumeCalculationService;
 import com.ys.exch_sim.domain.order_exec.Order;
+import com.ys.exch_sim.domain.database.DatabaseService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -39,10 +38,7 @@ class ExecutionQueueServiceTest {
   private ExecutionRepository executionRepository;
 
   @Mock
-  private BigQueryWriter bigQueryWriter;
-
-  @Mock
-  private BigQueryVolumeCalculationService volumeCalculationService;
+  private DatabaseService databaseService;
 
   private ExecutionQueueService executionQueueService;
 
@@ -55,13 +51,9 @@ class ExecutionQueueServiceTest {
     executionQueueService = new ExecutionQueueService();
     // Use reflection to set the mocked fields
     try {
-      java.lang.reflect.Field bigQueryWriterField = ExecutionQueueService.class.getDeclaredField("bigQueryWriter");
-      bigQueryWriterField.setAccessible(true);
-      bigQueryWriterField.set(executionQueueService, bigQueryWriter);
-
-      java.lang.reflect.Field volumeField = ExecutionQueueService.class.getDeclaredField("volumeCalculationService");
-      volumeField.setAccessible(true);
-      volumeField.set(executionQueueService, volumeCalculationService);
+      java.lang.reflect.Field databaseServiceField = ExecutionQueueService.class.getDeclaredField("databaseService");
+      databaseServiceField.setAccessible(true);
+      databaseServiceField.set(executionQueueService, databaseService);
     } catch (IllegalAccessException | NoSuchFieldException e) {
       throw new RuntimeException(e);
     }
@@ -355,33 +347,6 @@ class ExecutionQueueServiceTest {
     assertThat(polledExecution.getExecStatus()).isEqualTo(ExecStatus.FILLED);
   }
 
-  @Test
-  void testAddNonMarketMakerExecutionSavesToBigQuery() {
-    // Given
-    String username = "testuser";
-    Order order = createTestOrder("order1", Side.BUY, username);
-    Execution execution = new Execution(order, ExecStatus.FILLED, new Px(symbol, 100.0), new Qty(symbol, 10));
-
-    // When
-    executionQueueService.addExecution(username, execution);
-
-    // Then
-    verify(bigQueryWriter, times(1)).enqueue(any());
-  }
-
-  @Test
-  void testAddMarketMakerExecutionDoesNotSaveToBigQuery() {
-    // Given
-    String username = "testuser";
-    Execution marketMakerExecution = createMarketMakerExecution(username);
-
-    // When
-    executionQueueService.addExecution(username, marketMakerExecution);
-
-    // Then
-    // BigQueryには保存されない
-    verify(bigQueryWriter, never()).enqueue(any());
-  }
 
   @Test
   void testAddMarketMakerExecutionSavesToMemoryCache() {
@@ -401,7 +366,7 @@ class ExecutionQueueServiceTest {
   }
 
   @Test
-  void testBigQueryEnqueueFailureDoesNotAffectQueueOperation() {
+  void testQueueOperationSucceeds() {
     // Given
     String username = "testuser";
     Order order = createTestOrder("order1", Side.BUY, username);
@@ -411,7 +376,6 @@ class ExecutionQueueServiceTest {
     executionQueueService.addExecution(username, execution);
 
     // Then
-    // Queue operation should still work even if BigQueryWriter fails
     List<Execution> polledExecutions = executionQueueService.pollExecutions(username, 10);
     assertThat(polledExecutions).hasSize(1);
     assertThat(polledExecutions.get(0)).isEqualTo(execution);

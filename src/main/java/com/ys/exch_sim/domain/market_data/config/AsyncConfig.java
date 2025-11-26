@@ -30,15 +30,6 @@ public class AsyncConfig {
     @Value("${market-data.async.thread-name-prefix:MarketData-}")
     private String threadNamePrefix;
 
-    @Value("${market-data.bigquery.async.core-pool-size:8}")
-    private int bigQueryCorePoolSize;
-
-    @Value("${market-data.bigquery.async.max-pool-size:16}")
-    private int bigQueryMaxPoolSize;
-
-    @Value("${market-data.bigquery.async.queue-capacity:5000}")
-    private int bigQueryQueueCapacity;
-
     /**
      * マーケットデータ処理用のスレッドプール
      * WebSocketスレッドをブロックしないための専用Executor
@@ -69,37 +60,6 @@ public class AsyncConfig {
         log.info("🚀 MarketData TaskExecutor initialized - Core: {}, Max: {}, Queue: {}", 
             corePoolSize, maxPoolSize, queueCapacity);
         
-        return executor;
-    }
-    
-    /**
-     * BigQuery非同期処理用のスレッドプール
-     */
-    @Bean("bigQueryAsyncExecutor")
-    public Executor bigQueryAsyncExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-
-        // BigQuery専用の設定（application.propertiesから読み込み）
-        executor.setCorePoolSize(bigQueryCorePoolSize);
-        executor.setMaxPoolSize(bigQueryMaxPoolSize);
-        executor.setQueueCapacity(bigQueryQueueCapacity);
-        executor.setThreadNamePrefix("BigQuery-Async-");
-
-        // 拒否ポリシー：CallerRunsPolicy - キューが満杯の場合は呼び出し元スレッドで実行
-        // これにより、データ損失を防ぎつつ、自然なバックプレッシャーを実現
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-
-        executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(60);
-
-        executor.setAllowCoreThreadTimeOut(true);
-        executor.setKeepAliveSeconds(120);
-
-        executor.initialize();
-
-        log.info("📊 BigQuery AsyncExecutor initialized - Core: {}, Max: {}, Queue: {}, RejectionPolicy: CallerRunsPolicy",
-            bigQueryCorePoolSize, bigQueryMaxPoolSize, bigQueryQueueCapacity);
-
         return executor;
     }
 }

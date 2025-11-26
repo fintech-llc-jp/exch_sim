@@ -1,10 +1,9 @@
 #!/bin/bash
 
 # クイックテスト - デバッグ用
-#BASE_URL="https://exch-sim-953974838707.asia-northeast1.run.app"
 BASE_URL="http://localhost:8080"
-USERNAME="yukio003"
-PASSWORD="yukio003"
+USERNAME="yukio001"
+PASSWORD="yukio001"
 JWT_CACHE_FILE="/tmp/quick_test_jwt_token"
 
 # JWT有効性チェック関数
@@ -234,7 +233,7 @@ case "$1" in
     echo "🌍 全体約定履歴取得 (page: ${PAGE}, size: ${SIZE}, symbol: ${SYMBOL})..."
     if [ -n "$SYMBOL" ]; then
       curl -s -X GET "${BASE_URL}/api/executions/all?page=${PAGE}&size=${SIZE}&symbol=${SYMBOL}" \
-        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+        -H "Authorization: Bearer ${JWT_TOKEN}"  | jq '.'
     else
       curl -s -X GET "${BASE_URL}/api/executions/all?page=${PAGE}&size=${SIZE}" \
         -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'

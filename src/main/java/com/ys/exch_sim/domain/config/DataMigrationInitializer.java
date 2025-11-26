@@ -138,9 +138,6 @@ public class DataMigrationInitializer implements CommandLineRunner {
 
     log.info("Starting data migration initialization - Phase: {}", migrationPhase);
 
-    // Default users are now managed in BigQuery, not in JSON files
-    log.info("Default users should be manually created in BigQuery");
-
     // Initialize instruments (stored in memory/static configuration)
     initializeInstruments();
 
@@ -215,8 +212,8 @@ public class DataMigrationInitializer implements CommandLineRunner {
    */
   private void initializeDefaultUsersCashBalance() {
     log.info("Initializing default users with cash balances...");
-    
-    // デフォルトユーザー一覧（BigQueryに存在するユーザー）
+
+    // デフォルトユーザー一覧
     String[] defaultUsers = {"admin", "trader001", "marketmaker1", "yukio001", "trader002",
                            "trader003", "testuser", "yukio002", "newuser001", "testuser2",
                            "test01", "test02", "yukio003"};

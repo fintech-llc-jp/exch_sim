@@ -10,6 +10,7 @@ import com.ys.exch_sim.domain.message.field.Symbol;
 import com.ys.exch_sim.domain.message.field.Tif;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.order_exec.Order;
+import com.ys.exch_sim.domain.order_exec.OrdStatus;
 import com.ys.exch_sim.infra.Pair;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -340,6 +341,11 @@ public class MarketBoard {
       }
     }
 
+    // leavesQtyが0になったらFILLEDに更新
+    if (order.getLeavesQty().getLongQty() == 0L) {
+      order.setOrdStatus(OrdStatus.FILLED);
+    }
+
     // TODO : check IOC/FOK status,if orderQty is more than 0, IOC is ok, but if FOK , it is
     // critical error
     return elist;
@@ -437,6 +443,9 @@ public class MarketBoard {
     }
     if (order.getLeavesQty().getLongQty() != 0L) {
       addOrderToBoard(order);
+    } else {
+      // leavesQtyが0になったらFILLEDに更新
+      order.setOrdStatus(OrdStatus.FILLED);
     }
 
     return elist;
@@ -452,6 +461,14 @@ public class MarketBoard {
 
     long newLeavesQty = order.getLeavesQty().getLongQty() - lastQty.getLongQty();
     order.setLeavesQty(new Qty(order.getSymbol(), newLeavesQty));
+    
+    // ordStatusを更新
+    if (execStatus == ExecStatus.FILLED) {
+      order.setOrdStatus(OrdStatus.FILLED);
+    } else if (execStatus == ExecStatus.PARTIAL_FILL) {
+      order.setOrdStatus(OrdStatus.PARTIAL_FILL);
+    }
+    
     Execution e = new Execution(order, execStatus, lastPx, lastQty, counterPartyUsername);
     order.getExecutions().add(e);
     // Entry board quantity update is now handled in the main processing loop

@@ -1,6 +1,5 @@
 package com.ys.exch_sim.domain.market_data.service;
 
-import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.config.InstrumentConfig;
 import com.ys.exch_sim.domain.market_board.MarketBoard;
 import com.ys.exch_sim.domain.market_data.config.MarketDataClientConfig;
@@ -23,7 +22,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -53,7 +51,6 @@ public class MarketDataService {
   private final InstrumentConfig instrumentConfig;
   private final MarketDataClientConfig clientConfig;
   private final OrderedTradeProcessor orderedTradeProcessor;
-  private final Optional<BigQueryService> bigQueryService;
 
   // Rate limiting: track last update time per symbol
   private final ConcurrentHashMap<String, Instant> lastBoardUpdateTime = new ConcurrentHashMap<>();
@@ -64,23 +61,18 @@ public class MarketDataService {
   @Value("${market-data.update-interval-ms:1000}")
   private long updateIntervalMs;
 
-  @Value("${app.data-migration.bigquery-enabled:false}")
-  private boolean bigQueryEnabled;
-
   public MarketDataService(
       OrderService orderService,
       InstrumentConfig instrumentConfig,
       MarketDataClientConfig clientConfig,
-      @Autowired(required = false) OrderedTradeProcessor orderedTradeProcessor,
-      @Autowired(required = false) BigQueryService bigQueryService) {
+      @Autowired(required = false) OrderedTradeProcessor orderedTradeProcessor) {
     this.orderService = orderService;
     this.instrumentConfig = instrumentConfig;
     this.clientConfig = clientConfig;
     this.orderedTradeProcessor = orderedTradeProcessor;
-    this.bigQueryService = Optional.ofNullable(bigQueryService);
 
-    log.info("✅ MarketDataService initialized with updateIntervalMs={}, bigQueryEnabled={}",
-        updateIntervalMs, bigQueryEnabled);
+    log.info("✅ MarketDataService initialized with updateIntervalMs={}",
+        updateIntervalMs);
   }
 
   /**
@@ -354,10 +346,9 @@ public class MarketDataService {
         instrumentConfig.getInstruments() != null ? instrumentConfig.getInstruments().size() : 0;
     int trackedSymbols = lastBoardUpdateTime.size();
     return String.format(
-        "MarketDataService [Instruments: %d, Tracked symbols: %d, Update interval: %dms, BigQuery: %s]",
+        "MarketDataService [Instruments: %d, Tracked symbols: %d, Update interval: %dms]",
         instrumentCount,
         trackedSymbols,
-        updateIntervalMs,
-        bigQueryEnabled ? "enabled" : "disabled");
+        updateIntervalMs);
   }
 }

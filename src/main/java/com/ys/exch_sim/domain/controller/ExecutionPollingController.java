@@ -2,12 +2,10 @@ package com.ys.exch_sim.domain.controller;
 
 import com.ys.exch_sim.domain.dto.ExecutionHistoryResponse;
 import com.ys.exch_sim.domain.dto.ExecutionPollingResponse;
-import com.ys.exch_sim.domain.dto.VolumeCalculationResponse;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
 import com.ys.exch_sim.domain.order_exec.Execution;
 import com.ys.exch_sim.domain.service.ExecutionQueueService;
-import com.ys.exch_sim.domain.service.BigQueryVolumeCalculationService;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,14 +29,11 @@ public class ExecutionPollingController {
 
   private final ExecutionQueueService executionQueueService;
   private final UserDetailsService userDetailsService;
-  private final BigQueryVolumeCalculationService volumeCalculationService;
 
   public ExecutionPollingController(ExecutionQueueService executionQueueService,
-                                   UserDetailsService userDetailsService,
-                                   @Autowired(required = false) BigQueryVolumeCalculationService volumeCalculationService) {
+                                   UserDetailsService userDetailsService) {
     this.executionQueueService = executionQueueService;
     this.userDetailsService = userDetailsService;
-    this.volumeCalculationService = volumeCalculationService;
   }
 
   @GetMapping("/poll")
@@ -385,66 +380,6 @@ public class ExecutionPollingController {
     }
   }
 
-  @GetMapping("/volume")
-  public ResponseEntity<?> calculateVolume(
-      @RequestParam String symbol,
-      @RequestParam String fromTime,
-      @RequestParam String toTime) {
-    try {
-      log.info("📊 Volume calculation request - symbol: {}, fromTime: {}, toTime: {}", symbol, fromTime, toTime);
-
-      // BigQueryVolumeCalculationServiceが利用可能かチェック
-      if (volumeCalculationService == null) {
-        log.warn("BigQuery volume calculation service is not available");
-        return ResponseEntity.internalServerError()
-            .body("Volume calculation service not available");
-      }
-
-      // デバッグ用：キャッシュの状態をログ出力
-      Map<String, Object> volumeStatus = volumeCalculationService.getVolumeStatus();
-      log.info("🔍 Volume cache status: {}", volumeStatus);
-
-      // BigQueryベースの計算（現在は24時間固定）
-      String normalizedSymbol = symbol != null ? symbol.toUpperCase() : null;
-      log.info("🔍 Normalized symbol: '{}' (original: '{}')", normalizedSymbol, symbol);
-
-      Long volumeRaw;
-      if (symbol == null || symbol.trim().isEmpty() || "ALL".equalsIgnoreCase(symbol.trim())) {
-        volumeRaw = volumeCalculationService.calculateTotalVolume();
-        log.info("🔍 Calculating total volume: {}", volumeRaw);
-      } else {
-        volumeRaw = volumeCalculationService.calculateVolumeBySymbol(normalizedSymbol);
-        log.info("🔍 Calculating volume for symbol '{}': {}", normalizedSymbol, volumeRaw);
-      }
-
-      // Convert raw volume to actual value (qtyMultiplier=1000)
-      Double totalVolume = volumeRaw != null ? volumeRaw.doubleValue() / 1000.0 : 0.0;
-
-      // 現在の実装では約定件数は取得しない（必要に応じて後で追加）
-      Long executionCount = 0L;
-
-      String timeRangeDescription = "24-hour rolling volume (BigQuery-based)";
-
-      VolumeCalculationResponse response = new VolumeCalculationResponse(
-          symbol != null && !symbol.trim().isEmpty() ? symbol.toUpperCase() : "ALL",
-          LocalDateTime.now().minusHours(24),
-          LocalDateTime.now(),
-          totalVolume,
-          executionCount,
-          timeRangeDescription
-      );
-
-      log.info("Successfully calculated volume (BigQuery-based) for symbol: {}, total volume: {}",
-               symbol, totalVolume);
-      return ResponseEntity.ok(response);
-
-    } catch (Exception e) {
-      log.error("Error calculating volume", e);
-      return ResponseEntity.internalServerError()
-          .body("Error calculating volume: " + e.getMessage());
-    }
-  }
-
   @GetMapping("/db-info")
   public ResponseEntity<?> getDatabaseInfo() {
     try {
@@ -466,32 +401,4 @@ public class ExecutionPollingController {
     }
   }
 
-  @GetMapping("/volume/debug")
-  public ResponseEntity<?> getVolumeDebugInfo() {
-    try {
-      log.info("🔍 Volume debug info request");
-
-      Map<String, Object> debugInfo = new java.util.HashMap<>();
-
-      if (volumeCalculationService != null) {
-        Map<String, Object> volumeStatus = volumeCalculationService.getVolumeStatus();
-        debugInfo.put("volumeCalculationService", "available");
-        debugInfo.put("volumeStatus", volumeStatus);
-        debugInfo.put("totalVolume", volumeCalculationService.calculateTotalVolume());
-      } else {
-        debugInfo.put("volumeCalculationService", "not available");
-      }
-
-      // H2 database removed
-      debugInfo.put("h2Status", "removed");
-      debugInfo.put("h2TotalExecutions", "N/A");
-
-      return ResponseEntity.ok(debugInfo);
-
-    } catch (Exception e) {
-      log.error("Error getting volume debug info", e);
-      return ResponseEntity.internalServerError()
-          .body("Error getting volume debug info: " + e.getMessage());
-    }
-  }
 }

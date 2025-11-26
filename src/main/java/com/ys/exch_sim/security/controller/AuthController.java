@@ -1,6 +1,5 @@
 package com.ys.exch_sim.security.controller;
 
-import com.ys.exch_sim.domain.bigquery.BigQueryService;
 import com.ys.exch_sim.domain.position.PositionManager;
 import com.ys.exch_sim.security.jwt.JwtService;
 import com.ys.exch_sim.security.model.AuthenticationRequest;
@@ -30,7 +29,6 @@ public class AuthController {
   private final AuthenticationManager authenticationManager;
   private final UserDetailsService userDetailsService;
   private final JwtService jwtService;
-  private final BigQueryService bigQueryService;
   private final PasswordEncoder passwordEncoder;
   private final PositionManager positionManager;
 
@@ -38,13 +36,11 @@ public class AuthController {
       AuthenticationManager authenticationManager,
       UserDetailsService userDetailsService,
       JwtService jwtService,
-      @Autowired(required = false) BigQueryService bigQueryService,
       PasswordEncoder passwordEncoder,
       PositionManager positionManager) {
     this.authenticationManager = authenticationManager;
     this.userDetailsService = userDetailsService;
     this.jwtService = jwtService;
-    this.bigQueryService = bigQueryService;
     this.passwordEncoder = passwordEncoder;
     this.positionManager = positionManager;
   }
@@ -96,7 +92,6 @@ public class AuthController {
       }
 
       // ユーザーが既に存在するかチェック
-      // まずUserDetailsServiceでチェック（users.jsonやBigQueryから）
       try {
         UserDetails existingUser = userDetailsService.loadUserByUsername(username);
         if (existingUser != null) {
@@ -108,21 +103,8 @@ public class AuthController {
         log.debug("User does not exist, proceeding with signup: {}", username);
       }
 
-      // BigQueryでも追加チェック（念のため）
-      if (bigQueryService != null && bigQueryService.userExists(username)) {
-        return ResponseEntity.badRequest().body("Username already exists");
-      }
-
       // パスワードをエンコード
       String encodedPassword = passwordEncoder.encode(password);
-
-      // デフォルトロールを設定（必要に応じて変更可能）
-      String[] defaultRoles = {"USER"};
-
-      // BigQueryにユーザーを登録（BigQueryが有効な場合のみ）
-      if (bigQueryService != null) {
-        bigQueryService.registerUser(username, encodedPassword, Arrays.asList(defaultRoles));
-      }
 
       // 初期残高（100万円）を付与
       double initialCashBalance = 1000000.0;

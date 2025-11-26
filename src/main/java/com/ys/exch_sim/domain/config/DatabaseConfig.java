@@ -9,13 +9,13 @@ import jakarta.annotation.PostConstruct;
 /**
  * データベースサービスの設定
  * app.database.typeプロパティに基づいて適切な実装が自動的に選択される
- * （BigQueryDatabaseService または PostgreSQLDatabaseService）
+ * （PostgreSQLDatabaseService）
  */
 @Slf4j
 @Configuration
 public class DatabaseConfig {
 
-    @Value("${app.database.type:bigquery}")
+    @Value("${app.database.type:postgresql}")
     private String databaseType;
 
     @PostConstruct
