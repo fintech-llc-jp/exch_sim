@@ -234,7 +234,7 @@ public class ExecutionPollingController {
                       getQtyValueFromRaw(exec.getLastQtyRaw()),
                       exec.getCounterPartyUsername(),
                       determineSideFromExecution(exec),
-                      LocalDateTime.now());
+                      exec.getCreatedAt() != null ? exec.getCreatedAt() : LocalDateTime.now());
                 }
               })
               .collect(Collectors.toList());
@@ -350,7 +350,7 @@ public class ExecutionPollingController {
                       getQtyValueFromRaw(exec.getLastQtyRaw()),
                       exec.getCounterPartyUsername(),
                       determineSideFromExecution(exec),
-                      LocalDateTime.now());
+                      exec.getCreatedAt() != null ? exec.getCreatedAt() : LocalDateTime.now());
                 }
               })
               .collect(Collectors.toList());
