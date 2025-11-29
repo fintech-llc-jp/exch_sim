@@ -56,8 +56,16 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
 
   @PostConstruct
   public void autoConnect() {
+    long startTime = System.currentTimeMillis();
+    log.info("========== GMO_MARKET_DATA_CLIENT START ==========");
     log.info("🚀 GMO WebSocket client auto-connecting...");
+    long connectStart = System.currentTimeMillis();
     connect();
+    long connectEnd = System.currentTimeMillis();
+    log.info("✅ GMO connect() took {} ms", (connectEnd - connectStart));
+    long endTime = System.currentTimeMillis();
+    log.info("========== GMO_MARKET_DATA_CLIENT COMPLETE ==========");
+    log.info("✅ GMO WebSocket client initialization completed in {} ms", (endTime - startTime));
   }
 
   @PreDestroy
@@ -79,54 +87,106 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
             .execute(
                 URI.create(wsUrl),
                 session -> {
-                  // 接続成功時の処理
-                  log.info("✅ GMO WebSocket session established");
-                  onConnectionEstablished();
+                  try {
+                    // 接続成功時の処理
+                    log.info("✅ GMO WebSocket session established - starting subscriptions");
+                    onConnectionEstablished();
 
-                  // 購読メッセージの送信（別スレッドで2秒間隔）
-                  new Thread(
-                          () -> {
-                            try {
-                              sendSubscription(session, SYMBOL_BTC, "trades");
-                              Thread.sleep(2000);
-                              sendSubscription(session, SYMBOL_BTC_JPY, "orderbooks");
-                              Thread.sleep(2000);
-                              sendSubscription(session, SYMBOL_BTC, "orderbooks");
-                              Thread.sleep(2000);
-                              sendSubscription(session, SYMBOL_BTC_JPY, "trades");
-                            } catch (InterruptedException e) {
-                              log.error("❌ Subscription sequence interrupted", e);
-                              Thread.currentThread().interrupt();
-                            }
-                          })
-                      .start();
+                    // 購読メッセージの送信（別スレッドで2秒間隔）
+                    new Thread(
+                            () -> {
+                              try {
+                                log.info("📡 GMO starting subscription sequence...");
+                                sendSubscription(session, SYMBOL_BTC, "trades");
+                                Thread.sleep(2000);
+                                sendSubscription(session, SYMBOL_BTC_JPY, "orderbooks");
+                                Thread.sleep(2000);
+                                sendSubscription(session, SYMBOL_BTC, "orderbooks");
+                                Thread.sleep(2000);
+                                sendSubscription(session, SYMBOL_BTC_JPY, "trades");
+                                log.info("✅ GMO subscription sequence completed");
+                              } catch (InterruptedException e) {
+                                log.error("❌ Subscription sequence interrupted", e);
+                                Thread.currentThread().interrupt();
+                              } catch (Exception e) {
+                                log.error("❌ Error during subscription sequence: {}", e.getMessage(), e);
+                              }
+                            })
+                        .start();
+                  } catch (Exception e) {
+                    log.error("❌ Error during session setup: {}", e.getMessage(), e);
+                    throw e;
+                  }
 
                   // メッセージ受信処理
+                  log.info("📡 GMO setting up message receive flux");
                   Flux<String> messageFlux =
                       session
                           .receive()
+                          .doOnNext(msg -> {
+                            log.debug("📨 GMO received message");
+                            String payload = msg.getPayloadAsText();
+                            // pingメッセージへのpong応答
+                            if ("ping".equalsIgnoreCase(payload)) {
+                              try {
+                                log.debug("💚 GMO ping received, sending pong");
+                                session.send(Mono.just(session.textMessage("pong"))).subscribe();
+                              } catch (Exception e) {
+                                log.error("❌ Failed to send pong response: {}", e.getMessage());
+                              }
+                            }
+                          })
                           .map(WebSocketMessage::getPayloadAsText)
-                          .doOnNext(this::processMessage)
-                          .doOnError(this::handleConnectionError);
+                          .filter(text -> !text.equalsIgnoreCase("ping"))
+                          .doOnNext(text -> {
+                            log.debug("📝 GMO processing message: {} chars", text.length());
+                            this.processMessage(text);
+                          })
+                          .doOnError(error -> {
+                            log.error("❌ GMO message flux error: {}", error.getMessage(), error);
+                            this.handleConnectionError(error);
+                          });
 
                   return messageFlux.then();
                 })
             .retryWhen(
                 Retry.backoff(maxReconnectAttempts, Duration.ofMillis(reconnectDelay))
                     .doBeforeRetry(
-                        retrySignal ->
-                            log.warn(
-                                "🔄 GMO WebSocket retry attempt: {}", retrySignal.totalRetries())))
-            .doOnError(this::handleConnectionError)
-            .doOnCancel(this::onConnectionClosed)
+                        retrySignal -> {
+                          Throwable error = retrySignal.failure();
+                          log.warn(
+                              "🔄 GMO WebSocket retry attempt: {} - Last error: {} - {}",
+                              retrySignal.totalRetries(),
+                              error != null ? error.getClass().getSimpleName() : "unknown",
+                              error != null ? error.getMessage() : "no message");
+                        }))
+            .doOnError(error -> {
+              log.error("❌ GMO WebSocket doOnError - Error type: {}, Message: {}, Cause: {}",
+                error.getClass().getSimpleName(),
+                error.getMessage(),
+                error.getCause() != null ? error.getCause().getClass().getSimpleName() + ": " + error.getCause().getMessage() : "none",
+                error);
+              handleConnectionError(error);
+            })
+            .doOnCancel(() -> {
+              log.warn("⚠️ GMO WebSocket connection cancelled");
+              onConnectionClosed();
+            })
             .subscribe(
                 result -> {
                   log.info("🔚 GMO WebSocket stream completed");
                   onConnectionClosed();
                 },
                 error -> {
-                  log.error("❌ GMO WebSocket subscription error: {}", error.getMessage(), error);
+                  log.error("❌ GMO WebSocket subscription error - Error type: {}, Message: {}, Cause: {}",
+                    error.getClass().getSimpleName(),
+                    error.getMessage(),
+                    error.getCause() != null ? error.getCause().getMessage() : "none",
+                    error);
                   handleConnectionError(error);
+                },
+                () -> {
+                  log.info("✅ GMO WebSocket subscription completed normally");
                 });
   }
 
@@ -169,11 +229,21 @@ public class GmoMarketDataClient extends MarketDataWebSocketClient {
               "symbol", symbol);
 
       String requestJson = objectMapper.writeValueAsString(subscribeRequest);
-      log.info("📡 GMO subscribing to {}: {}", channel, symbol);
+      log.info("📡 GMO subscribing to {}: {} - Request: {}", channel, symbol, requestJson);
 
-      session.send(Mono.just(session.textMessage(requestJson))).block();
+      if (!session.isOpen()) {
+        log.error("❌ GMO WebSocket session is not open when trying to subscribe to {}: {}", channel, symbol);
+        return;
+      }
+
+      log.debug("📨 GMO sending subscription message for {}: {}", channel, symbol);
+      session.send(Mono.just(session.textMessage(requestJson)))
+          .doOnSuccess(v -> log.info("✅ GMO subscription sent successfully to {}: {}", channel, symbol))
+          .doOnError(e -> log.error("❌ GMO subscription failed for {}: {} - Error: {}", channel, symbol, e.getMessage(), e))
+          .block();
     } catch (Exception e) {
-      log.error("❌ Error sending GMO {} subscription for: {}", channel, symbol, e);
+      log.error("❌ Error sending GMO {} subscription for: {} - Error type: {}, Message: {}",
+        channel, symbol, e.getClass().getSimpleName(), e.getMessage(), e);
     }
   }
 

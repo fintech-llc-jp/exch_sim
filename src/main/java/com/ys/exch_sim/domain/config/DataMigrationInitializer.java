@@ -136,18 +136,34 @@ public class DataMigrationInitializer implements CommandLineRunner {
       return;
     }
 
+    long startTime = System.currentTimeMillis();
+    log.info("========== DATA MIGRATION START ==========");
     log.info("Starting data migration initialization - Phase: {}", migrationPhase);
 
     // Initialize instruments (stored in memory/static configuration)
+    long instrumentsStart = System.currentTimeMillis();
+    log.info("[INSTRUMENTS] Starting initialization...");
     initializeInstruments();
+    long instrumentsEnd = System.currentTimeMillis();
+    log.info("[INSTRUMENTS] Completed in {} ms", (instrumentsEnd - instrumentsStart));
 
     // Initialize MarketBoards for all instruments
+    long boardsStart = System.currentTimeMillis();
+    log.info("[MARKET_BOARDS] Starting initialization...");
     initializeMarketBoards();
-    
-    // Initialize default users with cash balances
-    initializeDefaultUsersCashBalance();
+    long boardsEnd = System.currentTimeMillis();
+    log.info("[MARKET_BOARDS] Completed in {} ms", (boardsEnd - boardsStart));
 
-    log.info("Data migration initialization completed successfully");
+    // Initialize default users with cash balances
+    long usersStart = System.currentTimeMillis();
+    log.info("[DEFAULT_USERS] Starting initialization...");
+    initializeDefaultUsersCashBalance();
+    long usersEnd = System.currentTimeMillis();
+    log.info("[DEFAULT_USERS] Completed in {} ms", (usersEnd - usersStart));
+
+    long endTime = System.currentTimeMillis();
+    log.info("========== DATA MIGRATION COMPLETE ==========");
+    log.info("Total data migration time: {} ms ({} seconds)", (endTime - startTime), (endTime - startTime) / 1000.0);
   }
 
   private void initializeInstruments() {
@@ -211,31 +227,49 @@ public class DataMigrationInitializer implements CommandLineRunner {
    * デフォルトユーザーに初期現金残高を設定
    */
   private void initializeDefaultUsersCashBalance() {
-    log.info("Initializing default users with cash balances...");
+    long methodStart = System.currentTimeMillis();
+    log.info("[INIT_USERS] Starting default users initialization...");
 
     // デフォルトユーザー一覧
     String[] defaultUsers = {"admin", "trader001", "marketmaker1", "yukio001", "trader002",
                            "trader003", "testuser", "yukio002", "newuser001", "testuser2",
                            "test01", "test02", "yukio003"};
-    
+
     double initialCashBalance = 1000000.0; // 100万円
-    
-    for (String username : defaultUsers) {
+
+    for (int i = 0; i < defaultUsers.length; i++) {
+      String username = defaultUsers[i];
+      long userStart = System.currentTimeMillis();
+
       try {
+        log.info("[INIT_USERS] [{}/{}] Processing user: {} - START", (i + 1), defaultUsers.length, username);
+
         // 既に現金ポジションが存在するかチェック
+        long checkStart = System.currentTimeMillis();
         com.ys.exch_sim.domain.position.Position cashPosition = positionManager.getPosition(username, "JPY");
+        long checkEnd = System.currentTimeMillis();
+        log.info("[INIT_USERS] [{}/{}] getPosition() took {} ms", (i + 1), defaultUsers.length, (checkEnd - checkStart));
+
         if (cashPosition == null) {
           // 現金ポジションが存在しない場合のみ初期化
+          long initStart = System.currentTimeMillis();
           positionManager.initializeUserWithCash(username, initialCashBalance);
-          log.info("Initialized cash balance for user: {} - Amount: {}", username, initialCashBalance);
+          long initEnd = System.currentTimeMillis();
+          log.info("[INIT_USERS] [{}/{}] initializeUserWithCash() took {} ms", (i + 1), defaultUsers.length, (initEnd - initStart));
+          log.info("[INIT_USERS] [{}/{}] Initialized cash balance for user: {} - Amount: {}", (i + 1), defaultUsers.length, username, initialCashBalance);
         } else {
-          log.info("User {} already has cash balance: {}", username, cashPosition.getTotalBuyAmount());
+          log.info("[INIT_USERS] [{}/{}] User {} already has cash balance: {}", (i + 1), defaultUsers.length, username, cashPosition.getTotalBuyAmount());
         }
+
+        long userEnd = System.currentTimeMillis();
+        log.info("[INIT_USERS] [{}/{}] Processing user: {} - COMPLETED in {} ms", (i + 1), defaultUsers.length, username, (userEnd - userStart));
       } catch (Exception e) {
-        log.warn("Failed to initialize cash balance for user: {} - {}", username, e.getMessage());
+        long userEnd = System.currentTimeMillis();
+        log.warn("[INIT_USERS] [{}/{}] Failed to initialize cash balance for user: {} in {} ms - {}", (i + 1), defaultUsers.length, username, (userEnd - userStart), e.getMessage(), e);
       }
     }
-    
-    log.info("Default users cash balance initialization completed");
+
+    long methodEnd = System.currentTimeMillis();
+    log.info("[INIT_USERS] Default users cash balance initialization completed in {} ms", (methodEnd - methodStart));
   }
 }

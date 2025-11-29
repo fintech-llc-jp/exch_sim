@@ -90,15 +90,23 @@ public class BitflyerMarketDataClient extends MarketDataWebSocketClient {
 
   @PostConstruct
   public void autoConnect() {
+    long startTime = System.currentTimeMillis();
+    log.info("========== BITFLYER_MARKET_DATA_CLIENT START ==========");
     log.info("🚀 Bitflyer WebSocket client initializing...");
-    log.info("🔧 Configuration - enabled: {}, wsUrl: {}, maxReconnectAttempts: {}", 
+    log.info("🔧 Configuration - enabled: {}, wsUrl: {}, maxReconnectAttempts: {}",
         true, wsUrl, maxReconnectAttempts);
     log.info("🔧 WebSocket client: {}", webSocketClient != null ? webSocketClient.getClass().getSimpleName() : "NULL");
-    
+
     try {
       log.info("🔌 Starting Bitflyer WebSocket connection...");
+      long connectStart = System.currentTimeMillis();
       connect();
-      log.info("✅ Bitflyer WebSocket client initialization completed");
+      long connectEnd = System.currentTimeMillis();
+      log.info("✅ Bitflyer connect() took {} ms", (connectEnd - connectStart));
+
+      long endTime = System.currentTimeMillis();
+      log.info("========== BITFLYER_MARKET_DATA_CLIENT COMPLETE ==========");
+      log.info("✅ Bitflyer WebSocket client initialization completed in {} ms", (endTime - startTime));
     } catch (Exception e) {
       log.error("❌ Failed to initialize Bitflyer WebSocket client", e);
       throw e;

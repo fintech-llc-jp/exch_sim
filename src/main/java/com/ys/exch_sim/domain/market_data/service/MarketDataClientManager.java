@@ -34,24 +34,32 @@ public class MarketDataClientManager {
 
     @PostConstruct
     public void initializeClients() {
+        long startTime = System.currentTimeMillis();
+        log.info("========== MARKET_DATA_CLIENT_MANAGER START ==========");
         log.info("🚀 Initializing MarketData client manager with {} clients", clients.size());
-        
+
         if (clients.isEmpty()) {
             log.error("❌ NO MARKET DATA CLIENTS FOUND! Check @ConditionalOnProperty settings:");
             log.error("   - market-data.bitflyer.enabled should be 'true'");
             log.error("   - market-data.gmo.enabled should be 'true'");
             return;
         }
-        
+
         for (MarketDataWebSocketClient client : clients) {
             log.info("📋 Registered client: {}", client.getClientInfo());
             log.info("📋 Client class: {}", client.getClass().getSimpleName());
         }
-        
+
         // 定期的な接続状態監視を開始
+        long monitoringStart = System.currentTimeMillis();
+        log.info("[MARKET_DATA_CLIENT] Starting monitoring...");
         startMonitoring();
-        
-        log.info("✅ MarketData client manager initialized successfully");
+        long monitoringEnd = System.currentTimeMillis();
+        log.info("[MARKET_DATA_CLIENT] Monitoring startup took {} ms", (monitoringEnd - monitoringStart));
+
+        long endTime = System.currentTimeMillis();
+        log.info("========== MARKET_DATA_CLIENT_MANAGER COMPLETE ==========");
+        log.info("✅ MarketData client manager initialized successfully in {} ms", (endTime - startTime));
     }
 
     @PreDestroy

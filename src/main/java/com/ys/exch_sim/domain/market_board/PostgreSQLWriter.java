@@ -63,6 +63,8 @@ public class PostgreSQLWriter {
 
     @PostConstruct
     public void initialize() {
+        long startTime = System.currentTimeMillis();
+        log.info("========== POSTGRESQL_WRITER START ==========");
         log.info("Initializing PostgreSQLWriter with batch size: {}", batchSize);
 
         snapshotQueue = new LinkedBlockingQueue<>();
@@ -73,7 +75,9 @@ public class PostgreSQLWriter {
         writerThread.setDaemon(false);
         writerThread.start();
 
-        log.info("PostgreSQLWriter thread started");
+        long endTime = System.currentTimeMillis();
+        log.info("========== POSTGRESQL_WRITER COMPLETE ==========");
+        log.info("PostgreSQLWriter thread started in {} ms", (endTime - startTime));
     }
 
     @PreDestroy

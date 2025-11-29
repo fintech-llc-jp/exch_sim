@@ -37,14 +37,22 @@ public class ExecutionQueueService {
   /** 起動時に24時間以内の約定をデータベースから読み込む (非同期) */
   @PostConstruct
   public void initializeExecutionHistory() {
+    long startTime = System.currentTimeMillis();
+    log.info("========== EXECUTION_QUEUE_SERVICE START ==========");
+    log.info("🔄 Starting async initialization of execution history...");
     // Start async initialization to avoid blocking Spring Boot startup
     initializeExecutionHistoryAsync();
+    long endTime = System.currentTimeMillis();
+    log.info("========== EXECUTION_QUEUE_SERVICE @PostConstruct COMPLETE ==========");
+    log.info("✅ Execution queue service initialization started asynchronously in {} ms", (endTime - startTime));
   }
 
   /** Async initialization of execution history from database */
   @Async
   private void initializeExecutionHistoryAsync() {
+    long asyncStartTime = System.currentTimeMillis();
     try {
+      log.info("========== EXECUTION_QUEUE_SERVICE ASYNC START ==========");
       log.info("🔄 Initializing execution history from database...");
 
       LocalDateTime fromTime = LocalDateTime.now().minusHours(24);
@@ -80,10 +88,13 @@ public class ExecutionQueueService {
         log.info("⏭️ Database service not available, starting with empty execution history");
       }
 
+      long asyncEndTime = System.currentTimeMillis();
       log.info(
           "✅ Execution history initialization completed. Total symbols: {}, Total users: {}",
           executionHistoryBySymbol.size(),
           userExecutionQueues.size());
+      log.info("========== EXECUTION_QUEUE_SERVICE ASYNC COMPLETE ==========");
+      log.info("✅ Async execution history initialization completed in {} ms", (asyncEndTime - asyncStartTime));
     } catch (Exception e) {
       log.error("❌ Error initializing execution history", e);
     }
