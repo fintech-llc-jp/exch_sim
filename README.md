@@ -21,12 +21,12 @@
 - **Spring Boot**: 3.x
 - **Spring Security**: JWT認証・権限管理
 - **Spring AOP**: 権限チェック
-- **Google BigQuery**: 本番データストレージ（取引履歴、ユーザー認証）
-- **Spring Cloud GCP**: BigQuery統合
-- **Async Processing**: @Async で重い初期化処理を非同期化
+- **PostgreSQL**: メインデータストレージ（取引履歴、ポジション、ユーザー認証）
 - **Spring Data JPA**: データベースアクセス
+- **Async Processing**: @Async で重い初期化処理を非同期化
 - **Gradle**: ビルドツール
 - **JUnit 5**: テストフレームワーク
+- **Google BigQuery** (オプション): 本番環境での大規模データストレージ（現在無効化）
 
 ## 商品タイプと取引制限
 
@@ -310,7 +310,7 @@ curl -X GET "http://localhost:8080/api/executions/all?page=1&size=20" \
 - ✅ **全ユーザー対象**: システム全体の約定履歴を取得
 - ✅ **ページネーション対応**: 大量の約定履歴を効率的に取得
 - ✅ **約定のみ表示**: `FILLED`と`PARTIAL_FILL`のみ（`NEW`は除外）
-- ✅ **永続化**: H2データベースに保存された履歴データ
+- ✅ **永続化**: PostgreSQLデータベースに保存された履歴データ
 - ✅ **時系列ソート**: 最新の約定から降順で表示
 
 #### 約定量計算API
@@ -519,17 +519,22 @@ curl -X GET "http://localhost:8080/api/positions" \
 - `username` (string): ユーザー名
 - `symbol` (string): 銘柄名
 - `unit` (string): 数量の単位（例: BTC）
-- `totalBuyQty` (number): 累計買い数量
-- `totalBuyAmount` (number): 累計買い金額
-- `totalSellQty` (number): 累計売り数量
-- `totalSellAmount` (number): 累計売り金額
+- `totalBuyQty` (number): 累計買い数量（ポジションがフラットまたは反転時にリセット）
+- `totalBuyAmount` (number): 累計買い金額（ポジションがフラットまたは反転時にリセット）
+- `totalSellQty` (number): 累計売り数量（ポジションがフラットまたは反転時にリセット）
+- `totalSellAmount` (number): 累計売り金額（ポジションがフラットまたは反転時にリセット）
 - `netQty` (number): ネットポジション数量（買い-売り）
-- `averageBuyPrice` (number): 平均買い単価
-- `averageSellPrice` (number): 平均売り単価
-- `realizedPnL` (number): 実現損益
-- `unrealizedPnL` (number): 未実現損益
+- `averageBuyPrice` (number): 平均買い単価（現在のポジションの平均取得価格）
+- `averageSellPrice` (number): 平均売り単価（現在のポジションの平均売却価格）
+- `realizedPnL` (number): 実現損益（確定済みの損益）
+- `unrealizedPnL` (number): 未実現損益（現在価格での含み損益）
 - `totalPnL` (number): 合計損益（実現+未実現）
 - `lastUpdated` (string): 最終更新日時
+
+**損益計算の仕様:**
+- ポジションがフラット（netQty = 0）になると、累積値と平均価格はリセットされます
+- ポジションが反転（ロング→ショート、ショート→ロング）すると、反対側の累積値がリセットされ、新しいポジションとして管理されます
+- これにより、実現損益が実際の売買価格と正確に一致します
 
 #### ポートフォリオサマリー取得
 **GET** `/api/positions/summary`
@@ -794,9 +799,9 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 
 ## ユーザーデータ管理
 
-ユーザー情報はGoogle BigQueryに保存されます（本番環境）：
+ユーザー情報はPostgreSQLデータベースに保存されます：
 
-**ユーザーテーブル**: `tradingscreen:repository.users`
+**ユーザーテーブル**: `users` (PostgreSQL)
 
 ### デフォルトユーザー
 アプリケーション起動時に以下のデフォルトユーザーが自動作成されます：
@@ -814,6 +819,10 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 - **実現損益**: 売買確定時の損益
 - **未実現損益**: 現在価格での含み損益
 - **取引履歴**: 全約定の詳細記録
+- **正確な損益計算**: ポジションがフラットまたは反転時に平均価格を自動リセット
+  - フラットポジション後の新規トレードは、過去の平均価格の影響を受けない
+  - ポジション反転時（ロング→ショート、ショート→ロング）は新しいポジションとして管理
+  - 実現損益が実際の売買価格と正確に一致
 
 ### MarketMaker機能
 - **アトミック処理**: 既存注文キャンセル→新規注文を不可分で実行
@@ -962,20 +971,33 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 ./quick_test.sh trade-insert
 ```
 
-### BigQueryデータストレージ
+### データストレージ
 
-本番環境ではGoogle BigQueryを使用してすべての取引データを永続化します：
+本アプリケーションはPostgreSQLを使用してすべての取引データを永続化します：
 
-**BigQueryテーブル:**
-- `tradingscreen:repository.executions` - 約定履歴
-- `tradingscreen:repository.users` - ユーザー認証情報
-- `tradingscreen:repository.positions` - ポジション情報
-- `tradingscreen:repository.trade_history` - 取引履歴
+**PostgreSQLテーブル:**
+- `executions` - 約定履歴
+- `users` - ユーザー認証情報
+- `positions` - ポジション情報
+- `trade_history` - 取引履歴
+- `market_board_snapshots` - 板情報スナップショット（1秒ごとに記録）
 
-**設定方法:**
-- 環境変数 `GOOGLE_APPLICATION_CREDENTIALS` でサービスアカウントキーを指定
-- `SPRING_PROFILES_ACTIVE=prod` で本番プロファイルを有効化
-- BigQuery初期化処理は非同期化されており、Spring Boot起動をブロックしません
+**設定方法 (application.properties):**
+```properties
+# PostgreSQL Configuration
+app.database.type=postgresql
+spring.datasource.url=jdbc:postgresql://localhost:5432/exch_sim
+spring.datasource.username=postgres
+spring.datasource.password=postgres123
+spring.jpa.hibernate.ddl-auto=update
+```
+
+**オプション機能 - BigQuery連携:**
+現在は無効化されていますが、大規模データ保存が必要な場合はBigQuery連携を有効化できます：
+```properties
+app.data-migration.bigquery-enabled=true
+app.auth.bigquery-enabled=true
+```
 
 ### テストカバレッジ
 
@@ -1086,10 +1108,12 @@ A comprehensive financial exchange system simulator that provides order placemen
 - **Spring Boot**: 3.x
 - **Spring Security**: JWT authentication & authorization
 - **Spring AOP**: Permission checking
-- **H2 Database**: Execution history persistence
+- **PostgreSQL**: Main data storage (execution history, positions, user authentication)
 - **Spring Data JPA**: Database access layer
+- **Async Processing**: Heavy initialization processes with @Async
 - **Gradle**: Build tool
 - **JUnit 5**: Testing framework
+- **Google BigQuery** (Optional): Large-scale data storage for production (currently disabled)
 
 ## Instrument Types and Trading Restrictions
 
@@ -1119,6 +1143,10 @@ A comprehensive financial exchange system simulator that provides order placemen
 - **Realized P&L**: Profit/loss from completed trades
 - **Unrealized P&L**: Mark-to-market P&L based on current prices
 - **Trade History**: Detailed record of all executions
+- **Accurate P&L Calculation**: Average prices automatically reset when positions become flat or reverse
+  - New trades after flat positions are not affected by past average prices
+  - Position reversals (Long→Short, Short→Long) are managed as new positions
+  - Realized P&L accurately matches actual trade prices
 
 ### Market Making Functionality
 - **Atomic Processing**: Cancel existing orders → place new orders atomically
