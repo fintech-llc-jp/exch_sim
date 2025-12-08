@@ -108,23 +108,37 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 ### 1. 注文管理 API
 
-#### 注文リスト取得（注文中の注文）
-**GET** `/api/orders/list?symbol=B_FX_BTCJPY`
+#### 注文リスト取得（ステータスフィルタ対応）
+**GET** `/api/orders/list?symbol=B_FX_BTCJPY&status=NEW`
 
-注文中（未約定）の注文一覧を取得します。
+ユーザーの注文一覧を取得します。デフォルトでは NEWステータスのみを返します。
 
 ```bash
-# 全銘柄の注文中の注文を取得
+# デフォルト：新規注文（NEW）のみを取得
 curl -X GET "http://localhost:8080/api/orders/list" \
   -H "Authorization: Bearer <JWT_TOKEN>"
 
-# 特定銘柄の注文中の注文を取得
+# 特定銘柄のNEW注文を取得
 curl -X GET "http://localhost:8080/api/orders/list?symbol=B_FX_BTCJPY" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# 複数ステータスを指定（NEW,PARTIALLY_FILLED）
+curl -X GET "http://localhost:8080/api/orders/list?status=NEW,PARTIALLY_FILLED" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+
+# すべてのステータスを取得
+curl -X GET "http://localhost:8080/api/orders/list?status=NEW,PARTIALLY_FILLED,FILLED,CANCELED,REJECTED" \
   -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
 **Query Parameters:**
-- `symbol` (string, optional): 銘柄フィルタ
+- `symbol` (string, optional): 銘柄フィルタ（例：B_FX_BTCJPY）
+- `status` (string, optional): ステータスフィルタ。カンマ区切りで複数指定可能
+  - `NEW` - 新規注文（デフォルト）
+  - `PARTIALLY_FILLED` - 部分約定
+  - `FILLED` - 全約定
+  - `CANCELED` - キャンセル済み
+  - `REJECTED` - 却下
 
 **Response:**
 ```json
@@ -164,13 +178,13 @@ curl -X GET "http://localhost:8080/api/orders/list?symbol=B_FX_BTCJPY" \
 
 **Response Fields:**
 - `username` (string): ユーザー名
-- `totalOrders` (number): 注文中の注文総数
+- `totalOrders` (number): 取得した注文総数
 - `orders` (array): 注文詳細のリスト
-  - `clOrdID` (string): 注文ID
+  - `clOrdID` (string): 注文ID（キャンセル時に使用）
   - `symbol` (string): 銘柄名
   - `side` (string): 売買区分（BUY/SELL）
   - `ordType` (string): 注文タイプ（LIMIT/MARKET）
-  - `ordStatus` (string): 注文ステータス（NEW/PARTIAL_FILL）
+  - `ordStatus` (string): 注文ステータス（NEW/PARTIALLY_FILLED/FILLED/CANCELED/REJECTED）
   - `orderPx` (number): 注文価格
   - `orderQty` (number): 注文数量
   - `leavesQty` (number): 未約定数量
@@ -179,7 +193,8 @@ curl -X GET "http://localhost:8080/api/orders/list?symbol=B_FX_BTCJPY" \
   - `timestamp` (string): 注文作成日時
 
 **特徴:**
-- ✅ **注文中のみ表示**: NEW、PARTIAL_FILLステータスの注文のみ
+- ✅ **ステータスフィルタ**: `status` パラメータで返すステータスを制御（デフォルト：NEW）
+- ✅ **複数ステータス指定**: カンマ区切りで複数ステータスを指定可能
 - ✅ **リアルタイム**: MarketBoardから直接取得
 - ✅ **時系列ソート**: 新しい注文から降順で表示
 - ✅ **約定状況表示**: 注文数量、未約定数量、約定済み数量を確認可能
@@ -254,8 +269,20 @@ curl -X GET "http://localhost:8080/api/executions/history?page=1&size=20" \
 **特徴:**
 - ✅ **ページネーション対応**: 大量の約定履歴を効率的に取得
 - ✅ **約定のみ表示**: `FILLED`と`PARTIAL_FILL`のみ（`NEW`は除外）
-- ✅ **永続化**: H2データベースに保存された履歴データ
+- ✅ **永続化**: PostgreSQLデータベースに保存された履歴データ
 - ✅ **時系列ソート**: 最新の約定から降順で表示
+- ✅ **約定時刻付き**: `createdAt` フィールドで正確な約定時刻を取得可能
+
+**Response Fields（executions内の各約定）:**
+- `execID` (string): 約定ID
+- `clOrdID` (string): 注文ID
+- `symbol` (string): 銘柄名
+- `execStatus` (string): 約定ステータス（FILLED/PARTIAL_FILL）
+- `lastPx` (number): 約定価格
+- `lastQty` (number): 約定数量
+- `counterPartyUsername` (string): 相手方ユーザー名
+- `side` (string): 売買区分（BUY/SELL）
+- `createdAt` (string): 約定時刻（ISO 8601形式、UTC時刻）
 
 #### 全体約定履歴取得（全ユーザー）
 **GET** `/api/executions/all?page=0&size=20&symbol=B_FX_BTCJPY`

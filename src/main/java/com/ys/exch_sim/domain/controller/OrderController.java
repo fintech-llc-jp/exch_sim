@@ -151,7 +151,9 @@ public class OrderController {
   }
 
   @GetMapping("/list")
-  public ResponseEntity<?> getOrderList(@RequestParam(required = false) String symbol) {
+  public ResponseEntity<?> getOrderList(
+      @RequestParam(required = false) String symbol,
+      @RequestParam(required = false) String status) {
     try {
       // JWTから認証情報を取得
       Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -161,7 +163,7 @@ public class OrderController {
       }
 
       String username = authentication.getName();
-      log.info("Getting order list for user: {}, symbol: {}", username, symbol);
+      log.info("Getting order list for user: {}, symbol: {}, status: {}", username, symbol, status);
 
       // ユーザーが存在するかチェック
       try {
@@ -176,7 +178,7 @@ public class OrderController {
       }
 
       // 注文リストを取得
-      OrderListResponse response = orderService.getOrderList(username, symbol);
+      OrderListResponse response = orderService.getOrderList(username, symbol, status);
 
       log.info(
           "Retrieved {} orders for user: {}", response.getTotalOrders(), username);

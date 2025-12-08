@@ -467,12 +467,22 @@ public class OrderService {
   }
 
   /**
-   * ユーザーの注文リストを取得する（注文中の注文のみ）
+   * ユーザーの注文リストを取得する
+   * @param username ユーザー名
+   * @param symbolFilter シンボルフィルター（オプション）
+   * @param statusFilter 注文ステータスフィルター（オプション、デフォルトはNEWのみ）
    */
-  public OrderListResponse getOrderList(String username, String symbolFilter) {
-    log.info("Getting order list for user: {}, symbol filter: {}", username, symbolFilter);
+  public OrderListResponse getOrderList(String username, String symbolFilter, String statusFilter) {
+    log.info("Getting order list for user: {}, symbol filter: {}, status filter: {}", username, symbolFilter, statusFilter);
 
     List<OrderListResponse.OrderDto> orderDtos = new ArrayList<>();
+
+    // デフォルトのステータスフィルター（NEWのみ）
+    String effectiveStatusFilter = statusFilter;
+    if (statusFilter == null || statusFilter.trim().isEmpty()) {
+      effectiveStatusFilter = "NEW";
+      log.debug("No status filter specified, using default: NEW");
+    }
 
     // すべてのMarketBoardから該当ユーザーの注文を検索
     for (String symbol : marketBoards.keySet()) {
@@ -500,6 +510,20 @@ public class OrderService {
 
         for (Order order : boardOrderMap.values()) {
           if (order.getUsername().equals(username)) {
+            // ステータスフィルター：カンマ区切りで複数指定可能（例：NEW,PARTIALLY_FILLED）
+            String[] allowedStatuses = effectiveStatusFilter.split(",");
+            boolean statusMatches = false;
+            for (String allowedStatus : allowedStatuses) {
+              if (order.getOrdStatus().toString().equalsIgnoreCase(allowedStatus.trim())) {
+                statusMatches = true;
+                break;
+              }
+            }
+
+            if (!statusMatches) {
+              continue;
+            }
+
             // 注文情報をDTOに変換
             double orderPx = (double) order.getOrderPx().getLongPx() / instrument.getPriceMultiplier();
             double orderQty = (double) order.getOrderQty().getLongQty() / instrument.getQtyMultiplier();

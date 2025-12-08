@@ -54,19 +54,41 @@ public class Position {
         // 買いトレード前のnetQtyを保存
         double previousNetQty = this.netQty;
 
-        // 買いポジション更新
-        this.totalBuyAmount += quantity * price;
-        this.totalBuyQty += quantity;
-        this.averageBuyPrice = this.totalBuyQty > 0 ? this.totalBuyAmount / this.totalBuyQty : 0.0;
-        
-        // ショートポジションがある場合の実現損益計算
+        // ショートポジションがある場合の実現損益計算（平均価格更新前に計算）
         if (previousNetQty < 0) {
             // ショートポジションの一部または全部を買い戻し
             double realizedQty = Math.min(quantity, Math.abs(previousNetQty));
             this.realizedPnL += realizedQty * (this.averageSellPrice - price);
         }
-        
-        updateNetPosition();
+
+        // 買いポジション更新
+        this.totalBuyAmount += quantity * price;
+        this.totalBuyQty += quantity;
+        this.averageBuyPrice = this.totalBuyQty > 0 ? this.totalBuyAmount / this.totalBuyQty : 0.0;
+
+        // netQtyを更新
+        this.netQty = previousNetQty + quantity;
+
+        // ポジションがフラットになった場合、すべての累積値をリセット
+        if (this.netQty == 0) {
+            this.totalBuyQty = 0.0;
+            this.totalBuyAmount = 0.0;
+            this.totalSellQty = 0.0;
+            this.totalSellAmount = 0.0;
+            this.averageBuyPrice = 0.0;
+            this.averageSellPrice = 0.0;
+        }
+        // ショートからロングに反転した場合、売りの累積値をリセットし、買いを調整
+        else if (previousNetQty < 0 && this.netQty > 0) {
+            this.totalSellQty = 0.0;
+            this.totalSellAmount = 0.0;
+            this.averageSellPrice = 0.0;
+            // 買いの累積値を反転後のnetQtyに合わせる（反転を引き起こしたトレードの価格を使用）
+            this.totalBuyQty = this.netQty;
+            this.totalBuyAmount = this.netQty * price;
+            this.averageBuyPrice = price;
+        }
+
         this.lastUpdated = LocalDateTime.now();
     }
 
@@ -78,19 +100,41 @@ public class Position {
         // 売りトレード前のnetQtyを保存
         double previousNetQty = this.netQty;
 
-        // 売りポジション更新
-        this.totalSellAmount += quantity * price;
-        this.totalSellQty += quantity;
-        this.averageSellPrice = this.totalSellQty > 0 ? this.totalSellAmount / this.totalSellQty : 0.0;
-        
-        // 実現損益の計算（売りトレード前のポジション状態で判定）
+        // 実現損益の計算（平均価格更新前に計算）
         if (previousNetQty > 0) {
             // ロングポジションの一部または全部を売り
             double realizedQty = Math.min(quantity, previousNetQty);
             this.realizedPnL += realizedQty * (price - this.averageBuyPrice);
         }
-        
-        updateNetPosition();
+
+        // 売りポジション更新
+        this.totalSellAmount += quantity * price;
+        this.totalSellQty += quantity;
+        this.averageSellPrice = this.totalSellQty > 0 ? this.totalSellAmount / this.totalSellQty : 0.0;
+
+        // netQtyを更新
+        this.netQty = previousNetQty - quantity;
+
+        // ポジションがフラットになった場合、すべての累積値をリセット
+        if (this.netQty == 0) {
+            this.totalBuyQty = 0.0;
+            this.totalBuyAmount = 0.0;
+            this.totalSellQty = 0.0;
+            this.totalSellAmount = 0.0;
+            this.averageBuyPrice = 0.0;
+            this.averageSellPrice = 0.0;
+        }
+        // ロングからショートに反転した場合、買いの累積値をリセットし、売りを調整
+        else if (previousNetQty > 0 && this.netQty < 0) {
+            this.totalBuyQty = 0.0;
+            this.totalBuyAmount = 0.0;
+            this.averageBuyPrice = 0.0;
+            // 売りの累積値を反転後のnetQtyに合わせる（反転を引き起こしたトレードの価格を使用）
+            this.totalSellQty = Math.abs(this.netQty);
+            this.totalSellAmount = Math.abs(this.netQty) * price;
+            this.averageSellPrice = price;
+        }
+
         this.lastUpdated = LocalDateTime.now();
     }
 
