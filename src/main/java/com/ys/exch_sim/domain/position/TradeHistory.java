@@ -16,6 +16,11 @@ public class TradeHistory {
   private LocalDateTime timestamp;
   private String clOrdID;
 
+  // FIFO tracking fields
+  private String openClose; // "OPEN" or "CLOSE"
+  private Double profitLoss; // P/L for CLOSE trades (null for OPEN)
+  private String matchedOpenExecIds; // JSON array of matched open execution IDs
+
   public TradeHistory(
       String execID,
       String username,

@@ -1,6 +1,7 @@
 package com.ys.exch_sim.domain.order_exec;
 
 import com.ys.exch_sim.domain.message.field.ClOrdID;
+import com.ys.exch_sim.domain.message.field.OpenClose;
 import com.ys.exch_sim.domain.message.field.OrdType;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
@@ -24,6 +25,7 @@ public class Order {
   private final OrdType ordType;
   private final Tif tif;
   private final String username;
+  private final OpenClose openClose; // Optional: OPEN or CLOSE
   private OrdStatus ordStatus;
   private Qty leavesQty;
   // private Order next;
@@ -39,7 +41,8 @@ public class Order {
       Timestamp ts,
       OrdType ordType,
       Tif tif,
-      String username) {
+      String username,
+      OpenClose openClose) {
     this.symbol = symbol;
     this.orderPx = px;
     this.orderQty = qty;
@@ -49,6 +52,7 @@ public class Order {
     this.ordType = ordType;
     this.tif = tif;
     this.username = username;
+    this.openClose = openClose; // Can be null
     ordStatus = OrdStatus.NEW;
     leavesQty = new Qty(qty.getSymbol(), qty.getLongQty());
   }

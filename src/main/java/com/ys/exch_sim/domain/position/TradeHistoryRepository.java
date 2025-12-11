@@ -44,7 +44,12 @@ public interface TradeHistoryRepository extends JpaRepository<TradeHistoryEntity
      */
     List<TradeHistoryEntity> findByUsernameAndSymbolAndTimestampBetweenOrderByTimestampDesc(
         String username, String symbol, LocalDateTime start, LocalDateTime end);
-    
+
+    /**
+     * Find trade history by client order ID (for FIFO P/L calculation)
+     */
+    List<TradeHistoryEntity> findByClOrdId(String clOrdId);
+
     /**
      * Get total trade count for a user
      */

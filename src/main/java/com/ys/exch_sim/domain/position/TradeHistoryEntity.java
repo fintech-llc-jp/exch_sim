@@ -47,6 +47,16 @@ public class TradeHistoryEntity {
     
     @Column(name = "is_market_maker", nullable = false)
     private Boolean isMarketMaker;
+
+    // FIFO tracking fields
+    @Column(name = "open_close")
+    private String openClose; // "OPEN" or "CLOSE"
+
+    @Column(name = "profit_loss")
+    private Double profitLoss; // P/L for CLOSE trades (null for OPEN)
+
+    @Column(name = "matched_open_exec_ids", columnDefinition = "TEXT")
+    private String matchedOpenExecIds; // JSON array of matched open execution IDs
     
     // Constructor from TradeHistory domain object
     public TradeHistoryEntity(TradeHistory tradeHistory) {
@@ -62,13 +72,18 @@ public class TradeHistoryEntity {
         this.timestamp = tradeHistory.getTimestamp();
         this.clOrdId = tradeHistory.getClOrdID();
         this.isMarketMaker = false; // Default value, will be set based on context
+
+        // FIFO tracking fields
+        this.openClose = tradeHistory.getOpenClose();
+        this.profitLoss = tradeHistory.getProfitLoss();
+        this.matchedOpenExecIds = tradeHistory.getMatchedOpenExecIds();
     }
     
     // Convert to TradeHistory domain object
     public TradeHistory toTradeHistory() {
         // Convert stored quantity (may be 1000x) to actual quantity
         double actualQuantity = this.quantity != null ? this.quantity / 1000.0 : 0.0;
-        
+
         TradeHistory tradeHistory = new TradeHistory(
             this.execId,
             this.username,
@@ -80,6 +95,12 @@ public class TradeHistoryEntity {
             this.clOrdId
         );
         tradeHistory.setTimestamp(this.timestamp);
+
+        // Set FIFO tracking fields
+        tradeHistory.setOpenClose(this.openClose);
+        tradeHistory.setProfitLoss(this.profitLoss);
+        tradeHistory.setMatchedOpenExecIds(this.matchedOpenExecIds);
+
         return tradeHistory;
     }
 }

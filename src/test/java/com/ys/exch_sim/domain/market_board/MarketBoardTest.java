@@ -41,7 +41,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     boolean ret1 = mb.checkMeetingOrder(buy1);
     assertEquals(ret1, true);
@@ -56,7 +57,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
     boolean ret2 = mb.checkMeetingOrder(buy2);
     assertEquals(ret2, false);
 
@@ -70,7 +72,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
     boolean ret3 = mb.checkMeetingOrder(buy3);
     assertEquals(ret3, true);
 
@@ -87,7 +90,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     boolean ret4 = mb.checkMeetingOrder(sell1);
     assertEquals(ret4, true);
@@ -102,7 +106,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
     boolean ret5 = mb.checkMeetingOrder(sell2);
     assertEquals(ret5, true);
 
@@ -116,7 +121,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
     boolean ret6 = mb.checkMeetingOrder(sell3);
     assertEquals(ret6, false);
   }
@@ -137,7 +143,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order buy1 =
         new Order(
@@ -149,7 +156,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.MARKET,
             Tif.IOC,
-            "testuser2");
+            "testuser2",
+            null);
 
     List<Execution> elist1 = mb.newOrder(ask1);
     List<Execution> elist2 = mb.newOrder(buy1);
@@ -180,7 +188,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order sell1 =
         new Order(
@@ -192,7 +201,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.MARKET,
             Tif.IOC,
-            "testuser2");
+            "testuser2",
+            null);
 
     List<Execution> elist1 = mb.newOrder(buy1);
     List<Execution> elist2 = mb.newOrder(sell1);
@@ -223,7 +233,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order sell1 =
         new Order(
@@ -235,7 +246,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.IOC,
-            "testuser2");
+            "testuser2",
+            null);
 
     List<Execution> elist1 = mb.newOrder(buy1);
     List<Execution> elist2 = mb.newOrder(sell1);
@@ -266,7 +278,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order sell1 =
         new Order(
@@ -278,7 +291,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser2");
+            "testuser2",
+            null);
 
     List<Execution> elist1 = mb.newOrder(buy1);
     Pair<Long, Long> bids1 = mb.getBid(0);
@@ -303,7 +317,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser3");
+            "testuser3",
+            null);
     List<Execution> elist3 = mb.newOrder(sell2);
     assertEquals(elist2.size(), 2);
   }
@@ -323,7 +338,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order buy2 =
         new Order(
@@ -335,7 +351,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order buy3 =
         new Order(
@@ -347,7 +364,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order sell1 =
         new Order(
@@ -359,7 +377,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser2");
+            "testuser2",
+            null);
 
     Order sell2 =
         new Order(
@@ -371,7 +390,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser2");
+            "testuser2",
+            null);
 
     Order sell3 =
         new Order(
@@ -383,7 +403,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser2");
+            "testuser2",
+            null);
 
     List<Execution> elist1 = mb.newOrder(buy1);
     List<Execution> elist2 = mb.newOrder(buy2);
@@ -420,7 +441,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.MARKET,
             Tif.IOC,
-            "testuser3");
+            "testuser3",
+            null);
     List<Execution> elist7 = mb.newOrder(buym);
     Pair<Long, Long> askm = mb.getAsk(0);
     System.out.println(askm);
@@ -437,7 +459,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser2");
+            "testuser2",
+            null);
     List<Execution> elist8 = mb.newOrder(sell4);
     Pair<Long, Long> ask4 = mb.getAsk(0);
     assertEquals(ask4.getLeft(), 102L);
@@ -459,7 +482,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order buy2 =
         new Order(
@@ -471,7 +495,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
 
     Order buy3 =
         new Order(
@@ -483,7 +508,8 @@ public class MarketBoardTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.DAY,
-            "testuser");
+            "testuser",
+            null);
     List<Execution> e1 = mb.newOrder(buy1);
     List<Execution> e2 = mb.newOrder(buy2);
     List<Execution> e3 = mb.newOrder(buy3);
@@ -523,7 +549,8 @@ public class MarketBoardTest {
                 new Timestamp(LocalDateTime.now()),
                 OrdType.LIMIT,
                 Tif.GTC,
-                "user" + threadId
+                "user" + threadId,
+                null
             );
             
             try {
@@ -592,7 +619,8 @@ public class MarketBoardTest {
                 new Timestamp(LocalDateTime.now()),
                 OrdType.LIMIT,
                 Tif.GTC,
-                "user" + threadId
+                "user" + threadId,
+                null
             );
             
             // 注文投入

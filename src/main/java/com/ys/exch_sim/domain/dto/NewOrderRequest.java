@@ -15,4 +15,5 @@ public class NewOrderRequest {
   private String ordType; // "LIMIT" or "MARKET"
   private String tif; // "GTC", "IOC", "FOK"
   private Boolean isMarketMake;
+  private String openClose; // Optional: "OPEN" or "CLOSE"
 }

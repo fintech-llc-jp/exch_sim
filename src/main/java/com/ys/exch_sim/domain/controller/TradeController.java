@@ -212,7 +212,8 @@ public class TradeController {
               new Timestamp(LocalDateTime.now(ZoneOffset.UTC)),
               OrdType.LIMIT,
               Tif.IOC, // Immediate or Cancel to avoid lingering orders
-              username);
+              username,
+              null); // openClose not specified for trade insert
 
       // Process order through OrderService and ensure board updates are reflected
       long orderProcessingStart = System.currentTimeMillis();

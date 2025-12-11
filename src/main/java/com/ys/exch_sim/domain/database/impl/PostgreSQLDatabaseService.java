@@ -166,6 +166,19 @@ public class PostgreSQLDatabaseService implements DatabaseService {
     }
 
     @Override
+    public List<TradeHistory> queryTradeHistoryByClOrdId(String clOrdId) {
+        try {
+            List<TradeHistoryEntity> entities = tradeHistoryRepository.findByClOrdId(clOrdId);
+            return entities.stream()
+                .map(TradeHistoryEntity::toTradeHistory)
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error querying trade history from PostgreSQL for clOrdId: {}", clOrdId, e);
+            return List.of();
+        }
+    }
+
+    @Override
     @Transactional
     public void registerUser(String username, String encodedPassword, List<String> roles) {
         try {

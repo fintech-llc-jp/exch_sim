@@ -297,6 +297,6 @@ class PositionManagerTest {
         OrdType ordType = OrdType.LIMIT;
         Tif tif = Tif.GTC;
         
-        return new Order(symbol, px, qty, side, clOrdID, timestamp, ordType, tif, username);
+        return new Order(symbol, px, qty, side, clOrdID, timestamp, ordType, tif, username, null);
     }
 }

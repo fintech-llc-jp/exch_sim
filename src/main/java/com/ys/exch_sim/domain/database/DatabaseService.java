@@ -43,6 +43,9 @@ public interface DatabaseService {
   /** 指定ユーザーの取引履歴を取得（件数制限付き） */
   List<TradeHistory> queryTradeHistory(String username, int limit);
 
+  /** 指定注文IDの取引履歴を取得（FIFO P/L計算用） */
+  List<TradeHistory> queryTradeHistoryByClOrdId(String clOrdId);
+
   // ========== User操作 ==========
 
   /** ユーザーを登録 */

@@ -142,36 +142,9 @@ public class ExecutionQueueService {
     }
   }
 
-  public List<Execution> pollExecutions(String username, int maxCount) {
-    BlockingQueue<Execution> userQueue = userExecutionQueues.get(username);
-    if (userQueue == null) {
-      return Collections.emptyList();
-    }
-
-    List<Execution> executions = new ArrayList<>();
-    userQueue.drainTo(executions, maxCount);
-
-    log.info("Polled {} executions for user: {}", executions.size(), username);
-    return executions;
-  }
-
-  public List<Execution> pollAllExecutions(String username) {
-    BlockingQueue<Execution> userQueue = userExecutionQueues.get(username);
-    if (userQueue == null) {
-      return Collections.emptyList();
-    }
-
-    List<Execution> executions = new ArrayList<>();
-    userQueue.drainTo(executions);
-
-    log.info("Polled all {} executions for user: {}", executions.size(), username);
-    return executions;
-  }
-
-  public int getQueueSize(String username) {
-    BlockingQueue<Execution> userQueue = userExecutionQueues.get(username);
-    return userQueue != null ? userQueue.size() : 0;
-  }
+  // Removed pollExecutions(), pollAllExecutions(), and getQueueSize() methods
+  // These methods caused multi-client issues by draining the queue
+  // Use getExecutionHistory() instead for safe multi-client access
 
   /**
    * ユーザーの約定履歴を取得（ページネーション対応）

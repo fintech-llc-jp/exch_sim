@@ -54,10 +54,6 @@ class ExecutionPersistenceIntegrationTest {
         // Check the raw value from database, not the reconstructed Qty object
         assertThat(persistedExecution.getLastQtyRaw()).isEqualTo(10L);
         assertThat(persistedExecution.getIsMarketMaker()).isFalse();
-
-        // Check queue functionality still works
-        List<Execution> queuedExecutions = executionQueueService.pollExecutions(username, 10);
-        assertThat(queuedExecutions).hasSize(1);
     }
 
     @Test
@@ -72,10 +68,6 @@ class ExecutionPersistenceIntegrationTest {
         // Then - Check no database persistence for market maker
         List<Execution> persistedExecutions = executionRepository.findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(username);
         assertThat(persistedExecutions).isEmpty();
-
-        // But queue functionality should work
-        List<Execution> queuedExecutions = executionQueueService.pollExecutions(username, 10);
-        assertThat(queuedExecutions).hasSize(1);
     }
 
     @Test
@@ -177,7 +169,8 @@ class ExecutionPersistenceIntegrationTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.GTC,
-            username
+            username,
+            null
         );
     }
 

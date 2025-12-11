@@ -378,10 +378,7 @@ class PostgreSQLIntegrationTest {
         // When - Add execution through queue service
         executionQueueService.addExecution(testUsername, execution);
 
-        // Then - Verify both in-memory queue and database persistence
-        List<Execution> queuedExecutions = executionQueueService.pollExecutions(testUsername, 10);
-        assertThat(queuedExecutions).hasSize(1);
-
+        // Then - Verify database persistence
         List<Execution> persistedExecutions = executionRepository
             .findByUsernameAndIsMarketMakerFalseOrderByCreatedAtDesc(testUsername);
         assertThat(persistedExecutions).hasSize(1);
@@ -563,7 +560,8 @@ class PostgreSQLIntegrationTest {
             new Timestamp(LocalDateTime.now()),
             OrdType.LIMIT,
             Tif.GTC,
-            username
+            username,
+            null
         );
     }
 }

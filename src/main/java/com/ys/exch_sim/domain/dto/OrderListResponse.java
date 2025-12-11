@@ -29,5 +29,7 @@ public class OrderListResponse {
     private Double filledQty;
     private String tif;
     private LocalDateTime timestamp;
+    private String openClose; // Optional: "OPEN" or "CLOSE"
+    private Double profitLoss; // P/L for CLOSE orders (null for OPEN)
   }
 }

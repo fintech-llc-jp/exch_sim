@@ -33,6 +33,10 @@ public class PositionManager {
   private final List<TradeHistory> tradeHistoriesCache =
       Collections.synchronizedList(new ArrayList<>());
 
+  // FIFO position queues for tracking open/close P&L
+  private final ConcurrentHashMap<String, ConcurrentHashMap<String, FifoPositionQueue>> fifoQueues =
+      new ConcurrentHashMap<>();
+
   // Main constructor for Spring
   @Autowired
   public PositionManager(@Autowired(required = false) DatabaseService databaseService) {
@@ -92,6 +96,10 @@ public class PositionManager {
       // ポジション更新
       Position position = getOrCreatePosition(username, symbol);
 
+      // Capture previous net quantity for OPEN/CLOSE determination
+      double previousNetQty = position.getNetQty();
+      log.debug("Previous net quantity for {}: {}", symbol, previousNetQty);
+
       if (side == Side.BUY) {
         position.addBuyTrade(quantity, price);
         // 買い注文：現金を減らす
@@ -113,6 +121,47 @@ public class PositionManager {
         }
       }
 
+      // FIFO tracking: Determine OPEN/CLOSE and calculate P/L
+      FifoPositionQueue fifoQueue = getFifoQueue(username, symbol);
+      String openClose;
+      Double profitLoss = null;
+      String matchedOpenExecIds = null;
+
+      String execId = execution.getExecID().getId();
+      String sideStr = side.toString();
+
+      if (side == Side.BUY) {
+        if (previousNetQty < 0) {
+          // Closing short position
+          openClose = "CLOSE";
+          List<FifoMatch> matches = fifoQueue.matchClose(quantity, price, sideStr);
+          profitLoss = matches.stream().mapToDouble(FifoMatch::getProfitLoss).sum();
+          List<String> matchedIds = matches.stream().map(FifoMatch::getOpenExecId).collect(java.util.stream.Collectors.toList());
+          matchedOpenExecIds = toJson(matchedIds);
+          log.info("CLOSE short position: user={}, symbol={}, qty={}, P/L={}", username, symbol, quantity, profitLoss);
+        } else {
+          // Opening long position
+          openClose = "OPEN";
+          fifoQueue.addOpen(execId, quantity, price, execution.getCreatedAt(), sideStr);
+          log.info("OPEN long position: user={}, symbol={}, qty={}", username, symbol, quantity);
+        }
+      } else { // SELL
+        if (previousNetQty > 0) {
+          // Closing long position
+          openClose = "CLOSE";
+          List<FifoMatch> matches = fifoQueue.matchClose(quantity, price, sideStr);
+          profitLoss = matches.stream().mapToDouble(FifoMatch::getProfitLoss).sum();
+          List<String> matchedIds = matches.stream().map(FifoMatch::getOpenExecId).collect(java.util.stream.Collectors.toList());
+          matchedOpenExecIds = toJson(matchedIds);
+          log.info("CLOSE long position: user={}, symbol={}, qty={}, P/L={}", username, symbol, quantity, profitLoss);
+        } else {
+          // Opening short position
+          openClose = "OPEN";
+          fifoQueue.addOpen(execId, quantity, price, execution.getCreatedAt(), sideStr);
+          log.info("OPEN short position: user={}, symbol={}, qty={}", username, symbol, quantity);
+        }
+      }
+
       // 取引履歴を記録
       TradeHistory tradeHistory =
           new TradeHistory(
@@ -124,6 +173,11 @@ public class PositionManager {
               price,
               counterPartyUsername,
               execution.getOrder().getClOrdID().getId());
+
+      // Set FIFO tracking fields
+      tradeHistory.setOpenClose(openClose);
+      tradeHistory.setProfitLoss(profitLoss);
+      tradeHistory.setMatchedOpenExecIds(matchedOpenExecIds);
 
       // メモリキャッシュに追加
       if (memoryCacheEnabled) {
@@ -321,6 +375,30 @@ public class PositionManager {
     return trades;
   }
 
+  /**
+   * Get trade history for a specific order ID (clOrdId)
+   * Used to aggregate P/L for an order across multiple executions
+   */
+  public List<TradeHistory> getTradeHistoryByClOrdId(String clOrdId) {
+    List<TradeHistory> trades = new ArrayList<>();
+
+    if (memoryCacheEnabled) {
+      trades =
+          tradeHistoriesCache.stream()
+              .filter(history -> clOrdId.equals(history.getClOrdID()))
+              .collect(Collectors.toList());
+      if (!trades.isEmpty()) {
+        return trades;
+      }
+    }
+
+    if (databaseService != null) {
+      trades = databaseService.queryTradeHistoryByClOrdId(clOrdId);
+    }
+
+    return trades;
+  }
+
   public double getTotalRealizedPnL(String username) {
     if (memoryCacheEnabled) {
       ConcurrentHashMap<String, Position> userPositions = positionsCache.get(username);
@@ -407,6 +485,25 @@ public class PositionManager {
     // Fallback
     log.info("Creating new position for user: {}, symbol: {}", username, symbol);
     return new Position(username, symbol.toUpperCase());
+  }
+
+  /**
+   * Get or create a FIFO position queue for a user and symbol
+   */
+  private FifoPositionQueue getFifoQueue(String username, String symbol) {
+    return fifoQueues
+        .computeIfAbsent(username, k -> new ConcurrentHashMap<>())
+        .computeIfAbsent(symbol.toUpperCase(), k -> new FifoPositionQueue());
+  }
+
+  /**
+   * Convert list of execution IDs to JSON array format
+   */
+  private String toJson(List<String> execIds) {
+    if (execIds == null || execIds.isEmpty()) {
+      return null;
+    }
+    return "[\"" + String.join("\",\"", execIds) + "\"]";
   }
 
   // 統計情報取得用メソッド

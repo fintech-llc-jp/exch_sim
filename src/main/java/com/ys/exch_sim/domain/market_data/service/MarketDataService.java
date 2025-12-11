@@ -335,7 +335,8 @@ public class MarketDataService {
         new Timestamp(LocalDateTime.now(ZoneOffset.UTC)),
         OrdType.LIMIT,
         Tif.DAY,
-        "MARKET_MAKER");
+        "MARKET_MAKER",
+        null); // openClose not specified for market maker orders
   }
 
   /**

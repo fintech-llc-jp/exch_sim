@@ -9,6 +9,7 @@ import com.ys.exch_sim.domain.dto.OrderResponse;
 import com.ys.exch_sim.domain.market_board.MarketBoard;
 import com.ys.exch_sim.domain.message.field.ClOrdID;
 import com.ys.exch_sim.domain.message.field.ExecStatus;
+import com.ys.exch_sim.domain.message.field.OpenClose;
 import com.ys.exch_sim.domain.message.field.OrdType;
 import com.ys.exch_sim.domain.message.field.Px;
 import com.ys.exch_sim.domain.message.field.Qty;
@@ -316,7 +317,17 @@ public class OrderService {
     OrdType ordType = OrdType.valueOf(request.getOrdType().toUpperCase());
     Tif tif = Tif.valueOf(request.getTif().toUpperCase());
 
-    return new Order(symbol, px, qty, side, clOrdID, timestamp, ordType, tif, username);
+    // Parse openClose field (optional)
+    OpenClose openClose = null;
+    if (request.getOpenClose() != null && !request.getOpenClose().trim().isEmpty()) {
+      try {
+        openClose = OpenClose.valueOf(request.getOpenClose().toUpperCase());
+      } catch (IllegalArgumentException e) {
+        log.warn("Invalid openClose value: {}, ignoring", request.getOpenClose());
+      }
+    }
+
+    return new Order(symbol, px, qty, side, clOrdID, timestamp, ordType, tif, username, openClose);
   }
 
   private MarketBoard getOrCreateMarketBoard(String symbolName) {
@@ -541,8 +552,27 @@ public class OrderService {
                 leavesQty,
                 filledQty,
                 order.getTif().toString(),
-                order.getTs().getTs()
+                order.getTs().getTs(),
+                order.getOpenClose() != null ? order.getOpenClose().toString() : null,
+                null // profitLoss will be set below for CLOSE orders
             );
+
+            // Calculate P/L for CLOSE orders
+            if (order.getOpenClose() == OpenClose.CLOSE) {
+              try {
+                List<com.ys.exch_sim.domain.position.TradeHistory> trades =
+                    positionManager.getTradeHistoryByClOrdId(order.getClOrdID().getId());
+                double totalPnL = trades.stream()
+                    .filter(t -> "CLOSE".equals(t.getOpenClose()))
+                    .mapToDouble(t -> t.getProfitLoss() != null ? t.getProfitLoss() : 0.0)
+                    .sum();
+                dto.setProfitLoss(totalPnL);
+                log.debug("Calculated P/L for CLOSE order {}: {}", order.getClOrdID().getId(), totalPnL);
+              } catch (Exception e) {
+                log.error("Error calculating P/L for order: {}", order.getClOrdID().getId(), e);
+              }
+            }
+
             orderDtos.add(dto);
           }
         }
