@@ -7,8 +7,7 @@
 - **注文管理**: 指値注文・成行注文の発注と取消
 - **約定処理**: リアルタイムでの注文マッチング
 - **板情報取得**: 買い注文・売り注文の価格・数量情報
-- **約定結果配信**: ユーザー毎の約定結果ポーリング
-- **約定履歴管理**: ページネーション付き約定履歴取得・BigQuery永続化
+- **約定履歴管理**: ページネーション付き約定履歴取得・PostgreSQL永続化
 - **ポジション管理**: 取引履歴・損益計算・ポートフォリオ管理
 - **MarketMaker機能**: MARKET_MAKER専用の一括注文機能
 - **商品タイプ管理**: Cash（現物）とFX（先物）の取引制限
@@ -191,6 +190,8 @@ curl -X GET "http://localhost:8080/api/orders/list?status=NEW,PARTIALLY_FILLED,F
   - `filledQty` (number): 約定済み数量
   - `tif` (string): 注文有効期限（GTC/IOC/FOK）
   - `timestamp` (string): 注文作成日時
+  - `openClose` (string, optional): 建玉区分（OPEN/CLOSE）。オプショナルフィールドで、nullの場合もある
+  - `profitLoss` (number, optional): FIFO方式の損益（CLOSE注文のみ、OPEN注文はnull）
 
 **特徴:**
 - ✅ **ステータスフィルタ**: `status` パラメータで返すステータスを制御（デフォルト：NEW）
@@ -224,6 +225,7 @@ curl -X POST http://localhost:8080/api/orders/new \
 - `side` (string, required): 売買区分（BUY/SELL）
 - `ordType` (string, required): 注文タイプ（LIMIT/MARKET）
 - `tif` (string, required): 注文有効期限（GTC/IOC/FOK）
+- `openClose` (string, optional): 建玉区分（OPEN/CLOSE）。オプショナルフィールド
 
 **Cash商品の制限:**
 - 売り注文時は保有ポジションをチェック
@@ -377,24 +379,6 @@ curl -X GET "http://localhost:8080/api/executions/volume?symbol=G_FX_BTCJPY&from
     }
   ]
 }
-```
-
-#### 約定結果ポーリング（リアルタイム用）
-**GET** `/api/executions/poll?maxCount=10`
-
-```bash
-curl -X GET "http://localhost:8080/api/executions/poll?maxCount=5" \
-  -H "Authorization: Bearer <JWT_TOKEN>"
-```
-
-**注意:** ポーリングは一度取得すると消費されるため、履歴表示には**約定履歴API**の使用を推奨します。
-
-#### 約定結果キューサイズ取得
-**GET** `/api/executions/queue-size`
-
-```bash
-curl -X GET "http://localhost:8080/api/executions/queue-size" \
-  -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
 ### 3. 板情報取得 API
@@ -824,6 +808,62 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
   - ポジション反転時（ロング→ショート、ショート→ロング）は新しいポジションとして管理
   - 実現損益が実際の売買価格と正確に一致
 
+### FIFO方式損益追跡（新機能）
+- **FIFO（先入先出）方式**: Close注文の損益をFIFO方式で正確に計算
+- **自動OPEN/CLOSE判定**: ポジション状態から自動的にOPEN/CLOSE を判定
+  - **BUY注文**:
+    - ショートポジションあり（netQty < 0）→ CLOSE（ショート決済）
+    - それ以外 → OPEN（ロング建玉）
+  - **SELL注文**:
+    - ロングポジションあり（netQty > 0）→ CLOSE（ロング決済）
+    - それ以外 → OPEN（ショート建玉）
+- **部分約定対応**: 複数回の約定をまたいで累積損益を計算
+- **損益計算式**:
+  - ロング決済: (売値 - 買値) × 数量
+  - ショート決済: (売値 - 買値) × 数量
+- **データ永続化**: TradeHistoryテーブルに以下の情報を保存
+  - `open_close`: OPEN/CLOSE区分
+  - `profit_loss`: FIFO方式の損益
+  - `matched_open_exec_ids`: マッチしたOpen約定IDのJSON配列
+- **API統合**: `/api/orders/list` で CLOSE注文の累積損益をリアルタイム表示
+- **openCloseフィールド**: 注文作成時にオプションで指定可能（nullの場合は自動判定）
+
+**使用例:**
+```bash
+# OPEN注文を発注（オプション）
+curl -X POST http://localhost:8080/api/orders/new \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "G_FX_BTCJPY",
+    "price": 5000000,
+    "quantity": 1,
+    "side": "BUY",
+    "ordType": "LIMIT",
+    "tif": "GTC",
+    "openClose": "OPEN"
+  }'
+
+# CLOSE注文を発注して損益を確定（オプション）
+curl -X POST http://localhost:8080/api/orders/new \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "G_FX_BTCJPY",
+    "price": 5100000,
+    "quantity": 1,
+    "side": "SELL",
+    "ordType": "LIMIT",
+    "tif": "GTC",
+    "openClose": "CLOSE"
+  }'
+
+# 注文リストで損益を確認
+curl -X GET "http://localhost:8080/api/orders/list?status=FILLED" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+# Response: CLOSE注文には profitLoss フィールドが含まれる
+```
+
 ### MarketMaker機能
 - **アトミック処理**: 既存注文キャンセル→新規注文を不可分で実行
 - **シングルスレッド**: 銘柄別ロックでMarketBoardの整合性保証
@@ -891,6 +931,18 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 
 アプリケーションは `http://localhost:8080` で起動します。
 
+### データベースマイグレーション
+
+アプリケーションはFlywayを使用してデータベーススキーマを自動管理します。マイグレーションファイルは `src/main/resources/db/migration/` にあります。
+
+**マイグレーション履歴:**
+- `V1__convert_to_utc.sql` - UTC時刻への変換
+- `V2__optimize_volume_calculation.sql` - 約定量計算の最適化インデックス
+- `V3__add_fifo_tracking.sql` - FIFO損益追跡カラム追加
+- `V4__add_trade_history_indexes.sql` - TradeHistory検索最適化インデックス
+
+アプリケーション起動時に未適用のマイグレーションが自動的に実行されます。
+
 ## 開発・テストツール
 
 ### quick_test.sh - テストスクリプト
@@ -905,8 +957,6 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 ./quick_test.sh market-buy                    # 成行買い注文
 ./quick_test.sh market-sell                   # 成行売り注文
 ./quick_test.sh limit-buy [PRICE]             # 指値買い注文
-./quick_test.sh poll                          # 約定ポーリング
-./quick_test.sh queue-size                    # 約定キューサイズ確認
 ./quick_test.sh board [SYMBOL]                # 板情報取得
 ./quick_test.sh order-list [SYMBOL]           # 注文中の注文リスト取得
 ./quick_test.sh history [PAGE] [SIZE] [SYMBOL] # 約定履歴取得（FILLED/PARTIAL_FILLのみ）
@@ -980,6 +1030,11 @@ curl -X GET http://localhost:8080/api/market-make/orders/G_FX_BTCJPY/status \
 - `users` - ユーザー認証情報
 - `positions` - ポジション情報
 - `trade_history` - 取引履歴
+  - FIFO損益追跡カラム (v3以降):
+    - `open_close` - OPEN/CLOSE区分
+    - `profit_loss` - FIFO方式の損益
+    - `matched_open_exec_ids` - マッチしたOpen約定IDのJSON配列
+    - `cl_ord_id` - 注文ID
 - `market_board_snapshots` - 板情報スナップショット（1秒ごとに記録）
 
 **設定方法 (application.properties):**
@@ -1008,6 +1063,10 @@ app.auth.bigquery-enabled=true
 - 約定結果配信
 - 約定履歴永続化
 - ポジション管理
+- FIFO方式損益追跡
+  - OPEN/CLOSE自動判定
+  - FIFO充当ロジック
+  - 部分約定の累積損益計算
 - MarketMaker機能
 - 権限制御
 - Cash/FX取引制限
@@ -1094,8 +1153,7 @@ A comprehensive financial exchange system simulator that provides order placemen
 - **Order Management**: Place and cancel limit/market orders
 - **Execution Processing**: Real-time order matching
 - **Order Book Information**: Price and quantity information for buy/sell orders
-- **Execution Result Distribution**: Per-user execution result polling
-- **Execution History Management**: Paginated execution history with H2 database persistence
+- **Execution History Management**: Paginated execution history with PostgreSQL database persistence
 - **Position Management**: Trade history, P&L calculation, and portfolio management
 - **Market Making**: MARKET_MAKER exclusive bulk order functionality
 - **Instrument Type Management**: Cash (spot) and FX (futures) trading restrictions
