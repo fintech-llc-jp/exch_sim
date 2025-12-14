@@ -170,7 +170,9 @@ public class PositionController {
                           trade.getAmount(),
                           trade.getCounterPartyUsername(),
                           trade.getTimestamp(),
-                          trade.getClOrdID()))
+                          trade.getClOrdID(),
+                          trade.getOpenClose(),
+                          trade.getProfitLoss()))
               .collect(Collectors.toList());
 
       TradeHistoryResponse response = new TradeHistoryResponse(username, trades.size(), tradeDtos);

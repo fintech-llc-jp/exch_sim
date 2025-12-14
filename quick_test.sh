@@ -3,8 +3,8 @@
 # クイックテスト - デバッグ用
 #BASE_URL="https://exch-sim-953974838707.asia-northeast1.run.app"
 BASE_URL="http://localhost:8080"
-USERNAME="yukio003"
-PASSWORD="yukio003"
+USERNAME="yukio004"
+PASSWORD="yukio004"
 JWT_CACHE_FILE="/tmp/quick_test_jwt_token"
 
 # JWT有効性チェック関数
@@ -40,41 +40,41 @@ check_jwt_validity() {
 # JWT取得またはキャッシュから読み込み
 get_jwt_token() {
   local cached_token=""
-  
+
   # キャッシュファイルから既存トークンを読み込み
   if [ -f "$JWT_CACHE_FILE" ]; then
     cached_token=$(cat "$JWT_CACHE_FILE" 2>/dev/null)
-    echo "🔍 キャッシュされたトークンをチェック中..."
-    
+    echo "🔍 キャッシュされたトークンをチェック中..." >&2
+
     if check_jwt_validity "$cached_token"; then
-      echo "✅ キャッシュされたトークンが有効です"
+      echo "✅ キャッシュされたトークンが有効です" >&2
       echo "$cached_token"
       return 0
     else
-      echo "⚠️ キャッシュされたトークンが無効です。新しいトークンを取得します。"
+      echo "⚠️ キャッシュされたトークンが無効です。新しいトークンを取得します。" >&2
       rm -f "$JWT_CACHE_FILE"
     fi
   fi
-  
+
   # 新しいトークンを取得
-  echo "🔐 ログイン中..."
+  echo "🔐 ログイン中..." >&2
   local login_response=$(curl -s -X POST "${BASE_URL}/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "{\"username\": \"${USERNAME}\", \"password\": \"${PASSWORD}\"}")
 
-  echo "Login response: $login_response"
+  echo "Login response: $login_response" >&2
 
   local jwt_token=$(echo "$login_response" | jq -r '.token')
 
   if [ "$jwt_token" = "null" ] || [ -z "$jwt_token" ]; then
-    echo "❌ ログイン失敗"
+    echo "❌ ログイン失敗" >&2
     return 1
   fi
 
   # トークンをキャッシュファイルに保存
   echo "$jwt_token" > "$JWT_CACHE_FILE"
-  echo "✅ ログイン成功 - トークンをキャッシュしました"
-  echo "JWT: ${jwt_token}"
+  echo "✅ ログイン成功 - トークンをキャッシュしました" >&2
+  echo "JWT: ${jwt_token}" >&2
   echo "$jwt_token"
   return 0
 }
@@ -250,11 +250,22 @@ case "$1" in
     ;;
   "position-summary")
     echo "📊 ポートフォリオサマリー取得..."
+    # JWT トークンのデバッグ出力
+    echo "Debug - JWT Token length: ${#JWT_TOKEN}"
+    echo "Debug - JWT Token (first 50 chars): ${JWT_TOKEN:0:50}"
+
     RESPONSE=$(curl -s -X GET "${BASE_URL}/api/positions/summary" \
-      -H "Authorization: Bearer ${JWT_TOKEN}")
-    echo "Raw response: $RESPONSE"
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" \
+      -w "\nHTTP_CODE:%{http_code}")
+
+    HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d':' -f2)
+    BODY=$(echo "$RESPONSE" | sed '$d')
+
+    echo "HTTP Status Code: $HTTP_CODE"
+    echo "Raw response: $BODY"
     echo "Formatted response:"
-    echo "$RESPONSE" | jq '.' 2>/dev/null || echo "❌ Invalid JSON response"
+    echo "$BODY" | jq '.' 2>/dev/null || echo "❌ Invalid JSON response"
     ;;
   "position")
     SYMBOL=${2:-"B_FX_BTCJPY"}
@@ -307,14 +318,17 @@ case "$1" in
     echo "📊 ポジション関連テスト実行..."
     echo "1️⃣ ポートフォリオサマリー:"
     curl -s -X GET "${BASE_URL}/api/positions/summary" \
+      -H "Content-Type: application/json" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
-    
+
     echo "2️⃣ B_FX_BTCJPYのポジション:"
     curl -s -X GET "${BASE_URL}/api/positions/B_FX_BTCJPY" \
+      -H "Content-Type: application/json" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
-    
+
     echo "3️⃣ 取引履歴（最新10件）:"
     curl -s -X GET "${BASE_URL}/api/positions/trades?limit=10" \
+      -H "Content-Type: application/json" \
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
     ;;
   *)
