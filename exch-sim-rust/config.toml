@@ -1,0 +1,58 @@
+[server]
+port = 8080
+
+[postgres]
+host = "localhost"
+port = 5432
+database = "exch_sim"
+user = "postgres"
+password = "postgres123"
+max_connections = 5
+
+[websocket]
+[websocket.bitflyer]
+enabled = true
+url = "wss://ws.lightstream.bitflyer.com/json-rpc"
+reconnect_delay_ms = 1000
+max_reconnect_attempts = 30
+
+[websocket.gmo]
+enabled = true
+url = "wss://api.coin.z.com/ws/public/v1"
+reconnect_delay_ms = 1000
+max_reconnect_attempts = 20
+
+[jwt]
+secret = "your-256-bit-secret-key-here-make-it-long-and-secure-change-this-in-production"
+expiration_seconds = 86400
+
+[instruments]
+[instruments.B_BTCJPY]
+name = "B_BTCJPY"
+price_multiplier = 1
+qty_multiplier = 1000
+type = "Cash"
+
+[instruments.B_FX_BTCJPY]
+name = "B_FX_BTCJPY"
+price_multiplier = 1
+qty_multiplier = 1000
+type = "FX"
+
+[instruments.G_BTCJPY]
+name = "G_BTCJPY"
+price_multiplier = 1
+qty_multiplier = 1000
+type = "Cash"
+
+[instruments.G_FX_BTCJPY]
+name = "G_FX_BTCJPY"
+price_multiplier = 1
+qty_multiplier = 1000
+type = "FX"
+
+[instruments.JPY]
+name = "Japanese Yen"
+price_multiplier = 1
+qty_multiplier = 1
+type = "Cash"

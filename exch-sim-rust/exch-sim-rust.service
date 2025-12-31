@@ -1,0 +1,26 @@
+[Unit]
+Description=ExchSim Rust Trading Simulator
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=exchsim
+Group=exchsim
+WorkingDirectory=/opt/exch-sim-rust
+ExecStart=/opt/exch-sim-rust/target/release/exch-sim-rust
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# 環境変数
+Environment="RUST_LOG=info"
+Environment="RUST_BACKTRACE=1"
+
+# セキュリティ設定
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
