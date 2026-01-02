@@ -1,6 +1,7 @@
 package com.ys.exch_sim.domain.market_board;
 
 import com.ys.exch_sim.domain.dto.MarketBoardResponse;
+import com.ys.exch_sim.domain.order_exec.ExecutionRepository;
 import com.ys.exch_sim.domain.service.OrderService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -27,13 +28,26 @@ public class MarketBoardSnapshotService {
   private final OrderService orderService;
   private final MarketBoardSnapshotRepository repository;
   private final PostgreSQLWriter postgreSQLWriter;
+  private final ExecutionRepository executionRepository;
 
-  @Value("${app.market-board.snapshot.retention-days:30}")
-  private int retentionDays;
+  @Value("${app.market-board.snapshot.retention-hours:24}")
+  private int retentionHours;
 
-  /** 1秒ごとに全シンボルの板データを記録 非同期キューに追加してすぐにリターン（ブロッキングしない） */
-  @Scheduled(fixedRate = 1000) // 1秒 = 1000ミリ秒
+  @Value("${app.market-board.snapshot.interval-ms:2000}")
+  private long snapshotIntervalMs;
+
+  @Value("${app.market-board.snapshot.max-levels:10}")
+  private int maxLevels;
+
+  @Value("${app.market-board.snapshot.enabled:true}")
+  private boolean snapshotEnabled;
+
+  /** 指定間隔ごとに全シンボルの板データを記録 非同期キューに追加してすぐにリターン（ブロッキングしない） */
+  @Scheduled(fixedRateString = "${app.market-board.snapshot.interval-ms:2000}") // デフォルト2秒
   public void captureMarketBoardSnapshots() {
+    if (!snapshotEnabled) {
+      return; // スナップショット機能が無効化されている場合は何もしない
+    }
     try {
       List<String> symbols = orderService.getAvailableSymbols();
 
@@ -47,7 +61,8 @@ public class MarketBoardSnapshotService {
 
       for (String symbol : symbols) {
         try {
-          MarketBoardResponse board = orderService.getMarketBoard(symbol, 20); // 最大20レベルまで記録
+          MarketBoardResponse board =
+              orderService.getMarketBoard(symbol, maxLevels); // 設定可能な最大レベル数まで記録
 
           if (board == null || (board.getBids().isEmpty() && board.getAsks().isEmpty())) {
             log.debug("Skipping empty board for symbol: {}", symbol);
@@ -110,19 +125,30 @@ public class MarketBoardSnapshotService {
     }
   }
 
-  /** 古いスナップショットを削除 毎日午前3時に実行 */
-  @Scheduled(cron = "0 0 3 * * ?") // 毎日午前3時
+  /** 古いデータを削除（market_board_snapshots と executions） 起動時に実行 */
   @Transactional
-  public void cleanupOldSnapshots() {
+  public void cleanupOldData() {
     try {
-      LocalDateTime cutoffDate = LocalDateTime.now().minusDays(retentionDays);
-      repository.deleteByTimestampBefore(cutoffDate);
+      LocalDateTime cutoffDate = LocalDateTime.now().minusHours(retentionHours);
+
+      // market_board_snapshotsの削除
+      long snapshotDeleteCount = repository.deleteByTimestampBefore(cutoffDate);
       log.info(
-          "Cleaned up market board snapshots older than {} (retention: {} days)",
+          "Cleaned up {} market board snapshots older than {} (retention: {} hours)",
+          snapshotDeleteCount,
           cutoffDate,
-          retentionDays);
+          retentionHours);
+
+      // executionsテーブルの削除
+      long executionDeleteCount = executionRepository.deleteByCreatedAtBefore(cutoffDate);
+      log.info(
+          "Cleaned up {} executions older than {} (retention: {} hours)",
+          executionDeleteCount,
+          cutoffDate,
+          retentionHours);
+
     } catch (Exception e) {
-      log.error("Error cleaning up old snapshots", e);
+      log.error("Error cleaning up old data", e);
     }
   }
 }

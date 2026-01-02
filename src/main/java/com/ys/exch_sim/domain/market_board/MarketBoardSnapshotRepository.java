@@ -29,7 +29,8 @@ public interface MarketBoardSnapshotRepository extends JpaRepository<MarketBoard
 
     /**
      * 古いスナップショットを削除（データ保持期間を超えたもの）
+     * @return 削除された件数
      */
-    void deleteByTimestampBefore(LocalDateTime timestamp);
+    long deleteByTimestampBefore(LocalDateTime timestamp);
 }
 

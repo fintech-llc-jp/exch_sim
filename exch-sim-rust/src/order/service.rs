@@ -242,6 +242,11 @@ impl OrderService {
             } else {
                 order.ord_status = OrdStatus::PartiallyFilled;
             }
+
+            // Java版の444-445行目に相当：残りの数量があれば板に追加
+            if order.raw_leaves_qty > 0 && ord_type == OrdType::Limit {
+                board_lock.add_order(&order);
+            }
         } else {
             // No match - add to board if limit order
             if ord_type == OrdType::Limit {

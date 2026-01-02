@@ -5,6 +5,13 @@ import com.ys.exch_sim.domain.message.field.Symbol;
 import com.ys.exch_sim.domain.service.OrderService;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +33,9 @@ public class DataMigrationInitializer implements CommandLineRunner {
 
   @Autowired private OrderService orderService;
   @Autowired private com.ys.exch_sim.domain.position.PositionManager positionManager;
+
+  @Autowired(required = false)
+  private com.ys.exch_sim.domain.market_board.MarketBoardSnapshotService marketBoardSnapshotService;
 
   public DataMigrationInitializer(ObjectMapper objectMapper, PasswordEncoder passwordEncoder) {
     this.objectMapper = objectMapper;
@@ -161,9 +171,34 @@ public class DataMigrationInitializer implements CommandLineRunner {
     long usersEnd = System.currentTimeMillis();
     log.info("[DEFAULT_USERS] Completed in {} ms", (usersEnd - usersStart));
 
+    // Clean up old data on startup (market_board_snapshots and executions)
+    if (marketBoardSnapshotService != null) {
+      long cleanupStart = System.currentTimeMillis();
+      log.info("[CLEANUP] Starting old data cleanup on startup...");
+      try {
+        marketBoardSnapshotService.cleanupOldData();
+        long cleanupEnd = System.currentTimeMillis();
+        log.info("[CLEANUP] Completed in {} ms", (cleanupEnd - cleanupStart));
+      } catch (Exception e) {
+        long cleanupEnd = System.currentTimeMillis();
+        log.warn(
+            "[CLEANUP] Failed to cleanup old data in {} ms - {}",
+            (cleanupEnd - cleanupStart),
+            e.getMessage(),
+            e);
+      }
+    } else {
+      log.info(
+          "[CLEANUP] MarketBoardSnapshotService not available (PostgreSQL mode may not be"
+              + " enabled)");
+    }
+
     long endTime = System.currentTimeMillis();
     log.info("========== DATA MIGRATION COMPLETE ==========");
-    log.info("Total data migration time: {} ms ({} seconds)", (endTime - startTime), (endTime - startTime) / 1000.0);
+    log.info(
+        "Total data migration time: {} ms ({} seconds)",
+        (endTime - startTime),
+        (endTime - startTime) / 1000.0);
   }
 
   private void initializeInstruments() {
@@ -222,54 +257,177 @@ public class DataMigrationInitializer implements CommandLineRunner {
     log.info("MarketBoards initialization completed for {} symbols", symbols.size());
     log.info("Available symbols: {}", orderService.getAvailableSymbols());
   }
-  
-  /**
-   * デフォルトユーザーに初期現金残高を設定
-   */
+
+  /** デフォルトユーザーに初期現金残高を設定 PostgreSQL接続スタックを防ぐため、タイムアウトとリトライロジックを追加 */
   private void initializeDefaultUsersCashBalance() {
     long methodStart = System.currentTimeMillis();
     log.info("[INIT_USERS] Starting default users initialization...");
 
     // デフォルトユーザー一覧
-    String[] defaultUsers = {"admin", "trader001", "marketmaker1", "yukio001", "trader002",
-                           "trader003", "testuser", "yukio002", "newuser001", "testuser2",
-                           "test01", "test02", "yukio003"};
+    String[] defaultUsers = {
+      "admin",
+      "trader001",
+      "marketmaker1",
+      "yukio001",
+      "trader002",
+      "trader003",
+      "testuser",
+      "yukio002",
+      "newuser001",
+      "testuser2",
+      "test01",
+      "test02",
+      "yukio003"
+    };
 
     double initialCashBalance = 1000000.0; // 100万円
+
+    // データベース接続のタイムアウト（ミリ秒）- 接続スタックを防ぐ
+    final long DB_OPERATION_TIMEOUT_MS = 5000; // 5秒
+    final int MAX_RETRIES = 3;
+    final long RETRY_DELAY_MS = 1000; // 1秒
 
     for (int i = 0; i < defaultUsers.length; i++) {
       String username = defaultUsers[i];
       long userStart = System.currentTimeMillis();
 
-      try {
-        log.info("[INIT_USERS] [{}/{}] Processing user: {} - START", (i + 1), defaultUsers.length, username);
+      // リトライロジック
+      boolean success = false;
+      Exception lastException = null;
 
-        // 既に現金ポジションが存在するかチェック
-        long checkStart = System.currentTimeMillis();
-        com.ys.exch_sim.domain.position.Position cashPosition = positionManager.getPosition(username, "JPY");
-        long checkEnd = System.currentTimeMillis();
-        log.info("[INIT_USERS] [{}/{}] getPosition() took {} ms", (i + 1), defaultUsers.length, (checkEnd - checkStart));
+      for (int retry = 0; retry < MAX_RETRIES && !success; retry++) {
+        try {
+          if (retry > 0) {
+            log.info(
+                "[INIT_USERS] [{}/{}] Retry attempt {}/{} for user: {}",
+                (i + 1),
+                defaultUsers.length,
+                retry,
+                MAX_RETRIES,
+                username);
+            Thread.sleep(RETRY_DELAY_MS);
+          }
 
-        if (cashPosition == null) {
-          // 現金ポジションが存在しない場合のみ初期化
-          long initStart = System.currentTimeMillis();
-          positionManager.initializeUserWithCash(username, initialCashBalance);
-          long initEnd = System.currentTimeMillis();
-          log.info("[INIT_USERS] [{}/{}] initializeUserWithCash() took {} ms", (i + 1), defaultUsers.length, (initEnd - initStart));
-          log.info("[INIT_USERS] [{}/{}] Initialized cash balance for user: {} - Amount: {}", (i + 1), defaultUsers.length, username, initialCashBalance);
-        } else {
-          log.info("[INIT_USERS] [{}/{}] User {} already has cash balance: {}", (i + 1), defaultUsers.length, username, cashPosition.getTotalBuyAmount());
+          log.info(
+              "[INIT_USERS] [{}/{}] Processing user: {} - START",
+              (i + 1),
+              defaultUsers.length,
+              username);
+
+          // 既に現金ポジションが存在するかチェック（タイムアウト付き）
+          long checkStart = System.currentTimeMillis();
+          com.ys.exch_sim.domain.position.Position cashPosition =
+              executeWithTimeout(
+                  () -> positionManager.getPosition(username, "JPY"),
+                  DB_OPERATION_TIMEOUT_MS,
+                  "getPosition");
+          long checkEnd = System.currentTimeMillis();
+          log.info(
+              "[INIT_USERS] [{}/{}] getPosition() took {} ms",
+              (i + 1),
+              defaultUsers.length,
+              (checkEnd - checkStart));
+
+          if (cashPosition == null) {
+            // 現金ポジションが存在しない場合のみ初期化（タイムアウト付き）
+            long initStart = System.currentTimeMillis();
+            executeWithTimeout(
+                () -> {
+                  positionManager.initializeUserWithCash(username, initialCashBalance);
+                  return null;
+                },
+                DB_OPERATION_TIMEOUT_MS,
+                "initializeUserWithCash");
+            long initEnd = System.currentTimeMillis();
+            log.info(
+                "[INIT_USERS] [{}/{}] initializeUserWithCash() took {} ms",
+                (i + 1),
+                defaultUsers.length,
+                (initEnd - initStart));
+            log.info(
+                "[INIT_USERS] [{}/{}] Initialized cash balance for user: {} - Amount: {}",
+                (i + 1),
+                defaultUsers.length,
+                username,
+                initialCashBalance);
+          } else {
+            log.info(
+                "[INIT_USERS] [{}/{}] User {} already has cash balance: {}",
+                (i + 1),
+                defaultUsers.length,
+                username,
+                cashPosition.getTotalBuyAmount());
+          }
+
+          success = true;
+          long userEnd = System.currentTimeMillis();
+          log.info(
+              "[INIT_USERS] [{}/{}] Processing user: {} - COMPLETED in {} ms",
+              (i + 1),
+              defaultUsers.length,
+              username,
+              (userEnd - userStart));
+        } catch (Exception e) {
+          lastException = e;
+          long userEnd = System.currentTimeMillis();
+          log.warn(
+              "[INIT_USERS] [{}/{}] Attempt {}/{} failed for user: {} in {} ms - {}",
+              (i + 1),
+              defaultUsers.length,
+              retry + 1,
+              MAX_RETRIES,
+              username,
+              (userEnd - userStart),
+              e.getMessage());
+
+          // 最後のリトライで失敗した場合のみエラーをログ出力
+          if (retry == MAX_RETRIES - 1) {
+            log.error(
+                "[INIT_USERS] [{}/{}] Failed to initialize cash balance for user: {} after {}"
+                    + " retries",
+                (i + 1),
+                defaultUsers.length,
+                username,
+                MAX_RETRIES,
+                e);
+          }
         }
+      }
 
-        long userEnd = System.currentTimeMillis();
-        log.info("[INIT_USERS] [{}/{}] Processing user: {} - COMPLETED in {} ms", (i + 1), defaultUsers.length, username, (userEnd - userStart));
-      } catch (Exception e) {
-        long userEnd = System.currentTimeMillis();
-        log.warn("[INIT_USERS] [{}/{}] Failed to initialize cash balance for user: {} in {} ms - {}", (i + 1), defaultUsers.length, username, (userEnd - userStart), e.getMessage(), e);
+      if (!success && lastException != null) {
+        log.error(
+            "[INIT_USERS] [{}/{}] User {} initialization failed after all retries",
+            (i + 1),
+            defaultUsers.length,
+            username,
+            lastException);
       }
     }
 
     long methodEnd = System.currentTimeMillis();
-    log.info("[INIT_USERS] Default users cash balance initialization completed in {} ms", (methodEnd - methodStart));
+    log.info(
+        "[INIT_USERS] Default users cash balance initialization completed in {} ms",
+        (methodEnd - methodStart));
+  }
+
+  /** タイムアウト付きでデータベース操作を実行 */
+  private <T> T executeWithTimeout(Callable<T> operation, long timeoutMs, String operationName)
+      throws Exception {
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<T> future = executor.submit(operation);
+      return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+    } catch (TimeoutException e) {
+      log.error("[INIT_USERS] Operation {} timed out after {} ms", operationName, timeoutMs);
+      throw new RuntimeException("Database operation timed out: " + operationName, e);
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof Exception) {
+        throw (Exception) cause;
+      }
+      throw new RuntimeException("Database operation failed: " + operationName, cause);
+    } finally {
+      executor.shutdownNow();
+    }
   }
 }

@@ -118,4 +118,10 @@ public interface ExecutionRepository extends JpaRepository<Execution, String> {
       nativeQuery = true)
   Long countTotalExecutionsByTimeRange(
       @Param("fromTime") LocalDateTime fromTime, @Param("toTime") LocalDateTime toTime);
+
+  /**
+   * 古い実行記録を削除（データ保持期間を超えたもの）
+   * @return 削除された件数
+   */
+  long deleteByCreatedAtBefore(LocalDateTime timestamp);
 }
