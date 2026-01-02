@@ -30,14 +30,13 @@ impl DatabaseImpl {
 #[async_trait::async_trait]
 impl DatabaseTrait for DatabaseImpl {
     async fn insert_execution(&self, execution: &Execution) -> Result<()> {
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             INSERT INTO executions (
                 exec_id, order_id, username, symbol, exec_status,
                 last_px, last_qty, counter_party_username, created_at,
                 is_market_maker, side
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ON CONFLICT (exec_id) DO NOTHING
             "#,
         )
         .bind(&execution.exec_id)
@@ -52,9 +51,29 @@ impl DatabaseTrait for DatabaseImpl {
         .bind(execution.is_market_maker)
         .bind(&execution.side)
         .execute(&*self.pool)
-        .await
-        .context("Failed to insert execution")?;
-        Ok(())
+        .await;
+
+        match result {
+            Ok(_) => Ok(()),
+            Err(sqlx::Error::Database(db_err)) => {
+                // PostgreSQLのunique_violationエラー（重複挿入）を無視
+                if db_err.code().as_deref() == Some("23505") {
+                    // 重複エラーは無視（Java版のJPAと同じ動作）
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("Failed to insert execution: {}", db_err))
+                        .context(format!(
+                            "exec_id={}, username={}, symbol={}",
+                            execution.exec_id, execution.username, execution.symbol
+                        ))
+                }
+            }
+            Err(e) => Err(anyhow::anyhow!("Failed to insert execution: {}", e))
+                .context(format!(
+                    "exec_id={}, username={}, symbol={}",
+                    execution.exec_id, execution.username, execution.symbol
+                )),
+        }
     }
 
     async fn query_recent_executions(
