@@ -166,6 +166,7 @@ pub struct NewOrderRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct CancelOrderRequest {
+    #[serde(rename = "clOrdID")]
     pub cl_ord_id: String,
     pub symbol: String,
 }
