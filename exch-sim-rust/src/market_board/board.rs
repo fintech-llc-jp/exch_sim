@@ -392,14 +392,12 @@ impl MarketBoard {
         self.ask_entry_board.len()
     }
 
-    /// Get quantity for a specific price in ask_entry_board (for testing)
-    #[cfg(test)]
+    /// Get quantity for a specific price in ask_entry_board
     pub fn get_ask_entry_qty(&self, price: i64) -> Option<i64> {
         self.ask_entry_board.get(&price).copied()
     }
 
-    /// Get quantity for a specific price in bid_entry_board (for testing)
-    #[cfg(test)]
+    /// Get quantity for a specific price in bid_entry_board
     pub fn get_bid_entry_qty(&self, price: i64) -> Option<i64> {
         self.bid_entry_board.get(&price).copied()
     }
