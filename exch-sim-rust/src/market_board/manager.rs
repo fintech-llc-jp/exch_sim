@@ -59,7 +59,19 @@ impl MarketBoardManager {
         // Clear existing market maker orders first
         {
             let mut board_guard = board.write().await;
+            tracing::debug!(
+                "Before clear_market_maker_orders: symbol={}, ask_order_board levels={}, ask_entry_board levels={}",
+                symbol,
+                board_guard.ask_order_board.len(),
+                board_guard.ask_entry_board.len()
+            );
             board_guard.clear_market_maker_orders();
+            tracing::debug!(
+                "After clear_market_maker_orders: symbol={}, ask_order_board levels={}, ask_entry_board levels={}",
+                symbol,
+                board_guard.ask_order_board.len(),
+                board_guard.ask_entry_board.len()
+            );
         }
         
         // Process each bid/ask level and create market maker orders

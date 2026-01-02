@@ -480,28 +480,36 @@ impl OrderService {
         let mut executions = Vec::new();
         let mut board_lock = board.write().await;
 
-        // Check if order can match
+        // Check if order can match - Java版のcheckMeetingBid()/checkMeetingAsk()と同じロジック
         let can_match = match side {
             Side::Buy => {
-                if let Some((best_ask_price, _)) = board_lock.get_best_ask() {
-                    if let Some(limit_price) = order.raw_price {
-                        best_ask_price <= limit_price
-                    } else {
-                        false // Market maker orders are always limit orders
-                    }
+                // Java版のcheckMeetingAsk()と同じロジックを使用
+                if let Some(limit_price) = order.raw_price {
+                    let matches = board_lock.check_meeting_ask(limit_price);
+                    tracing::debug!(
+                        "Market maker BUY order matching check: symbol={}, limit_price={}, matches={}",
+                        symbol,
+                        limit_price,
+                        matches
+                    );
+                    matches
                 } else {
-                    false
+                    false // Market maker orders are always limit orders
                 }
             }
             Side::Sell => {
-                if let Some((best_bid_price, _)) = board_lock.get_best_bid() {
-                    if let Some(limit_price) = order.raw_price {
-                        best_bid_price >= limit_price
-                    } else {
-                        false // Market maker orders are always limit orders
-                    }
+                // Java版のcheckMeetingBid()と同じロジックを使用
+                if let Some(limit_price) = order.raw_price {
+                    let matches = board_lock.check_meeting_bid(limit_price);
+                    tracing::debug!(
+                        "Market maker SELL order matching check: symbol={}, limit_price={}, matches={}",
+                        symbol,
+                        limit_price,
+                        matches
+                    );
+                    matches
                 } else {
-                    false
+                    false // Market maker orders are always limit orders
                 }
             }
         };

@@ -79,6 +79,46 @@ impl MarketBoard {
             .map(|(price, qty)| (*price, *qty))
     }
 
+    /// Check if a sell order can match against bids (Java版のcheckMeetingBid()と同じロジック)
+    pub fn check_meeting_bid(&self, limit_price: i64) -> bool {
+        // Java版: for (Entry<Long, Long> ent : bidEntryBoard.entrySet()) {
+        //   if (ent.getKey() < order.getOrderPx().getLongPx()) {
+        //     return false;
+        //   } else {
+        //     return true;
+        //   }
+        // }
+        // bidEntryBoardは降順（最高価格が最初）
+        for (&bid_price, _) in self.bid_entry_board.iter().rev() {
+            if bid_price < limit_price {
+                return false;
+            } else {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if a buy order can match against asks (Java版のcheckMeetingAsk()と同じロジック)
+    pub fn check_meeting_ask(&self, limit_price: i64) -> bool {
+        // Java版: for (Entry<Long, Long> ent : askEntryBoard.entrySet()) {
+        //   if (ent.getKey() > order.getOrderPx().getLongPx()) {
+        //     return false;
+        //   } else {
+        //     return true;
+        //   }
+        // }
+        // askEntryBoardは昇順（最低価格が最初）
+        for (&ask_price, _) in self.ask_entry_board.iter() {
+            if ask_price > limit_price {
+                return false;
+            } else {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn add_order(&mut self, order: &crate::order::Order) {
         let price = order.get_raw_price();
         let qty = order.get_raw_quantity();
@@ -101,14 +141,16 @@ impl MarketBoard {
                     .entry(price)
                     .or_insert_with(Vec::new)
                     .push(entry);
-                *self.bid_entry_board.entry(price).or_insert(0) += qty;
+                // Use leaves_qty instead of qty to match clear_market_maker_orders() logic
+                *self.bid_entry_board.entry(price).or_insert(0) += order.leaves_qty as i64;
             }
             crate::models::Side::Sell => {
                 self.ask_order_board
                     .entry(price)
                     .or_insert_with(Vec::new)
                     .push(entry);
-                *self.ask_entry_board.entry(price).or_insert(0) += qty;
+                // Use leaves_qty instead of qty to match clear_market_maker_orders() logic
+                *self.ask_entry_board.entry(price).or_insert(0) += order.leaves_qty as i64;
             }
         }
 
@@ -355,6 +397,45 @@ impl MarketBoard {
             self.bid_order_board.len(),
             self.ask_order_board.len()
         );
+        
+        // Debug: Log ask_entry_board contents after clearing
+        if !self.ask_entry_board.is_empty() {
+            let ask_prices: Vec<String> = self.ask_entry_board
+                .iter()
+                .take(5)
+                .map(|(price, qty)| format!("{}:{}", price, qty))
+                .collect();
+            tracing::debug!(
+                "MarketBoard {}: ask_entry_board after clear (top 5): {:?}",
+                self.symbol,
+                ask_prices
+            );
+        } else {
+            tracing::debug!(
+                "MarketBoard {}: ask_entry_board is empty after clear",
+                self.symbol
+            );
+        }
+        
+        // Debug: Log bid_entry_board contents after clearing
+        if !self.bid_entry_board.is_empty() {
+            let bid_prices: Vec<String> = self.bid_entry_board
+                .iter()
+                .rev()
+                .take(5)
+                .map(|(price, qty)| format!("{}:{}", price, qty))
+                .collect();
+            tracing::debug!(
+                "MarketBoard {}: bid_entry_board after clear (top 5): {:?}",
+                self.symbol,
+                bid_prices
+            );
+        } else {
+            tracing::debug!(
+                "MarketBoard {}: bid_entry_board is empty after clear",
+                self.symbol
+            );
+        }
     }
 
     /// Update external market data (from WebSocket)
