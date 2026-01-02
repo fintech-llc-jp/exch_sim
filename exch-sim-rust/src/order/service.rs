@@ -426,6 +426,191 @@ impl OrderService {
         }
     }
 
+    /// Process a market maker order (from external market data)
+    /// This method skips fund checks and position checks, and returns executions directly
+    pub async fn process_market_maker_order(
+        &self,
+        symbol: &str,
+        side: Side,
+        price: f64,
+        quantity: f64,
+    ) -> Result<Vec<Execution>> {
+        tracing::debug!(
+            "Processing market maker order: symbol={}, side={:?}, price={}, quantity={}",
+            symbol,
+            side,
+            price,
+            quantity
+        );
+
+        // Validate symbol
+        if !self.config.is_valid_symbol(symbol) {
+            return Err(anyhow::anyhow!("Invalid symbol: {}", symbol));
+        }
+
+        let instrument = self
+            .config
+            .get_instrument(symbol)
+            .ok_or_else(|| anyhow::anyhow!("Instrument not found: {}", symbol))?;
+
+        // Create market maker order
+        let mut order = Order::new(
+            "MARKET_MAKER".to_string(),
+            symbol.to_string(),
+            side,
+            OrdType::Limit,
+            Some(price),
+            quantity,
+            TimeInForce::Gtc,
+            true, // is_market_make = true
+            instrument.price_multiplier,
+            instrument.qty_multiplier,
+        );
+
+        // Generate cl_ord_id in MM_ format
+        order.cl_ord_id = format!("MM_{}", Uuid::new_v4());
+
+        // Get or create market board
+        let board = self
+            .market_board_manager
+            .get_or_create_board(symbol.to_string())
+            .await;
+
+        // Process order matching
+        let mut executions = Vec::new();
+        let mut board_lock = board.write().await;
+
+        // Check if order can match
+        let can_match = match side {
+            Side::Buy => {
+                if let Some((best_ask_price, _)) = board_lock.get_best_ask() {
+                    if let Some(limit_price) = order.raw_price {
+                        best_ask_price <= limit_price
+                    } else {
+                        false // Market maker orders are always limit orders
+                    }
+                } else {
+                    false
+                }
+            }
+            Side::Sell => {
+                if let Some((best_bid_price, _)) = board_lock.get_best_bid() {
+                    if let Some(limit_price) = order.raw_price {
+                        best_bid_price >= limit_price
+                    } else {
+                        false // Market maker orders are always limit orders
+                    }
+                } else {
+                    false
+                }
+            }
+        };
+
+        if can_match {
+            // Process matching
+            let matching_orders = board_lock.get_matching_orders(
+                side,
+                order.raw_price,
+                order.raw_leaves_qty,
+            );
+
+            for (counter_order_entry, exec_qty) in matching_orders {
+                // Create executions for both parties
+                let exec_id = Uuid::new_v4().to_string();
+                let exec_status = if order.raw_leaves_qty == exec_qty {
+                    ExecStatus::Filled
+                } else {
+                    ExecStatus::PartiallyFilled
+                };
+
+                let exec_price = counter_order_entry.price;
+
+                // Execution for the market maker order
+                let exec1 = Execution {
+                    exec_id: exec_id.clone(),
+                    order_id: order.cl_ord_id.clone(),
+                    cl_ord_id: order.cl_ord_id.clone(),
+                    username: "MARKET_MAKER".to_string(),
+                    symbol: symbol.to_string(),
+                    exec_status,
+                    last_px: exec_price,
+                    last_qty: exec_qty,
+                    counter_party_username: counter_order_entry.username.clone(),
+                    created_at: Utc::now(),
+                    is_market_maker: true,
+                    side: side.to_string(),
+                };
+
+                // Execution for the counter order (user order)
+                let exec2 = Execution {
+                    exec_id: Uuid::new_v4().to_string(),
+                    order_id: counter_order_entry.cl_ord_id.clone(),
+                    cl_ord_id: counter_order_entry.cl_ord_id.clone(),
+                    username: counter_order_entry.username.clone(),
+                    symbol: symbol.to_string(),
+                    exec_status: if counter_order_entry.leaves_qty == 0 {
+                        ExecStatus::Filled
+                    } else {
+                        ExecStatus::PartiallyFilled
+                    },
+                    last_px: exec_price,
+                    last_qty: exec_qty,
+                    counter_party_username: "MARKET_MAKER".to_string(),
+                    created_at: Utc::now(),
+                    is_market_maker: false, // User order is not market maker
+                    side: match counter_order_entry.side {
+                        Side::Buy => "BUY".to_string(),
+                        Side::Sell => "SELL".to_string(),
+                    },
+                };
+
+                order.update_execution(exec_qty, exec_price);
+                executions.push(exec1);
+                executions.push(exec2);
+            }
+
+            // Update order status
+            if order.raw_leaves_qty == 0 {
+                order.ord_status = OrdStatus::Filled;
+            } else {
+                order.ord_status = OrdStatus::PartiallyFilled;
+            }
+        }
+
+        // If order is not fully filled, add to board
+        if order.raw_leaves_qty > 0 {
+            board_lock.add_order(&order);
+        }
+
+        drop(board_lock);
+
+        // Save executions to database and process position updates
+        for exec in &executions {
+            if exec.exec_status == ExecStatus::Filled || exec.exec_status == ExecStatus::PartiallyFilled {
+                if let Err(e) = self.database.insert_execution(exec).await {
+                    error!("Failed to save execution: {}", e);
+                }
+
+                // Process position update
+                if let Err(e) = self.position_manager.process_execution(exec).await {
+                    error!("Failed to process execution for position: {}", e);
+                }
+            }
+        }
+
+        // Save order to map for cancellation (if not fully filled)
+        if order.ord_status != OrdStatus::Filled {
+            self.order_map.insert(order.cl_ord_id.clone(), order);
+        }
+
+        tracing::debug!(
+            "Market maker order processed: {} executions created",
+            executions.len()
+        );
+
+        Ok(executions)
+    }
+
     pub async fn get_order_list(
         &self,
         username: &str,

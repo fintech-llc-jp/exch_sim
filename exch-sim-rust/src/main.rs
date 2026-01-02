@@ -37,14 +37,20 @@ async fn main() -> Result<()> {
     info!("Connected to PostgreSQL: {}@{}", config.postgres.user, config.postgres.host);
 
     // Initialize services
-    let market_board_manager = market_board::manager::MarketBoardManager::new(config.clone());
+    // Create MarketBoardManager first (without OrderService)
+    let market_board_manager = Arc::new(market_board::manager::MarketBoardManager::new(config.clone()));
     let position_manager = Arc::new(position::manager::PositionManager::new(database.clone(), config.clone()));
+    
+    // Create OrderService (needs MarketBoardManager)
     let order_service = Arc::new(order::service::OrderService::new(
         database.clone(),
         market_board_manager.clone(),
         position_manager.clone(),
         config.clone(),
     ).await?);
+    
+    // Set OrderService to MarketBoardManager (now that it's created)
+    market_board_manager.set_order_service(order_service.clone()).await;
 
     // Initialize WebSocket clients
     let mut bitflyer_client = websocket::bitflyer::BitflyerWebSocketClient::new(

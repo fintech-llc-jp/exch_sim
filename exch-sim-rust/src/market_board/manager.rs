@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::market_board::board::MarketBoard;
+use crate::order::service::OrderService;
 use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -8,6 +9,7 @@ use tokio::sync::RwLock;
 pub struct MarketBoardManager {
     boards: Arc<DashMap<String, Arc<RwLock<MarketBoard>>>>,
     config: Arc<Config>,
+    order_service: Arc<tokio::sync::RwLock<Option<Arc<OrderService>>>>,
 }
 
 impl MarketBoardManager {
@@ -15,7 +17,13 @@ impl MarketBoardManager {
         Self {
             boards: Arc::new(DashMap::new()),
             config: Arc::new(config),
+            order_service: Arc::new(tokio::sync::RwLock::new(None)),
         }
+    }
+
+    pub async fn set_order_service(&self, order_service: Arc<OrderService>) {
+        let mut service = self.order_service.write().await;
+        *service = Some(order_service);
     }
 
     pub async fn get_or_create_board(&self, symbol: String) -> Arc<RwLock<MarketBoard>> {
@@ -48,10 +56,106 @@ impl MarketBoardManager {
         
         let board = self.get_or_create_board(symbol.clone()).await;
         
+        // Clear existing market maker orders first
         {
             let mut board_guard = board.write().await;
-            // Clear existing external market data and update with new snapshot
-            // Note: This only updates external market data, not internal orders
+            board_guard.clear_market_maker_orders();
+        }
+        
+        // Process each bid/ask level and create market maker orders
+        // This will trigger matching with existing user orders
+        let order_service_opt = self.order_service.read().await.clone();
+        if let Some(order_service) = order_service_opt {
+            tracing::debug!(
+                "Processing market maker orders for snapshot: symbol={}, {} bids, {} asks",
+                symbol,
+                bids.len(),
+                asks.len()
+            );
+            
+            // Process bids (market maker buy orders)
+            let mut bid_executions = 0;
+            for (price, qty) in bids.iter().take(10) {
+                if *qty > 0.0 {
+                    match order_service
+                        .process_market_maker_order(
+                            &symbol,
+                            crate::models::Side::Buy,
+                            *price,
+                            *qty,
+                        )
+                        .await
+                    {
+                        Ok(execs) => {
+                            bid_executions += execs.len();
+                            if !execs.is_empty() {
+                                tracing::info!(
+                                    "Market maker bid order matched: symbol={}, price={}, qty={}, executions={}",
+                                    symbol,
+                                    price,
+                                    qty,
+                                    execs.len()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to process market maker bid order: price={}, qty={}, error={}",
+                                price,
+                                qty,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            
+            // Process asks (market maker sell orders)
+            let mut ask_executions = 0;
+            for (price, qty) in asks.iter().take(10) {
+                if *qty > 0.0 {
+                    match order_service
+                        .process_market_maker_order(
+                            &symbol,
+                            crate::models::Side::Sell,
+                            *price,
+                            *qty,
+                        )
+                        .await
+                    {
+                        Ok(execs) => {
+                            ask_executions += execs.len();
+                            if !execs.is_empty() {
+                                tracing::info!(
+                                    "Market maker ask order matched: symbol={}, price={}, qty={}, executions={}",
+                                    symbol,
+                                    price,
+                                    qty,
+                                    execs.len()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to process market maker ask order: price={}, qty={}, error={}",
+                                price,
+                                qty,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            
+            tracing::debug!(
+                "Market maker snapshot processing completed: symbol={}, bid_executions={}, ask_executions={}",
+                symbol,
+                bid_executions,
+                ask_executions
+            );
+        } else {
+            // Fallback: if order_service is not set, use the old method
+            let mut board_guard = board.write().await;
             board_guard.update_external_market_data(bids, asks, price_multiplier, qty_multiplier);
         }
         
@@ -85,9 +189,125 @@ impl MarketBoardManager {
         
         let board = self.get_or_create_board(symbol.clone()).await;
         
-        {
+        // Process delta updates: remove orders with qty=0, update/add orders with qty>0
+        let order_service_opt = self.order_service.read().await.clone();
+        if let Some(order_service) = order_service_opt {
+            // First, clear existing market maker orders at price levels with qty=0
+            {
+                let mut board_guard = board.write().await;
+                for (price, qty) in bids.iter() {
+                    if *qty == 0.0 {
+                        let raw_price = (*price * price_multiplier) as i64;
+                        // Remove market maker buy orders at this price
+                        // This is handled by clear_market_maker_orders, but we need to remove specific price levels
+                        // For now, we'll use update_external_market_data_delta for qty=0 cases
+                    }
+                }
+                for (price, qty) in asks.iter() {
+                    if *qty == 0.0 {
+                        let raw_price = (*price * price_multiplier) as i64;
+                        // Remove market maker sell orders at this price
+                        // This is handled by clear_market_maker_orders, but we need to remove specific price levels
+                        // For now, we'll use update_external_market_data_delta for qty=0 cases
+                    }
+                }
+            }
+            
+            // Use update_external_market_data_delta to handle qty=0 removals
+            {
+                let mut board_guard = board.write().await;
+                board_guard.update_external_market_data_delta(bids.clone(), asks.clone(), price_multiplier, qty_multiplier);
+            }
+            
+            // Then process orders with qty>0 (this will trigger matching)
+            tracing::debug!(
+                "Processing market maker orders for delta: symbol={}, {} bids, {} asks",
+                symbol,
+                bids.len(),
+                asks.len()
+            );
+            
+            let mut bid_executions = 0;
+            for (price, qty) in bids.iter() {
+                if *qty > 0.0 {
+                    match order_service
+                        .process_market_maker_order(
+                            &symbol,
+                            crate::models::Side::Buy,
+                            *price,
+                            *qty,
+                        )
+                        .await
+                    {
+                        Ok(execs) => {
+                            bid_executions += execs.len();
+                            if !execs.is_empty() {
+                                tracing::info!(
+                                    "Market maker bid delta matched: symbol={}, price={}, qty={}, executions={}",
+                                    symbol,
+                                    price,
+                                    qty,
+                                    execs.len()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to process market maker bid delta: price={}, qty={}, error={}",
+                                price,
+                                qty,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            
+            let mut ask_executions = 0;
+            for (price, qty) in asks.iter() {
+                if *qty > 0.0 {
+                    match order_service
+                        .process_market_maker_order(
+                            &symbol,
+                            crate::models::Side::Sell,
+                            *price,
+                            *qty,
+                        )
+                        .await
+                    {
+                        Ok(execs) => {
+                            ask_executions += execs.len();
+                            if !execs.is_empty() {
+                                tracing::info!(
+                                    "Market maker ask delta matched: symbol={}, price={}, qty={}, executions={}",
+                                    symbol,
+                                    price,
+                                    qty,
+                                    execs.len()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to process market maker ask delta: price={}, qty={}, error={}",
+                                price,
+                                qty,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            
+            tracing::debug!(
+                "Market maker delta processing completed: symbol={}, bid_executions={}, ask_executions={}",
+                symbol,
+                bid_executions,
+                ask_executions
+            );
+        } else {
+            // Fallback: if order_service is not set, use the old method
             let mut board_guard = board.write().await;
-            // Apply delta updates to external market data
             board_guard.update_external_market_data_delta(bids, asks, price_multiplier, qty_multiplier);
         }
         
