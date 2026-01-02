@@ -41,6 +41,7 @@ pub async fn cancel_order(
     Json(request): Json<CancelOrderRequest>,
 ) -> Result<Json<crate::models::OrderResponse>, (StatusCode, Json<ErrorResponse>)> {
     let username = &auth_state.username;
+    tracing::debug!("Cancel order request: cl_ord_id={}, symbol={}", request.cl_ord_id, request.symbol);
 
     state
         .order_service
