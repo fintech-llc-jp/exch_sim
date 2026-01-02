@@ -33,16 +33,15 @@ impl DatabaseTrait for DatabaseImpl {
         sqlx::query(
             r#"
             INSERT INTO executions (
-                exec_id, order_id, cl_ord_id, username, symbol, exec_status,
+                exec_id, order_id, username, symbol, exec_status,
                 last_px, last_qty, counter_party_username, created_at,
                 is_market_maker, side
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (exec_id) DO NOTHING
             "#,
         )
         .bind(&execution.exec_id)
         .bind(&execution.order_id)
-        .bind(&execution.cl_ord_id)
         .bind(&execution.username)
         .bind(&execution.symbol)
         .bind(execution.exec_status.to_string())
@@ -65,7 +64,7 @@ impl DatabaseTrait for DatabaseImpl {
         let rows = sqlx::query(
             r#"
             SELECT
-                exec_id, order_id, cl_ord_id, username, symbol, exec_status,
+                exec_id, order_id, username, symbol, exec_status,
                 last_px, last_qty, counter_party_username, created_at::timestamptz as created_at,
                 is_market_maker, side
             FROM executions
@@ -92,10 +91,11 @@ impl DatabaseTrait for DatabaseImpl {
                     _ => crate::models::ExecStatus::New,
                 };
 
+                let order_id: String = row.get("order_id");
                 Execution {
                     exec_id: row.get("exec_id"),
-                    order_id: row.get("order_id"),
-                    cl_ord_id: row.try_get::<Option<String>, _>("cl_ord_id").unwrap_or(None).unwrap_or_default(),
+                    order_id: order_id.clone(),
+                    cl_ord_id: order_id, // order_idにcl_ord_idの値が格納されている（Java版と同じ）
                     username: row.get("username"),
                     symbol: row.get("symbol"),
                     exec_status,
@@ -125,7 +125,7 @@ impl DatabaseTrait for DatabaseImpl {
             sqlx::query(
                 r#"
                 SELECT
-                    exec_id, order_id, COALESCE(cl_ord_id, '') as cl_ord_id, username, symbol, exec_status,
+                    exec_id, order_id, username, symbol, exec_status,
                     last_px, last_qty, counter_party_username, created_at::timestamptz as created_at,
                     is_market_maker, side
                 FROM executions
@@ -142,7 +142,7 @@ impl DatabaseTrait for DatabaseImpl {
             sqlx::query(
                 r#"
                 SELECT
-                    exec_id, order_id, COALESCE(cl_ord_id, '') as cl_ord_id, username, symbol, exec_status,
+                    exec_id, order_id, username, symbol, exec_status,
                     last_px, last_qty, counter_party_username, created_at::timestamptz as created_at,
                     is_market_maker, side
                 FROM executions
@@ -175,10 +175,11 @@ impl DatabaseTrait for DatabaseImpl {
                     _ => crate::models::ExecStatus::New,
                 };
 
+                let order_id: String = row.get("order_id");
                 Execution {
                     exec_id: row.get("exec_id"),
-                    order_id: row.get("order_id"),
-                    cl_ord_id: row.try_get::<Option<String>, _>("cl_ord_id").unwrap_or(None).unwrap_or_default(),
+                    order_id: order_id.clone(),
+                    cl_ord_id: order_id, // order_idにcl_ord_idの値が格納されている（Java版と同じ）
                     username: row.get("username"),
                     symbol: row.get("symbol"),
                     exec_status,
@@ -236,7 +237,7 @@ impl DatabaseTrait for DatabaseImpl {
         let rows = sqlx::query(
             r#"
             SELECT
-                exec_id, order_id, cl_ord_id, username, symbol, exec_status,
+                exec_id, order_id, username, symbol, exec_status,
                 last_px, last_qty, counter_party_username, created_at::timestamptz as created_at,
                 is_market_maker, side
             FROM executions
@@ -266,10 +267,11 @@ impl DatabaseTrait for DatabaseImpl {
                     _ => crate::models::ExecStatus::New,
                 };
 
+                let order_id: String = row.get("order_id");
                 Execution {
                     exec_id: row.get("exec_id"),
-                    order_id: row.get("order_id"),
-                    cl_ord_id: row.try_get::<Option<String>, _>("cl_ord_id").unwrap_or(None).unwrap_or_default(),
+                    order_id: order_id.clone(),
+                    cl_ord_id: order_id, // order_idにcl_ord_idの値が格納されている（Java版と同じ）
                     username: row.get("username"),
                     symbol: row.get("symbol"),
                     exec_status,
@@ -753,10 +755,11 @@ impl DatabaseTrait for DatabaseImpl {
 impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for Execution {
     fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
         use sqlx::Row;
+        let order_id: String = row.get("order_id");
         Ok(Execution {
             exec_id: row.get("exec_id"),
-            order_id: row.get("order_id"),
-            cl_ord_id: row.get("cl_ord_id"),
+            order_id: order_id.clone(),
+            cl_ord_id: order_id, // order_idにcl_ord_idの値が格納されている（Java版と同じ）
             username: row.get("username"),
             symbol: row.get("symbol"),
             exec_status: parse_exec_status(row.get::<String, _>("exec_status")),

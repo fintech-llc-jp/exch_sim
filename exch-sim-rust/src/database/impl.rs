@@ -33,16 +33,15 @@ impl DatabaseTrait for DatabaseImpl {
         sqlx::query(
             r#"
             INSERT INTO executions (
-                exec_id, order_id, cl_ord_id, username, symbol, exec_status,
+                exec_id, order_id, username, symbol, exec_status,
                 last_px, last_qty, counter_party_username, created_at,
                 is_market_maker, side
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (exec_id) DO NOTHING
             "#,
         )
         .bind(&execution.exec_id)
         .bind(&execution.order_id)
-        .bind(&execution.cl_ord_id)
         .bind(&execution.username)
         .bind(&execution.symbol)
         .bind(execution.exec_status.to_string())
@@ -70,10 +69,10 @@ impl DatabaseTrait for DatabaseImpl {
         &self,
         from_time: DateTime<Utc>,
     ) -> Result<Vec<Execution>> {
-        let executions = sqlx::query_as::<_, Execution>(
+        let rows = sqlx::query(
             r#"
             SELECT
-                exec_id, order_id, cl_ord_id, username, symbol, exec_status,
+                exec_id, order_id, username, symbol, exec_status,
                 last_px, last_qty, counter_party_username, created_at,
                 is_market_maker, side
             FROM executions
@@ -85,6 +84,38 @@ impl DatabaseTrait for DatabaseImpl {
         .fetch_all(&*self.pool)
         .await
         .context("Failed to query recent executions")?;
+
+        use sqlx::Row;
+        let executions: Vec<Execution> = rows
+            .into_iter()
+            .map(|row| {
+                let exec_status_str: String = row.get("exec_status");
+                let exec_status = match exec_status_str.as_str() {
+                    "NEW" => crate::models::ExecStatus::New,
+                    "PARTIAL_FILL" | "PARTIALLY_FILLED" => crate::models::ExecStatus::PartiallyFilled,
+                    "FILLED" => crate::models::ExecStatus::Filled,
+                    "CANCELED" => crate::models::ExecStatus::Canceled,
+                    "REJECTED" => crate::models::ExecStatus::Rejected,
+                    _ => crate::models::ExecStatus::New,
+                };
+
+                let order_id: String = row.get("order_id");
+                Execution {
+                    exec_id: row.get("exec_id"),
+                    order_id: order_id.clone(),
+                    cl_ord_id: order_id, // order_idにcl_ord_idの値が格納されている（Java版と同じ）
+                    username: row.get("username"),
+                    symbol: row.get("symbol"),
+                    exec_status,
+                    last_px: row.get("last_px"),
+                    last_qty: row.get("last_qty"),
+                    counter_party_username: row.get("counter_party_username"),
+                    created_at: row.get("created_at"),
+                    is_market_maker: row.get("is_market_maker"),
+                    side: row.get("side"),
+                }
+            })
+            .collect();
         Ok(executions)
     }
 
