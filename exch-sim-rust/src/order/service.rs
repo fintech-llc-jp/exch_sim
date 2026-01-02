@@ -312,12 +312,34 @@ impl OrderService {
         for exec in &executions {
             if exec.exec_status == ExecStatus::Filled || exec.exec_status == ExecStatus::PartiallyFilled {
                 if let Err(e) = self.database.insert_execution(exec).await {
-                    error!("Failed to save execution: {}", e);
+                    error!(
+                        "Failed to save execution to database: exec_id={}, order_id={}, cl_ord_id={}, username={}, symbol={}, exec_status={:?}, last_px={}, last_qty={}, counter_party={}, is_market_maker={}, side={}, error={:?}",
+                        exec.exec_id,
+                        exec.order_id,
+                        exec.cl_ord_id,
+                        exec.username,
+                        exec.symbol,
+                        exec.exec_status,
+                        exec.last_px,
+                        exec.last_qty,
+                        exec.counter_party_username,
+                        exec.is_market_maker,
+                        exec.side,
+                        e
+                    );
                 }
 
                 // Process position update
                 if let Err(e) = self.position_manager.process_execution(exec).await {
-                    error!("Failed to process execution for position: {}", e);
+                    error!(
+                        "Failed to process execution for position: exec_id={}, username={}, symbol={}, last_px={}, last_qty={}, error={:?}",
+                        exec.exec_id,
+                        exec.username,
+                        exec.symbol,
+                        exec.last_px,
+                        exec.last_qty,
+                        e
+                    );
                 }
             }
         }
@@ -634,12 +656,34 @@ impl OrderService {
         for exec in &executions {
             if exec.exec_status == ExecStatus::Filled || exec.exec_status == ExecStatus::PartiallyFilled {
                 if let Err(e) = self.database.insert_execution(exec).await {
-                    error!("Failed to save execution: {}", e);
+                    error!(
+                        "Failed to save execution to database (market maker order): exec_id={}, order_id={}, cl_ord_id={}, username={}, symbol={}, exec_status={:?}, last_px={}, last_qty={}, counter_party={}, is_market_maker={}, side={}, error={:?}",
+                        exec.exec_id,
+                        exec.order_id,
+                        exec.cl_ord_id,
+                        exec.username,
+                        exec.symbol,
+                        exec.exec_status,
+                        exec.last_px,
+                        exec.last_qty,
+                        exec.counter_party_username,
+                        exec.is_market_maker,
+                        exec.side,
+                        e
+                    );
                 }
 
                 // Process position update
                 if let Err(e) = self.position_manager.process_execution(exec).await {
-                    error!("Failed to process execution for position: {}", e);
+                    error!(
+                        "Failed to process execution for position (market maker order): exec_id={}, username={}, symbol={}, last_px={}, last_qty={}, error={:?}",
+                        exec.exec_id,
+                        exec.username,
+                        exec.symbol,
+                        exec.last_px,
+                        exec.last_qty,
+                        e
+                    );
                 }
             }
         }

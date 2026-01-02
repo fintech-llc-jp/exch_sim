@@ -250,6 +250,9 @@ impl MarketBoard {
                     }
 
                     if let Some(orders) = self.ask_order_board.get_mut(&ask_price) {
+                        // Collect cl_ord_ids of orders that will be fully filled
+                        let mut filled_cl_ord_ids = Vec::new();
+                        
                         for order in orders.iter_mut() {
                             if remaining_qty <= 0 {
                                 break;
@@ -263,13 +266,27 @@ impl MarketBoard {
 
                             if order.leaves_qty == 0 {
                                 order.ord_status = crate::models::OrdStatus::Filled;
+                                filled_cl_ord_ids.push(order.cl_ord_id.clone());
                             } else {
                                 order.ord_status = crate::models::OrdStatus::PartiallyFilled;
                             }
+                            
+                            // Update order_map with the updated OrderEntry (Java版ではorderMapは直接更新される)
+                            if let Some(order_entry) = self.order_map.get_mut(&order.cl_ord_id) {
+                                order_entry.leaves_qty = order.leaves_qty;
+                                order_entry.cum_qty = order.cum_qty;
+                                order_entry.ord_status = order.ord_status;
+                            }
                         }
 
-                        // Remove filled orders
+                        // Remove filled orders from board (Java版の322-326行目に相当)
                         orders.retain(|o| o.leaves_qty > 0);
+                        
+                        // Remove filled orders from order_map (Java版の325行目に相当)
+                        for cl_ord_id in filled_cl_ord_ids {
+                            self.order_map.remove(&cl_ord_id);
+                        }
+                        
                         if orders.is_empty() {
                             self.ask_order_board.remove(&ask_price);
                             self.ask_entry_board.remove(&ask_price);
@@ -296,6 +313,9 @@ impl MarketBoard {
                     }
 
                     if let Some(orders) = self.bid_order_board.get_mut(&bid_price) {
+                        // Collect cl_ord_ids of orders that will be fully filled
+                        let mut filled_cl_ord_ids = Vec::new();
+                        
                         for order in orders.iter_mut() {
                             if remaining_qty <= 0 {
                                 break;
@@ -309,13 +329,27 @@ impl MarketBoard {
 
                             if order.leaves_qty == 0 {
                                 order.ord_status = crate::models::OrdStatus::Filled;
+                                filled_cl_ord_ids.push(order.cl_ord_id.clone());
                             } else {
                                 order.ord_status = crate::models::OrdStatus::PartiallyFilled;
                             }
+                            
+                            // Update order_map with the updated OrderEntry (Java版ではorderMapは直接更新される)
+                            if let Some(order_entry) = self.order_map.get_mut(&order.cl_ord_id) {
+                                order_entry.leaves_qty = order.leaves_qty;
+                                order_entry.cum_qty = order.cum_qty;
+                                order_entry.ord_status = order.ord_status;
+                            }
                         }
 
-                        // Remove filled orders
+                        // Remove filled orders from board (Java版の322-326行目に相当)
                         orders.retain(|o| o.leaves_qty > 0);
+                        
+                        // Remove filled orders from order_map (Java版の325行目に相当)
+                        for cl_ord_id in filled_cl_ord_ids {
+                            self.order_map.remove(&cl_ord_id);
+                        }
+                        
                         if orders.is_empty() {
                             self.bid_order_board.remove(&bid_price);
                             self.bid_entry_board.remove(&bid_price);
@@ -1468,6 +1502,142 @@ mod tests {
         // ただし、このテストでは、get_matching_ordersが既に実行されているので、
         // 板の状態を直接確認する必要がある
         // 実際の実装では、process_new_order()で部分約定した注文が板に追加される
+    }
+
+    #[test]
+    fn test_filled_order_removed_from_order_map() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        
+        // Step 1: 売り注文（100）を板に追加
+        let sell_order = create_test_order(
+            "user1".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            100.0,
+            0.001,
+        );
+        let sell_cl_ord_id = sell_order.cl_ord_id.clone();
+        board.add_order(&sell_order);
+        let sell_price = sell_order.get_raw_price();
+        let sell_qty = sell_order.get_raw_quantity();
+        
+        // 売り注文がorder_mapに追加されたことを確認
+        assert!(board.get_order(&sell_cl_ord_id).is_some(), "Sell order should be in order_map");
+        assert_eq!(board.get_user_orders("user1").len(), 1, "user1 should have 1 order");
+        
+        // Step 2: 買い注文（101）が入る → 既存の売り注文（100）と完全約定
+        let buy_order = create_test_order(
+            "user2".to_string(),
+            "BTCJPY".to_string(),
+            Side::Buy,
+            101.0,
+            0.001,
+        );
+        let buy_qty = buy_order.get_raw_quantity();
+        
+        // get_matching_ordersでマッチングを実行
+        let matching_orders = board.get_matching_orders(
+            Side::Buy,
+            Some(buy_order.get_raw_price()),
+            buy_qty,
+        );
+        
+        // マッチングが実行されることを確認
+        assert!(!matching_orders.is_empty(), "Matching should occur");
+        assert_eq!(matching_orders[0].1, sell_qty, "Full execution should occur");
+        
+        // Step 3: 約定した売り注文がorder_mapから削除されることを確認（Java版の325行目に相当）
+        assert!(
+            board.get_order(&sell_cl_ord_id).is_none(),
+            "Filled sell order should be removed from order_map"
+        );
+        assert_eq!(
+            board.get_user_orders("user1").len(),
+            0,
+            "user1 should have no orders after fill"
+        );
+        
+        // 売り注文が板からも削除されることを確認
+        assert!(
+            !board.has_ask_order_at_price(sell_price),
+            "Filled sell order should be removed from ask_order_board"
+        );
+        assert_eq!(
+            board.get_ask_entry_qty(sell_price),
+            None,
+            "Filled sell order should be removed from ask_entry_board"
+        );
+    }
+
+    #[test]
+    fn test_partially_filled_order_remains_in_order_map() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        
+        // Step 1: 売り注文（100、数量0.002）を板に追加
+        let sell_order = create_test_order(
+            "user1".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            100.0,
+            0.002,
+        );
+        let sell_cl_ord_id = sell_order.cl_ord_id.clone();
+        board.add_order(&sell_order);
+        let sell_price = sell_order.get_raw_price();
+        let sell_qty = sell_order.get_raw_quantity();
+        
+        // 売り注文がorder_mapに追加されたことを確認
+        assert!(board.get_order(&sell_cl_ord_id).is_some(), "Sell order should be in order_map");
+        
+        // Step 2: 買い注文（101、数量0.001）が入る → 部分約定
+        let buy_order = create_test_order(
+            "user2".to_string(),
+            "BTCJPY".to_string(),
+            Side::Buy,
+            101.0,
+            0.001,
+        );
+        let buy_qty = buy_order.get_raw_quantity();
+        
+        // get_matching_ordersでマッチングを実行
+        let matching_orders = board.get_matching_orders(
+            Side::Buy,
+            Some(buy_order.get_raw_price()),
+            buy_qty,
+        );
+        
+        // マッチングが実行されることを確認
+        assert!(!matching_orders.is_empty(), "Matching should occur");
+        assert_eq!(matching_orders[0].1, buy_qty, "Partial execution should occur");
+        
+        // Step 3: 部分約定した売り注文がorder_mapに残ることを確認
+        let order_entry = board.get_order(&sell_cl_ord_id);
+        assert!(
+            order_entry.is_some(),
+            "Partially filled sell order should remain in order_map"
+        );
+        let entry = order_entry.unwrap();
+        assert_eq!(
+            entry.leaves_qty,
+            sell_qty - buy_qty,
+            "Remaining quantity should be correct"
+        );
+        assert_eq!(
+            entry.ord_status,
+            crate::models::OrdStatus::PartiallyFilled,
+            "Order status should be PartiallyFilled"
+        );
+        
+        // 売り注文が板にも残ることを確認
+        assert!(
+            board.has_ask_order_at_price(sell_price),
+            "Partially filled sell order should remain in ask_order_board"
+        );
+        assert_eq!(
+            board.get_ask_entry_qty(sell_price),
+            Some(sell_qty - buy_qty),
+            "Partially filled sell order should remain in ask_entry_board with correct quantity"
+        );
     }
 }
 

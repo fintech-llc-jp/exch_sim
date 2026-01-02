@@ -54,7 +54,15 @@ impl DatabaseTrait for DatabaseImpl {
         .bind(&execution.side)
         .execute(&*self.pool)
         .await
-        .context("Failed to insert execution")?;
+        .with_context(|| format!(
+            "Failed to insert execution: exec_id={}, username={}, symbol={}, exec_status={:?}, last_px={}, last_qty={}",
+            execution.exec_id,
+            execution.username,
+            execution.symbol,
+            execution.exec_status,
+            execution.last_px,
+            execution.last_qty
+        ))?;
         Ok(())
     }
 
