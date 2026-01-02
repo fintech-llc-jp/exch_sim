@@ -14,10 +14,13 @@ use crate::position::manager::PositionManager;
 use axum::{
     extract::Extension,
     middleware,
+    response::Json,
     routing::{get, post},
     Router,
 };
+use serde::Serialize;
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -28,11 +31,32 @@ pub struct AppState {
     pub market_board_manager: MarketBoardManager,
 }
 
+#[derive(Serialize)]
+struct HealthResponse {
+    status: String,
+    message: String,
+}
+
+async fn health_check() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "ok".to_string(),
+        message: "ExchSim Rust API is running".to_string(),
+    })
+}
+
 pub async fn create_app(state: AppState) -> Result<Router, anyhow::Error> {
     let jwt_service = Arc::new(crate::auth::JwtService::new(&state.config)?);
 
+    // CORS設定
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     // Public routes (no authentication required)
     let public_routes = Router::new()
+        .route("/", get(health_check))
+        .route("/api/health", get(health_check))
         .route("/api/auth/signup", post(auth::signup))
         .route("/api/auth/login", post(auth::login))
         .layer(Extension(jwt_service.clone()));
@@ -58,6 +82,7 @@ pub async fn create_app(state: AppState) -> Result<Router, anyhow::Error> {
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
+        .layer(cors)
         .layer(Extension(state));
 
     Ok(app)
