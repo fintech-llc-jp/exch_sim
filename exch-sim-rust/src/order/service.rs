@@ -588,6 +588,39 @@ impl OrderService {
         // If order is not fully filled, add to board
         if order.raw_leaves_qty > 0 {
             board_lock.add_order(&order);
+            tracing::debug!(
+                "Market maker order added to board: symbol={}, side={:?}, price={}, leaves_qty={}, ask_entry_board updated",
+                symbol,
+                side,
+                order.raw_price.unwrap_or(0),
+                order.raw_leaves_qty
+            );
+            
+            // Verify that entry_board was updated correctly
+            if let Some(limit_price) = order.raw_price {
+                match side {
+                    Side::Buy => {
+                        let qty = board_lock.get_bid_entry_qty(limit_price);
+                        if qty.is_some() {
+                            tracing::debug!(
+                                "Market maker BUY order board update verified: price={}, qty={}",
+                                limit_price,
+                                qty.unwrap()
+                            );
+                        }
+                    }
+                    Side::Sell => {
+                        let qty = board_lock.get_ask_entry_qty(limit_price);
+                        if qty.is_some() {
+                            tracing::debug!(
+                                "Market maker SELL order board update verified: price={}, qty={}",
+                                limit_price,
+                                qty.unwrap()
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         drop(board_lock);

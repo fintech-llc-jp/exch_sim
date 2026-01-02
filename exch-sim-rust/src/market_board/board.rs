@@ -121,15 +121,16 @@ impl MarketBoard {
 
     pub fn add_order(&mut self, order: &crate::order::Order) {
         let price = order.get_raw_price();
-        let qty = order.get_raw_quantity();
+        let qty = order.get_raw_quantity(); // Java版のaddOrderToBoard()と同じく、元の数量を使用
+        let leaves_qty = order.get_raw_leaves_qty(); // Use raw_leaves_qty (already multiplied)
         let entry = OrderEntry {
             cl_ord_id: order.cl_ord_id.clone(),
             username: order.username.clone(),
             side: order.side,
             price,
             quantity: qty,
-            leaves_qty: order.leaves_qty as i64,
-            cum_qty: order.cum_qty as i64,
+            leaves_qty, // Use raw_leaves_qty (already multiplied)
+            cum_qty: order.raw_cum_qty,
             ord_status: order.ord_status,
         };
 
@@ -141,16 +142,34 @@ impl MarketBoard {
                     .entry(price)
                     .or_insert_with(Vec::new)
                     .push(entry);
-                // Use leaves_qty instead of qty to match clear_market_maker_orders() logic
-                *self.bid_entry_board.entry(price).or_insert(0) += order.leaves_qty as i64;
+                // Java版のaddOrderToBoard()と同じく、orderQty（元の数量）を使用
+                *self.bid_entry_board.entry(price).or_insert(0) += qty;
+                tracing::debug!(
+                    "MarketBoard {}: Added BUY order to board - cl_ord_id={}, price={}, qty={}, bid_entry_board[{}]={}",
+                    self.symbol,
+                    order.cl_ord_id,
+                    price,
+                    qty,
+                    price,
+                    self.bid_entry_board.get(&price).unwrap_or(&0)
+                );
             }
             crate::models::Side::Sell => {
                 self.ask_order_board
                     .entry(price)
                     .or_insert_with(Vec::new)
                     .push(entry);
-                // Use leaves_qty instead of qty to match clear_market_maker_orders() logic
-                *self.ask_entry_board.entry(price).or_insert(0) += order.leaves_qty as i64;
+                // Java版のaddOrderToBoard()と同じく、orderQty（元の数量）を使用
+                *self.ask_entry_board.entry(price).or_insert(0) += qty;
+                tracing::debug!(
+                    "MarketBoard {}: Added SELL order to board - cl_ord_id={}, price={}, qty={}, ask_entry_board[{}]={}",
+                    self.symbol,
+                    order.cl_ord_id,
+                    price,
+                    qty,
+                    price,
+                    self.ask_entry_board.get(&price).unwrap_or(&0)
+                );
             }
         }
 
@@ -373,6 +392,42 @@ impl MarketBoard {
         self.ask_entry_board.len()
     }
 
+    /// Get quantity for a specific price in ask_entry_board (for testing)
+    #[cfg(test)]
+    pub fn get_ask_entry_qty(&self, price: i64) -> Option<i64> {
+        self.ask_entry_board.get(&price).copied()
+    }
+
+    /// Get quantity for a specific price in bid_entry_board (for testing)
+    #[cfg(test)]
+    pub fn get_bid_entry_qty(&self, price: i64) -> Option<i64> {
+        self.bid_entry_board.get(&price).copied()
+    }
+
+    /// Check if ask_order_board contains price (for testing)
+    #[cfg(test)]
+    pub fn has_ask_order_at_price(&self, price: i64) -> bool {
+        self.ask_order_board.contains_key(&price)
+    }
+
+    /// Check if bid_order_board contains price (for testing)
+    #[cfg(test)]
+    pub fn has_bid_order_at_price(&self, price: i64) -> bool {
+        self.bid_order_board.contains_key(&price)
+    }
+
+    /// Get number of orders at price in ask_order_board (for testing)
+    #[cfg(test)]
+    pub fn get_ask_order_count_at_price(&self, price: i64) -> usize {
+        self.ask_order_board.get(&price).map(|v| v.len()).unwrap_or(0)
+    }
+
+    /// Get number of orders at price in bid_order_board (for testing)
+    #[cfg(test)]
+    pub fn get_bid_order_count_at_price(&self, price: i64) -> usize {
+        self.bid_order_board.get(&price).map(|v| v.len()).unwrap_or(0)
+    }
+
     /// Clear market maker orders (external market data) while preserving user orders
     /// This is equivalent to Java's clearBids() and clearAsks()
     pub fn clear_market_maker_orders(&mut self) {
@@ -408,6 +463,20 @@ impl MarketBoard {
             let total_qty: i64 = orders.iter().map(|o| o.leaves_qty).sum();
             if total_qty > 0 {
                 self.ask_entry_board.insert(*price, total_qty);
+                tracing::debug!(
+                    "MarketBoard {}: Rebuilt ask_entry_board - price={}, total_qty={}, orders_count={}",
+                    self.symbol,
+                    price,
+                    total_qty,
+                    orders.len()
+                );
+            } else {
+                tracing::debug!(
+                    "MarketBoard {}: Skipping ask_entry_board rebuild for price={} (total_qty=0), orders_count={}",
+                    self.symbol,
+                    price,
+                    orders.len()
+                );
             }
         }
 
@@ -722,6 +791,332 @@ impl MarketBoard {
             .values()
             .filter(|entry| entry.username == username)
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{OrdStatus, OrdType, Side, TimeInForce};
+    use crate::order::Order;
+
+    fn create_test_order(
+        username: String,
+        symbol: String,
+        side: Side,
+        price: f64,
+        quantity: f64,
+    ) -> Order {
+        Order::new(
+            username,
+            symbol,
+            side,
+            OrdType::Limit,
+            Some(price),
+            quantity,
+            TimeInForce::Gtc,
+            false, // is_market_make = false for user orders
+            1_000_000, // price_multiplier
+            1000,      // qty_multiplier
+        )
+    }
+
+    fn create_market_maker_order(
+        symbol: String,
+        side: Side,
+        price: f64,
+        quantity: f64,
+    ) -> Order {
+        Order::new(
+            "MARKET_MAKER".to_string(),
+            symbol,
+            side,
+            OrdType::Limit,
+            Some(price),
+            quantity,
+            TimeInForce::Gtc,
+            true, // is_market_make = true
+            1_000_000, // price_multiplier
+            1000,      // qty_multiplier
+        )
+    }
+
+    #[test]
+    fn test_add_order_sell_updates_ask_entry_board() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        let order = create_test_order(
+            "testuser".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_027_976.0,
+            0.001,
+        );
+
+        board.add_order(&order);
+
+        // Check that order is in ask_order_board
+        let price = order.get_raw_price();
+        assert!(board.has_ask_order_at_price(price));
+        assert_eq!(board.get_ask_order_count_at_price(price), 1);
+
+        // Check that ask_entry_board has correct quantity (using raw_quantity, not leaves_qty)
+        let expected_qty = order.get_raw_quantity();
+        assert_eq!(
+            board.get_ask_entry_qty(price),
+            Some(expected_qty),
+            "ask_entry_board should contain the order's raw_quantity"
+        );
+    }
+
+    #[test]
+    fn test_add_order_buy_updates_bid_entry_board() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        let order = create_test_order(
+            "testuser".to_string(),
+            "BTCJPY".to_string(),
+            Side::Buy,
+            14_000_000.0,
+            0.001,
+        );
+
+        board.add_order(&order);
+
+        // Check that order is in bid_order_board
+        let price = order.get_raw_price();
+        assert!(board.has_bid_order_at_price(price));
+        assert_eq!(board.get_bid_order_count_at_price(price), 1);
+
+        // Check that bid_entry_board has correct quantity (using raw_quantity, not leaves_qty)
+        let expected_qty = order.get_raw_quantity();
+        assert_eq!(
+            board.get_bid_entry_qty(price),
+            Some(expected_qty),
+            "bid_entry_board should contain the order's raw_quantity"
+        );
+    }
+
+    #[test]
+    fn test_add_order_multiple_orders_same_price() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        let order1 = create_test_order(
+            "user1".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_027_976.0,
+            0.001,
+        );
+        let order2 = create_test_order(
+            "user2".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_027_976.0,
+            0.002,
+        );
+
+        board.add_order(&order1);
+        board.add_order(&order2);
+
+        let price = order1.get_raw_price();
+        // Check that both orders are in ask_order_board
+        assert_eq!(board.get_ask_order_count_at_price(price), 2);
+
+        // Check that ask_entry_board has sum of both quantities
+        let expected_qty = order1.get_raw_quantity() + order2.get_raw_quantity();
+        assert_eq!(
+            board.get_ask_entry_qty(price),
+            Some(expected_qty),
+            "ask_entry_board should contain the sum of both orders' raw_quantity"
+        );
+    }
+
+    #[test]
+    fn test_clear_market_maker_orders_preserves_user_orders() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        
+        // Add user order
+        let user_order = create_test_order(
+            "testuser".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_027_976.0,
+            0.001,
+        );
+        board.add_order(&user_order);
+        let user_price = user_order.get_raw_price();
+
+        // Add market maker order
+        let mm_order = create_market_maker_order(
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_000_000.0,
+            0.001,
+        );
+        board.add_order(&mm_order);
+        let mm_price = mm_order.get_raw_price();
+
+        // Verify before clear: both orders should be in ask_entry_board
+        let user_qty_before = board.get_ask_entry_qty(user_price);
+        let mm_qty_before = board.get_ask_entry_qty(mm_price);
+        assert!(
+            user_qty_before.is_some(),
+            "User order should be in ask_entry_board before clear. user_price={}, qty={:?}",
+            user_price,
+            user_qty_before
+        );
+        assert!(
+            mm_qty_before.is_some(),
+            "Market maker order should be in ask_entry_board before clear. mm_price={}, qty={:?}",
+            mm_price,
+            mm_qty_before
+        );
+
+        // Clear market maker orders
+        board.clear_market_maker_orders();
+
+        // Check that user order is still in ask_order_board
+        assert!(
+            board.has_ask_order_at_price(user_price),
+            "User order should still be in ask_order_board after clear"
+        );
+        assert_eq!(board.get_ask_order_count_at_price(user_price), 1);
+
+        // Check that market maker order is removed
+        assert!(
+            !board.has_ask_order_at_price(mm_price),
+            "Market maker order should be removed from ask_order_board"
+        );
+
+        // Check that ask_entry_board has user order quantity (rebuilt with leaves_qty)
+        // clear_market_maker_orders() rebuilds entry_board using leaves_qty from ask_order_board
+        let user_qty_after = board.get_ask_entry_qty(user_price);
+        assert!(
+            user_qty_after.is_some() && user_qty_after.unwrap() > 0,
+            "ask_entry_board should contain user order's quantity after rebuild. user_price={}, qty={:?}, ask_order_board has order={}",
+            user_price,
+            user_qty_after,
+            board.has_ask_order_at_price(user_price)
+        );
+        assert!(
+            board.get_ask_entry_qty(mm_price).is_none(),
+            "Market maker order should be removed from ask_entry_board"
+        );
+    }
+
+    #[test]
+    fn test_clear_market_maker_orders_rebuilds_entry_board() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        
+        // Add user order
+        let user_order = create_test_order(
+            "testuser".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_027_976.0,
+            0.001,
+        );
+        board.add_order(&user_order);
+        let user_price = user_order.get_raw_price();
+
+        // Add market maker order at same price
+        let mm_order = create_market_maker_order(
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_027_976.0,
+            0.002,
+        );
+        board.add_order(&mm_order);
+
+        // Clear market maker orders
+        board.clear_market_maker_orders();
+
+        // Check that ask_entry_board is rebuilt with only user order's leaves_qty
+        // Note: clear_market_maker_orders() uses leaves_qty for rebuilding
+        let user_qty_after = board.get_ask_entry_qty(user_price);
+        assert!(
+            user_qty_after.is_some() && user_qty_after.unwrap() > 0,
+            "ask_entry_board should be rebuilt with user order's leaves_qty"
+        );
+    }
+
+    #[test]
+    fn test_get_snapshot_returns_non_zero_quantities() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        
+        // Add user order
+        let user_order = create_test_order(
+            "testuser".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_027_976.0,
+            0.001,
+        );
+        board.add_order(&user_order);
+
+        // Get snapshot
+        let (_bids, asks) = board.get_snapshot(10);
+
+        // Check that asks contain the user order with non-zero quantity
+        assert!(!asks.is_empty(), "asks should not be empty. asks={:?}", asks);
+        let user_raw_price = user_order.get_raw_price();
+        // get_snapshot returns prices as f64 (raw price as f64), so we compare directly
+        let ask = asks.iter().find(|a| (a.price as i64) == user_raw_price);
+        assert!(
+            ask.is_some(),
+            "User order should be in asks. user_raw_price={}, asks={:?}",
+            user_raw_price,
+            asks.iter().map(|a| a.price as i64).collect::<Vec<_>>()
+        );
+        let ask_qty = ask.unwrap().quantity;
+        assert!(ask_qty > 0.0, "Ask quantity should be greater than 0. qty={}", ask_qty);
+    }
+
+    #[test]
+    fn test_get_snapshot_returns_correct_prices_and_quantities() {
+        let mut board = MarketBoard::new("BTCJPY".to_string());
+        
+        // Add multiple orders at different prices
+        let order1 = create_test_order(
+            "user1".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_027_976.0,
+            0.001,
+        );
+        let order2 = create_test_order(
+            "user2".to_string(),
+            "BTCJPY".to_string(),
+            Side::Sell,
+            14_028_000.0,
+            0.002,
+        );
+        board.add_order(&order1);
+        board.add_order(&order2);
+
+        // Get snapshot
+        let (_bids, asks) = board.get_snapshot(10);
+
+        // Check that asks contain both orders
+        assert_eq!(asks.len(), 2, "asks should contain 2 orders");
+        
+        // Check prices and quantities
+        // get_snapshot returns prices as f64 (raw price as f64), so we compare directly
+        let ask1 = asks.iter().find(|a| (a.price as i64) == order1.get_raw_price());
+        assert!(
+            ask1.is_some(),
+            "Order1 should be in asks. order1_price={}, asks={:?}",
+            order1.get_raw_price(),
+            asks.iter().map(|a| a.price as i64).collect::<Vec<_>>()
+        );
+        assert!(ask1.unwrap().quantity > 0.0, "Order1 quantity should be > 0");
+
+        let ask2 = asks.iter().find(|a| (a.price as i64) == order2.get_raw_price());
+        assert!(
+            ask2.is_some(),
+            "Order2 should be in asks. order2_price={}, asks={:?}",
+            order2.get_raw_price(),
+            asks.iter().map(|a| a.price as i64).collect::<Vec<_>>()
+        );
+        assert!(ask2.unwrap().quantity > 0.0, "Order2 quantity should be > 0");
     }
 }
 

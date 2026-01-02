@@ -22,9 +22,9 @@ pub trait MockDatabaseTrait: Send + Sync {
         username: &str,
         page: i32,
         size: i32,
-        symbol: Option<&str>,
+        symbol: Option<String>,
     ) -> Result<Vec<Execution>>;
-    async fn count_executions(&self, username: &str, symbol: Option<&str>) -> Result<i64>;
+    async fn count_executions(&self, username: &str, symbol: Option<String>) -> Result<i64>;
     async fn query_executions_by_symbol_all_users(
         &self,
         symbol: &str,
@@ -74,11 +74,18 @@ impl DatabaseTrait for MockMockDatabaseTrait {
         size: i32,
         symbol: Option<&str>,
     ) -> Result<Vec<Execution>> {
-        MockDatabaseTrait::query_executions_paginated(self, username, page, size, symbol).await
+        MockDatabaseTrait::query_executions_paginated(
+            self,
+            username,
+            page,
+            size,
+            symbol.map(|s| s.to_string()),
+        )
+        .await
     }
 
     async fn count_executions(&self, username: &str, symbol: Option<&str>) -> Result<i64> {
-        MockDatabaseTrait::count_executions(self, username, symbol).await
+        MockDatabaseTrait::count_executions(self, username, symbol.map(|s| s.to_string())).await
     }
 
     async fn query_executions_by_symbol_all_users(
