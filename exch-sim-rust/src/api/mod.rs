@@ -28,7 +28,7 @@ pub struct AppState {
     pub database: Arc<dyn DatabaseTrait>,
     pub order_service: Arc<OrderService>,
     pub position_manager: Arc<PositionManager>,
-    pub market_board_manager: MarketBoardManager,
+    pub market_board_manager: Arc<MarketBoardManager>,
 }
 
 #[derive(Serialize)]

@@ -3,6 +3,7 @@ use crate::market_board::manager::MarketBoardManager;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
@@ -33,12 +34,12 @@ struct PriceSize {
 
 pub struct GmoWebSocketClient {
     config: Config,
-    board_manager: MarketBoardManager,
+    board_manager: Arc<MarketBoardManager>,
     shutdown_tx: Option<mpsc::Sender<()>>,
 }
 
 impl GmoWebSocketClient {
-    pub fn new(config: Config, board_manager: MarketBoardManager) -> Self {
+    pub fn new(config: Config, board_manager: Arc<MarketBoardManager>) -> Self {
         Self {
             config,
             board_manager,
@@ -102,7 +103,7 @@ impl GmoWebSocketClient {
 
     async fn connect_and_listen(
         config: &Config,
-        board_manager: &MarketBoardManager,
+        board_manager: &Arc<MarketBoardManager>,
     ) -> Result<()> {
         let url = &config.websocket.gmo.url;
         let (ws_stream, _) = connect_async(url)
@@ -165,7 +166,7 @@ impl GmoWebSocketClient {
 
     async fn handle_message(
         text: &str,
-        board_manager: &MarketBoardManager,
+        board_manager: &Arc<MarketBoardManager>,
         config: &Config,
     ) -> Result<()> {
         // Skip command messages

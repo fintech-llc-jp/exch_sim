@@ -353,6 +353,26 @@ impl MarketBoard {
         self.bid_entry_board.is_empty() && self.ask_entry_board.is_empty()
     }
 
+    /// Get the number of price levels in bid_order_board (for debugging)
+    pub fn get_bid_order_board_levels(&self) -> usize {
+        self.bid_order_board.len()
+    }
+
+    /// Get the number of price levels in ask_order_board (for debugging)
+    pub fn get_ask_order_board_levels(&self) -> usize {
+        self.ask_order_board.len()
+    }
+
+    /// Get the number of price levels in bid_entry_board (for debugging)
+    pub fn get_bid_entry_board_levels(&self) -> usize {
+        self.bid_entry_board.len()
+    }
+
+    /// Get the number of price levels in ask_entry_board (for debugging)
+    pub fn get_ask_entry_board_levels(&self) -> usize {
+        self.ask_entry_board.len()
+    }
+
     /// Clear market maker orders (external market data) while preserving user orders
     /// This is equivalent to Java's clearBids() and clearAsks()
     pub fn clear_market_maker_orders(&mut self) {

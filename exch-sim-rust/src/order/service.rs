@@ -22,13 +22,13 @@ pub struct OrderService {
 impl OrderService {
     pub async fn new<D: DatabaseTrait + 'static>(
         database: D,
-        market_board_manager: MarketBoardManager,
+        market_board_manager: Arc<MarketBoardManager>,
         position_manager: Arc<PositionManager>,
         config: Config,
     ) -> Result<Self> {
         Ok(Self {
             database: Arc::new(database),
-            market_board_manager,
+            market_board_manager: (*market_board_manager).clone(),
             position_manager,
             config,
             order_map: Arc::new(DashMap::new()),

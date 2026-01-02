@@ -46,13 +46,13 @@ struct PriceSize {
 
 pub struct BitflyerWebSocketClient {
     config: Config,
-    board_manager: MarketBoardManager,
+    board_manager: Arc<MarketBoardManager>,
     jsonrpc_id: Arc<AtomicU64>,
     shutdown_tx: Option<mpsc::Sender<()>>,
 }
 
 impl BitflyerWebSocketClient {
-    pub fn new(config: Config, board_manager: MarketBoardManager) -> Self {
+    pub fn new(config: Config, board_manager: Arc<MarketBoardManager>) -> Self {
         Self {
             config,
             board_manager,
@@ -118,7 +118,7 @@ impl BitflyerWebSocketClient {
 
     async fn connect_and_listen(
         config: &Config,
-        board_manager: &MarketBoardManager,
+        board_manager: &Arc<MarketBoardManager>,
         jsonrpc_id: Arc<AtomicU64>,
     ) -> Result<()> {
         let url = &config.websocket.bitflyer.url;
@@ -180,7 +180,7 @@ impl BitflyerWebSocketClient {
 
     async fn handle_message(
         text: &str,
-        board_manager: &MarketBoardManager,
+        board_manager: &Arc<MarketBoardManager>,
         config: &Config,
     ) -> Result<()> {
         // Skip JSON-RPC responses

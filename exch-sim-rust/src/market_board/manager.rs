@@ -62,15 +62,15 @@ impl MarketBoardManager {
             tracing::debug!(
                 "Before clear_market_maker_orders: symbol={}, ask_order_board levels={}, ask_entry_board levels={}",
                 symbol,
-                board_guard.ask_order_board.len(),
-                board_guard.ask_entry_board.len()
+                board_guard.get_ask_order_board_levels(),
+                board_guard.get_ask_entry_board_levels()
             );
             board_guard.clear_market_maker_orders();
             tracing::debug!(
                 "After clear_market_maker_orders: symbol={}, ask_order_board levels={}, ask_entry_board levels={}",
                 symbol,
-                board_guard.ask_order_board.len(),
-                board_guard.ask_entry_board.len()
+                board_guard.get_ask_order_board_levels(),
+                board_guard.get_ask_entry_board_levels()
             );
         }
         
@@ -205,25 +205,7 @@ impl MarketBoardManager {
         let order_service_opt = self.order_service.read().await.clone();
         if let Some(order_service) = order_service_opt {
             // First, clear existing market maker orders at price levels with qty=0
-            {
-                let mut board_guard = board.write().await;
-                for (price, qty) in bids.iter() {
-                    if *qty == 0.0 {
-                        let raw_price = (*price * price_multiplier) as i64;
-                        // Remove market maker buy orders at this price
-                        // This is handled by clear_market_maker_orders, but we need to remove specific price levels
-                        // For now, we'll use update_external_market_data_delta for qty=0 cases
-                    }
-                }
-                for (price, qty) in asks.iter() {
-                    if *qty == 0.0 {
-                        let raw_price = (*price * price_multiplier) as i64;
-                        // Remove market maker sell orders at this price
-                        // This is handled by clear_market_maker_orders, but we need to remove specific price levels
-                        // For now, we'll use update_external_market_data_delta for qty=0 cases
-                    }
-                }
-            }
+            // Use update_external_market_data_delta to handle qty=0 removals
             
             // Use update_external_market_data_delta to handle qty=0 removals
             {
