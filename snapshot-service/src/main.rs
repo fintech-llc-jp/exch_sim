@@ -11,6 +11,7 @@ use market_board::MarketBoardManager;
 use postgres_writer::PostgresWriter;
 use snapshot_collector::SnapshotCollector;
 use sqlx::PgPool;
+use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -48,8 +49,9 @@ async fn main() -> Result<()> {
     let (snapshot_tx, snapshot_rx) = mpsc::channel(config.snapshot.queue_size_limit);
 
     // Initialize WebSocket clients
+    let pool_arc = Arc::new(pool.clone());
     let mut bitflyer_client = BitflyerWebSocketClient::new(config.clone(), board_manager.clone());
-    let mut gmo_client = GmoWebSocketClient::new(config.clone(), board_manager.clone());
+    let mut gmo_client = GmoWebSocketClient::new(config.clone(), board_manager.clone(), pool_arc);
 
     // Start WebSocket clients
     bitflyer_client.start().await?;

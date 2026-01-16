@@ -1,14 +1,18 @@
 use crate::config::Config;
 use crate::market_board::MarketBoardManager;
 use anyhow::{Context, Result};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::PgPool;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 use futures_util::{SinkExt, StreamExt};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 struct SubscribeRequest {
@@ -45,14 +49,16 @@ struct GmoPriceLevel {
 pub struct GmoWebSocketClient {
     config: Config,
     board_manager: MarketBoardManager,
+    pool: Arc<PgPool>,
     shutdown_tx: Option<mpsc::Sender<()>>,
 }
 
 impl GmoWebSocketClient {
-    pub fn new(config: Config, board_manager: MarketBoardManager) -> Self {
+    pub fn new(config: Config, board_manager: MarketBoardManager, pool: Arc<PgPool>) -> Self {
         Self {
             config,
             board_manager,
+            pool,
             shutdown_tx: None,
         }
     }
@@ -68,11 +74,12 @@ impl GmoWebSocketClient {
 
         let config = self.config.clone();
         let board_manager = self.board_manager.clone();
+        let pool = self.pool.clone();
         let mut reconnect_attempts = 0u32;
 
         tokio::spawn(async move {
             loop {
-                match Self::connect_and_run(&config, board_manager.clone()).await {
+                match Self::connect_and_run(&config, board_manager.clone(), pool.clone()).await {
                     Ok(_) => {
                         info!("GMO WebSocket connection closed normally");
                         break;
@@ -111,7 +118,7 @@ impl GmoWebSocketClient {
         Ok(())
     }
 
-    async fn connect_and_run(config: &Config, board_manager: MarketBoardManager) -> Result<()> {
+    async fn connect_and_run(config: &Config, board_manager: MarketBoardManager, pool: Arc<PgPool>) -> Result<()> {
         let url = &config.websocket.gmo.url;
         info!("Connecting to GMO WebSocket: {}", url);
 
@@ -149,7 +156,7 @@ impl GmoWebSocketClient {
             match message {
                 Ok(Message::Text(text)) => {
                     tracing::debug!("Received GMO message: {}", text);
-                    if let Err(e) = Self::handle_message(&text, &board_manager, config).await {
+                    if let Err(e) = Self::handle_message(&text, &board_manager, config, pool.clone()).await {
                         error!("Error handling GMO message: {} - Message: {}", e, text);
                     }
                 }
@@ -172,6 +179,7 @@ impl GmoWebSocketClient {
         text: &str,
         board_manager: &MarketBoardManager,
         config: &Config,
+        pool: Arc<PgPool>,
     ) -> Result<()> {
         // Skip command messages
         if text.contains("\"command\"") {
@@ -244,8 +252,17 @@ impl GmoWebSocketClient {
                         "GMO Trade: {} - side: {}, price: {}, size: {}",
                         target_symbol, side, price, size
                     );
-                    // TODO: 将来的にトレードデータを処理するマネージャーを追加した場合、ここで呼び出す
-                    // trade_manager.process_trade(target_symbol, price, size, side).await?;
+                    
+                    // Save to executions table
+                    if let Err(e) = Self::save_trade_to_db(
+                        pool.as_ref(),
+                        &target_symbol,
+                        price,
+                        size,
+                        &side,
+                    ).await {
+                        error!("Failed to save GMO trade to database: {}", e);
+                    }
                 } else {
                     warn!(
                         "⚠️ GMO trade message missing required fields or invalid values: {}",
@@ -266,6 +283,66 @@ impl GmoWebSocketClient {
             "BTC" => Ok(config.symbol_mapping.gmo.btc.clone()),
             _ => Err(anyhow::anyhow!("Unknown symbol: {}", symbol)),
         }
+    }
+
+    async fn save_trade_to_db(
+        pool: &PgPool,
+        symbol: &str,
+        price: f64,
+        size: f64,
+        side: &str,
+    ) -> Result<()> {
+        // Generate UUIDs for exec_id and order_id (dummy for external trades)
+        let exec_id = Uuid::new_v4().to_string();
+        let order_id = Uuid::new_v4().to_string();
+        
+        // Convert to internal values using multipliers
+        // Default multipliers: price_multiplier=1, qty_multiplier=1000 (Java版のデフォルト値)
+        let price_multiplier = 1i64;
+        let qty_multiplier = 1000i64;
+        let last_px = (price * price_multiplier as f64) as i64;
+        let last_qty = (size * qty_multiplier as f64) as i64;
+        
+        // Ensure minimum qty of 1
+        let last_qty = last_qty.max(1);
+        
+        let username = "EXTERNAL_FEED";
+        let counter_party_username = "EXTERNAL_FEED";
+        let exec_status = "FILLED";
+        let is_market_maker = false;
+        let created_at = Utc::now();
+
+        sqlx::query(
+            r#"
+            INSERT INTO executions (
+                exec_id, order_id, username, symbol, exec_status,
+                last_px, last_qty, counter_party_username, created_at,
+                is_market_maker, side
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (exec_id) DO NOTHING
+            "#,
+        )
+        .bind(&exec_id)
+        .bind(&order_id)
+        .bind(username)
+        .bind(symbol)
+        .bind(exec_status)
+        .bind(last_px)
+        .bind(last_qty)
+        .bind(counter_party_username)
+        .bind(created_at)
+        .bind(is_market_maker)
+        .bind(side)
+        .execute(pool)
+        .await
+        .context("Failed to insert execution")?;
+
+        info!(
+            "✅ Saved GMO trade to executions table: symbol={}, side={}, price={}, size={}, exec_id={}",
+            symbol, side, price, size, exec_id
+        );
+
+        Ok(())
     }
 
     pub async fn stop(&mut self) {
