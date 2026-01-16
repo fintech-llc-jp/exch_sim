@@ -319,7 +319,6 @@ impl GmoWebSocketClient {
                 last_px, last_qty, counter_party_username, created_at,
                 is_market_maker, side
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ON CONFLICT (exec_id) DO NOTHING
             "#,
         )
         .bind(&exec_id)
@@ -345,6 +344,7 @@ impl GmoWebSocketClient {
             }
             Err(sqlx::Error::Database(db_err)) => {
                 // PostgreSQLのunique_violationエラー（重複挿入）を無視
+                // エラーコード 23505 = unique_violation
                 if db_err.code().as_deref() == Some("23505") {
                     tracing::debug!("Execution already exists (duplicate exec_id): {}", exec_id);
                     return Ok(());
