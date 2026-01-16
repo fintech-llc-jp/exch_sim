@@ -1,0 +1,34 @@
+[Unit]
+Description=Exchange Simulator Snapshot Service (Rust)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/snapshot-service
+
+# Environment variables
+Environment="CONFIG_PATH=/opt/snapshot-service/config.toml"
+Environment="RUST_LOG=snapshot_service=info"
+
+# Executable
+ExecStart=/opt/snapshot-service/snapshot-service
+
+# Restart settings
+Restart=always
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Resource limits
+MemoryLimit=100M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=snapshot-service
+
+[Install]
+WantedBy=multi-user.target
+

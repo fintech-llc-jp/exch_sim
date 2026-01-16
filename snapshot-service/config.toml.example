@@ -1,0 +1,49 @@
+[websocket]
+# Bitflyer WebSocket設定
+[websocket.bitflyer]
+enabled = true
+url = "wss://ws.lightstream.bitflyer.com/json-rpc"
+reconnect_delay_ms = 1000
+max_reconnect_attempts = 30
+
+# GMO WebSocket設定
+[websocket.gmo]
+enabled = true
+url = "wss://api.coin.z.com/ws/public/v1"
+reconnect_delay_ms = 1000
+max_reconnect_attempts = 20
+
+[snapshot]
+# 1秒間隔でスナップショットを取得（アルゴトレーニング用に高頻度）
+interval_seconds = 1
+# 8レベル（BID/ASK各8レベル）を記録
+max_levels = 8
+queue_size_limit = 500
+
+# データベース書き込み設定（時間ベースバッチ処理）
+[postgres_writer]
+# 時間ベースバッチ処理: 10秒間隔でまとめて書き込み（IO使用量を大幅削減）
+batch_interval_seconds = 10
+# 最大バッチサイズ: 10秒以内に50件に達した場合も書き込む
+max_batch_size = 50
+
+[symbol_mapping]
+# Bitflyerシンボルマッピング
+[symbol_mapping.bitflyer]
+btc_jpy = "B_BTCJPY"
+FX_BTC_JPY = "B_FX_BTCJPY"
+
+# GMOシンボルマッピング
+[symbol_mapping.gmo]
+btc_jpy = "G_FX_BTCJPY"
+btc = "G_BTCJPY"
+
+[postgres]
+# 別ホストでも動作可能
+host = "localhost"  # または "192.168.1.100"
+port = 5432
+database = "exch_sim"
+user = "exch_sim_user"
+password = "sr3110ysi"
+max_connections = 5
+
