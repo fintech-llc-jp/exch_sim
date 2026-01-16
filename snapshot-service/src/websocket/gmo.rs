@@ -261,7 +261,7 @@ impl GmoWebSocketClient {
                         size,
                         &side,
                     ).await {
-                        error!("Failed to save GMO trade to database: {}", e);
+                        error!("Failed to save GMO trade to database: {:#}", e);
                     }
                 } else {
                     warn!(
@@ -312,7 +312,7 @@ impl GmoWebSocketClient {
         let is_market_maker = false;
         let created_at = Utc::now();
 
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             INSERT INTO executions (
                 exec_id, order_id, username, symbol, exec_status,
@@ -334,8 +334,39 @@ impl GmoWebSocketClient {
         .bind(is_market_maker)
         .bind(side)
         .execute(pool)
-        .await
-        .context("Failed to insert execution")?;
+        .await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    "✅ Saved GMO trade to executions table: symbol={}, side={}, price={}, size={}, exec_id={}",
+                    symbol, side, price, size, exec_id
+                );
+            }
+            Err(sqlx::Error::Database(db_err)) => {
+                // PostgreSQLのunique_violationエラー（重複挿入）を無視
+                if db_err.code().as_deref() == Some("23505") {
+                    tracing::debug!("Execution already exists (duplicate exec_id): {}", exec_id);
+                    return Ok(());
+                } else {
+                    return Err(anyhow::anyhow!("Database error: Code: {:?}, Message: {}", 
+                        db_err.code(),
+                        db_err.message()
+                    ))
+                    .context(format!(
+                        "Failed to insert execution - exec_id={}, username={}, symbol={}, exec_status={}, last_px={}, last_qty={}",
+                        exec_id, username, symbol, exec_status, last_px, last_qty
+                    ));
+                }
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("SQLx error: {}", e))
+                    .context(format!(
+                        "Failed to insert execution - exec_id={}, username={}, symbol={}, exec_status={}, last_px={}, last_qty={}",
+                        exec_id, username, symbol, exec_status, last_px, last_qty
+                    ));
+            }
+        }
 
         info!(
             "✅ Saved GMO trade to executions table: symbol={}, side={}, price={}, size={}, exec_id={}",
