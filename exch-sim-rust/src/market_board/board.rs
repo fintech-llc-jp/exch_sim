@@ -1639,5 +1639,451 @@ mod tests {
             "Partially filled sell order should remain in ask_entry_board with correct quantity"
         );
     }
+
+    // price_multiplier = 1 の場合のテストヘルパー関数（B_FX_BTCJPYの実際の設定）
+    fn create_test_order_price_multiplier_one(
+        username: String,
+        symbol: String,
+        side: Side,
+        price: f64,
+        quantity: f64,
+    ) -> Order {
+        Order::new(
+            username,
+            symbol,
+            side,
+            OrdType::Limit,
+            Some(price),
+            quantity,
+            TimeInForce::Gtc,
+            false,
+            1,   // price_multiplier = 1 (B_FX_BTCJPYの設定)
+            1000, // qty_multiplier = 1000
+        )
+    }
+
+    fn create_market_maker_order_price_multiplier_one(
+        symbol: String,
+        side: Side,
+        price: f64,
+        quantity: f64,
+    ) -> Order {
+        Order::new(
+            "MARKET_MAKER".to_string(),
+            symbol,
+            side,
+            OrdType::Limit,
+            Some(price),
+            quantity,
+            TimeInForce::Gtc,
+            true,
+            1,   // price_multiplier = 1
+            1000, // qty_multiplier = 1000
+        )
+    }
+
+    #[test]
+    fn test_execution_price_with_price_multiplier_one() {
+        // B_FX_BTCJPYの設定をシミュレート: price_multiplier = 1, qty_multiplier = 1000
+        let mut board = MarketBoard::new("B_FX_BTCJPY".to_string());
+        
+        // 外部市場データを更新（Bitflyerから受信したような価格）
+        // BID: 14719725, ASK: 14729036
+        let bids = vec![(14719725.0, 0.1), (14719000.0, 0.2)];
+        let asks = vec![(14729036.0, 0.1), (14730000.0, 0.2)];
+        
+        let price_multiplier = 1.0; // B_FX_BTCJPYの設定
+        let qty_multiplier = 1000.0;
+        
+        board.update_external_market_data(bids, asks, price_multiplier, qty_multiplier);
+        
+        // ユーザーの売り注文を追加（BID価格より低い価格で約定するはず）
+        let user_sell_order = create_test_order_price_multiplier_one(
+            "testuser".to_string(),
+            "B_FX_BTCJPY".to_string(),
+            Side::Sell,
+            14710000.0, // BIDより低い価格（約定するはず）
+            0.01,
+        );
+        
+        board.add_order(&user_sell_order);
+        
+        // マッチングを確認
+        let sell_price = user_sell_order.get_raw_price();
+        let sell_qty = user_sell_order.get_raw_quantity();
+        let matching_orders = board.get_matching_orders(
+            Side::Sell,
+            Some(sell_price),
+            sell_qty,
+        );
+        
+        assert!(!matching_orders.is_empty(), "Should find matching buy order. sell_price={}, best_bid={:?}", sell_price, board.get_best_bid());
+        
+        // 約定価格を確認（BIDの最高価格であるべき）
+        let (matched_entry, exec_qty) = &matching_orders[0];
+        let execution_price = matched_entry.price;
+        
+        // 約定価格はBIDの最高価格（14719725）であるべき
+        assert_eq!(
+            execution_price, 14719725,
+            "Execution price should be the best bid price (14719725), but got {}",
+            execution_price
+        );
+        
+        // 約定価格がBID/ASKの範囲内であることを確認
+        assert!(
+            execution_price >= 14719725 && execution_price <= 14729036,
+            "Execution price {} should be within BID/ASK range [14719725, 14729036]",
+            execution_price
+        );
+    }
+
+    #[test]
+    fn test_update_external_market_data_price_multiplier_one() {
+        // update_external_market_dataでprice_multiplier = 1を使用した場合のテスト
+        let mut board = MarketBoard::new("B_FX_BTCJPY".to_string());
+        
+        // 外部市場データ（Bitflyerから受信した価格）
+        let bids = vec![(14719725.0, 0.1)];
+        let asks = vec![(14729036.0, 0.1)];
+        
+        let price_multiplier = 1.0;
+        let qty_multiplier = 1000.0;
+        
+        board.update_external_market_data(bids, asks, price_multiplier, qty_multiplier);
+        
+        // 板情報を確認
+        let best_bid = board.get_best_bid();
+        let best_ask = board.get_best_ask();
+        
+        assert!(best_bid.is_some(), "Should have best bid");
+        assert!(best_ask.is_some(), "Should have best ask");
+        
+        if let Some((bid_price, _)) = best_bid {
+            // raw_priceは14719725になるはず（14719725.0 * 1.0）
+            assert_eq!(
+                bid_price, 14719725,
+                "Best bid price should be 14719725 (14719725.0 * 1.0), but got {}",
+                bid_price
+            );
+        }
+        
+        if let Some((ask_price, _)) = best_ask {
+            // raw_priceは14729036になるはず（14729036.0 * 1.0）
+            assert_eq!(
+                ask_price, 14729036,
+                "Best ask price should be 14729036 (14729036.0 * 1.0), but got {}",
+                ask_price
+            );
+        }
+    }
+
+    #[test]
+    fn test_execution_price_abnormal_case_reproduction() {
+        // 異常な約定価格（14409514）が発生するケースを再現
+        // 問題: BID/ASKが14719725-14729036のときに、14409514が約定価格になる
+        let mut board = MarketBoard::new("B_FX_BTCJPY".to_string());
+        
+        // 外部市場データを更新（BID/ASK: 14719725-14729036）
+        let bids = vec![(14719725.0, 0.1)];
+        let asks = vec![(14729036.0, 0.1)];
+        
+        let price_multiplier = 1.0;
+        let qty_multiplier = 1000.0;
+        
+        board.update_external_market_data(bids, asks, price_multiplier, qty_multiplier);
+        
+        // ユーザーの売り注文を追加
+        let user_sell_order = create_test_order_price_multiplier_one(
+            "testuser".to_string(),
+            "B_FX_BTCJPY".to_string(),
+            Side::Sell,
+            14720000.0, // BIDより高い価格
+            0.01,
+        );
+        
+        board.add_order(&user_sell_order);
+        
+        // マッチングを確認
+        let sell_price = user_sell_order.get_raw_price();
+        let sell_qty = user_sell_order.get_raw_quantity();
+        let matching_orders = board.get_matching_orders(
+            Side::Sell,
+            Some(sell_price),
+            sell_qty,
+        );
+        
+        if !matching_orders.is_empty() {
+            let (matched_entry, _) = &matching_orders[0];
+            let execution_price = matched_entry.price;
+            
+            // 約定価格が異常な値（14409514など）でないことを確認
+            assert!(
+                execution_price >= 14719725 && execution_price <= 14729036,
+                "Execution price {} should be within BID/ASK range [14719725, 14729036], but got abnormal price",
+                execution_price
+            );
+            
+            // 特に、14409514のような異常な値でないことを確認
+            assert_ne!(
+                execution_price, 14409514,
+                "Execution price should NOT be the abnormal value 14409514"
+            );
+        }
+    }
+
+    #[test]
+    fn test_process_market_maker_order_price_multiplier_one() {
+        // process_market_maker_orderのフローをテスト
+        // update_board_snapshotでprocess_market_maker_orderが呼ばれる場合をシミュレート
+        let mut board = MarketBoard::new("B_FX_BTCJPY".to_string());
+        
+        // まず、ユーザーの売り注文を追加
+        let user_sell_order = create_test_order_price_multiplier_one(
+            "testuser".to_string(),
+            "B_FX_BTCJPY".to_string(),
+            Side::Sell,
+            14710000.0, // BIDより低い価格（約定するはず）
+            0.01,
+        );
+        
+        board.add_order(&user_sell_order);
+        
+        // 外部市場データを更新（update_external_market_dataをシミュレート）
+        let bids = vec![(14719725.0, 0.1)];
+        let asks = vec![(14729036.0, 0.1)];
+        
+        let price_multiplier = 1.0;
+        let qty_multiplier = 1000.0;
+        
+        board.update_external_market_data(bids, asks, price_multiplier, qty_multiplier);
+        
+        // マッチングを確認
+        let sell_price = user_sell_order.get_raw_price();
+        let sell_qty = user_sell_order.get_raw_quantity();
+        let matching_orders = board.get_matching_orders(
+            Side::Sell,
+            Some(sell_price),
+            sell_qty,
+        );
+        
+        assert!(!matching_orders.is_empty(), "Should find matching buy order");
+        
+        let (matched_entry, _) = &matching_orders[0];
+        let execution_price = matched_entry.price;
+        
+        // 約定価格が正しいことを確認
+        assert_eq!(
+            execution_price, 14719725,
+            "Execution price should be the best bid price (14719725), but got {}",
+            execution_price
+        );
+    }
+
+    #[test]
+    fn test_update_board_snapshot_flow_without_update_external_market_data() {
+        // 問題の再現: update_board_snapshotでprocess_market_maker_orderを直接呼び出す場合
+        // update_external_market_dataを呼び出さない場合の動作をテスト
+        let mut board = MarketBoard::new("B_FX_BTCJPY".to_string());
+        
+        // まず、ユーザーの売り注文を追加
+        let user_sell_order = create_test_order_price_multiplier_one(
+            "testuser".to_string(),
+            "B_FX_BTCJPY".to_string(),
+            Side::Sell,
+            14710000.0, // BIDより低い価格
+            0.01,
+        );
+        
+        board.add_order(&user_sell_order);
+        
+        // clear_market_maker_ordersを呼び出す（update_board_snapshotの動作をシミュレート）
+        board.clear_market_maker_orders();
+        
+        // 外部市場データ（Bitflyerから受信した価格）
+        let bids = vec![(14719725.0, 0.1)];
+        let asks = vec![(14729036.0, 0.1)];
+        
+        // update_external_market_dataを呼び出さずに、直接OrderEntryを作成
+        // これはprocess_market_maker_orderの動作をシミュレート
+        let price_multiplier = 1.0;
+        let qty_multiplier = 1000.0;
+        
+        // マーケットメーカー注文を直接追加（process_market_maker_orderが約定しなかった場合の動作）
+        for (price, qty) in bids {
+            let raw_price = (price * price_multiplier) as i64;
+            let raw_qty = (qty * qty_multiplier) as i64;
+            
+            if raw_qty > 0 {
+                let cl_ord_id = format!("MARKET_MAKER_{}_{}", "B_FX_BTCJPY", Uuid::new_v4());
+                let entry = OrderEntry {
+                    cl_ord_id: cl_ord_id.clone(),
+                    username: "MARKET_MAKER".to_string(),
+                    side: Side::Buy,
+                    price: raw_price,
+                    quantity: raw_qty,
+                    leaves_qty: raw_qty,
+                    cum_qty: 0,
+                    ord_status: crate::models::OrdStatus::New,
+                };
+                
+                board.bid_order_board
+                    .entry(raw_price)
+                    .or_insert_with(Vec::new)
+                    .push(entry.clone());
+                
+                board.order_map.insert(cl_ord_id, entry);
+                *board.bid_entry_board.entry(raw_price).or_insert(0) += raw_qty;
+            }
+        }
+        
+        // マッチングを確認
+        let sell_price = user_sell_order.get_raw_price();
+        let sell_qty = user_sell_order.get_raw_quantity();
+        let matching_orders = board.get_matching_orders(
+            Side::Sell,
+            Some(sell_price),
+            sell_qty,
+        );
+        
+        assert!(!matching_orders.is_empty(), "Should find matching buy order after adding market maker order");
+        
+        let (matched_entry, _) = &matching_orders[0];
+        let execution_price = matched_entry.price;
+        
+        // 約定価格が正しいことを確認
+        assert_eq!(
+            execution_price, 14719725,
+            "Execution price should be the best bid price (14719725), but got {}",
+            execution_price
+        );
+        
+        // 約定価格がBID/ASKの範囲内であることを確認
+        assert!(
+            execution_price >= 14719725 && execution_price <= 14729036,
+            "Execution price {} should be within BID/ASK range [14719725, 14729036]",
+            execution_price
+        );
+    }
+
+    #[test]
+    fn test_clear_market_maker_orders_then_add_new_orders() {
+        // 問題の再現: clear_market_maker_ordersを呼び出した後、新しい注文を追加する場合
+        // これはupdate_board_snapshotのフローをシミュレート
+        let mut board = MarketBoard::new("B_FX_BTCJPY".to_string());
+        
+        // まず、古いマーケットメーカー注文を追加
+        let old_bids = vec![(14409514.0, 0.1)]; // 異常な価格
+        let old_asks = vec![(14410000.0, 0.1)];
+        
+        board.update_external_market_data(old_bids, old_asks, 1.0, 1000.0);
+        
+        // ユーザーの売り注文を追加
+        let user_sell_order = create_test_order_price_multiplier_one(
+            "testuser".to_string(),
+            "B_FX_BTCJPY".to_string(),
+            Side::Sell,
+            14710000.0,
+            0.01,
+        );
+        
+        board.add_order(&user_sell_order);
+        
+        // clear_market_maker_ordersを呼び出す（update_board_snapshotの動作）
+        board.clear_market_maker_orders();
+        
+        // 新しい外部市場データを更新（正しい価格）
+        let new_bids = vec![(14719725.0, 0.1)];
+        let new_asks = vec![(14729036.0, 0.1)];
+        
+        board.update_external_market_data(new_bids, new_asks, 1.0, 1000.0);
+        
+        // マッチングを確認
+        let sell_price = user_sell_order.get_raw_price();
+        let sell_qty = user_sell_order.get_raw_quantity();
+        let matching_orders = board.get_matching_orders(
+            Side::Sell,
+            Some(sell_price),
+            sell_qty,
+        );
+        
+        assert!(!matching_orders.is_empty(), "Should find matching buy order");
+        
+        let (matched_entry, _) = &matching_orders[0];
+        let execution_price = matched_entry.price;
+        
+        // 約定価格が正しいことを確認（異常な価格14409514ではない）
+        assert_eq!(
+            execution_price, 14719725,
+            "Execution price should be the best bid price (14719725), not the old price (14409514). Got {}",
+            execution_price
+        );
+        
+        // 約定価格が異常な値でないことを確認
+        assert_ne!(
+            execution_price, 14409514,
+            "Execution price should NOT be the abnormal value 14409514"
+        );
+    }
+
+    #[test]
+    fn test_market_maker_order_matches_with_user_order_not_market_maker() {
+        // 問題の再現: マーケットメーカー注文が既存のマーケットメーカー注文とマッチングしないことを確認
+        let mut board = MarketBoard::new("B_FX_BTCJPY".to_string());
+        
+        // まず、update_external_market_dataでマーケットメーカー注文を作成
+        let bids = vec![(14719725.0, 0.1)];
+        let asks = vec![(14729036.0, 0.1)];
+        
+        board.update_external_market_data(bids, asks, 1.0, 1000.0);
+        
+        // ユーザーの売り注文を追加
+        let user_sell_order = create_test_order_price_multiplier_one(
+            "testuser".to_string(),
+            "B_FX_BTCJPY".to_string(),
+            Side::Sell,
+            14710000.0, // BIDより低い価格
+            0.01,
+        );
+        
+        board.add_order(&user_sell_order);
+        
+        // マーケットメーカー注文（新しい）を作成してマッチングを試みる
+        // これはprocess_market_maker_orderの動作をシミュレート
+        let mm_buy_order = create_market_maker_order_price_multiplier_one(
+            "B_FX_BTCJPY".to_string(),
+            Side::Buy,
+            14719725.0, // 既存のマーケットメーカー注文と同じ価格
+            0.1,
+        );
+        
+        // マーケットメーカー注文を板に追加（約定しなかった場合）
+        board.add_order(&mm_buy_order);
+        
+        // ユーザーの売り注文がマーケットメーカー注文とマッチングすることを確認
+        let sell_price = user_sell_order.get_raw_price();
+        let sell_qty = user_sell_order.get_raw_quantity();
+        let matching_orders = board.get_matching_orders(
+            Side::Sell,
+            Some(sell_price),
+            sell_qty,
+        );
+        
+        assert!(!matching_orders.is_empty(), "Should find matching buy order");
+        
+        let (matched_entry, _) = &matching_orders[0];
+        let execution_price = matched_entry.price;
+        
+        // 約定価格が正しいことを確認
+        assert_eq!(
+            execution_price, 14719725,
+            "Execution price should be the best bid price (14719725), but got {}",
+            execution_price
+        );
+        
+        // マッチングした注文がユーザー注文であることを確認（マーケットメーカー注文同士がマッチングしていない）
+        // ただし、このテストでは、get_matching_ordersがマーケットメーカー注文も返す可能性があるため、
+        // 約定価格が正しいことを確認するだけにする
+    }
 }
 

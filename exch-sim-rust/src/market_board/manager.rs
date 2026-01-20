@@ -56,25 +56,14 @@ impl MarketBoardManager {
         
         let board = self.get_or_create_board(symbol.clone()).await;
         
-        // Clear existing market maker orders first
+        // First, update the board with external market data using update_external_market_data
+        // This ensures the board state is correctly updated before processing market maker orders
         {
             let mut board_guard = board.write().await;
-            tracing::debug!(
-                "Before clear_market_maker_orders: symbol={}, ask_order_board levels={}, ask_entry_board levels={}",
-                symbol,
-                board_guard.get_ask_order_board_levels(),
-                board_guard.get_ask_entry_board_levels()
-            );
-            board_guard.clear_market_maker_orders();
-            tracing::debug!(
-                "After clear_market_maker_orders: symbol={}, ask_order_board levels={}, ask_entry_board levels={}",
-                symbol,
-                board_guard.get_ask_order_board_levels(),
-                board_guard.get_ask_entry_board_levels()
-            );
+            board_guard.update_external_market_data(bids.clone(), asks.clone(), price_multiplier, qty_multiplier);
         }
         
-        // Process each bid/ask level and create market maker orders
+        // Then, process market maker orders for matching with existing user orders
         // This will trigger matching with existing user orders
         let order_service_opt = self.order_service.read().await.clone();
         if let Some(order_service) = order_service_opt {

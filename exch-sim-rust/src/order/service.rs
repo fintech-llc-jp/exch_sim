@@ -549,6 +549,16 @@ impl OrderService {
                 order.raw_leaves_qty,
             );
 
+            // Filter out market maker orders - market maker orders should only match with user orders
+            // This prevents market maker orders from matching with each other, which could cause
+            // incorrect execution prices (e.g., matching with old market maker orders at wrong prices)
+            let matching_orders: Vec<_> = matching_orders
+                .into_iter()
+                .filter(|(counter_order_entry, _)| {
+                    counter_order_entry.username != "MARKET_MAKER"
+                })
+                .collect();
+
             for (counter_order_entry, exec_qty) in matching_orders {
                 // Create executions for both parties
                 let exec_id = Uuid::new_v4().to_string();
