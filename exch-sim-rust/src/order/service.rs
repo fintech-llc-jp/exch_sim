@@ -550,12 +550,16 @@ impl OrderService {
             );
 
             let total_matches_before_filter = matching_orders.len();
-            let market_maker_matches: Vec<_> = matching_orders
+            
+            // Extract market maker matches for logging (before filtering)
+            let market_maker_prices: Vec<i64> = matching_orders
                 .iter()
                 .filter(|(counter_order_entry, _)| {
                     counter_order_entry.username == "MARKET_MAKER"
                 })
+                .map(|(counter_order_entry, _)| counter_order_entry.price)
                 .collect();
+            let market_maker_match_count = market_maker_prices.len();
 
             // Filter out market maker orders - market maker orders should only match with user orders
             // This prevents market maker orders from matching with each other, which could cause
@@ -570,16 +574,16 @@ impl OrderService {
             let total_matches_after_filter = matching_orders.len();
 
             // Log filtering information for debugging
-            if !market_maker_matches.is_empty() {
+            if !market_maker_prices.is_empty() {
                 tracing::warn!(
                     "Market maker order filtering: symbol={}, side={:?}, price={}, total_matches={}, market_maker_matches={}, filtered_matches={}, filtered_prices={:?}",
                     symbol,
                     side,
                     order.raw_price.unwrap_or(0),
                     total_matches_before_filter,
-                    market_maker_matches.len(),
+                    market_maker_match_count,
                     total_matches_after_filter,
-                    market_maker_matches.iter().map(|(e, _)| e.price).collect::<Vec<_>>()
+                    market_maker_prices
                 );
             }
 
