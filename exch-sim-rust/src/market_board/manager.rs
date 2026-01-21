@@ -60,7 +60,21 @@ impl MarketBoardManager {
         // This ensures the board state is correctly updated before processing market maker orders
         {
             let mut board_guard = board.write().await;
+            let best_bid_before = board_guard.get_best_bid();
+            let best_ask_before = board_guard.get_best_ask();
             board_guard.update_external_market_data(bids.clone(), asks.clone(), price_multiplier, qty_multiplier);
+            let best_bid_after = board_guard.get_best_bid();
+            let best_ask_after = board_guard.get_best_ask();
+            tracing::info!(
+                "Board snapshot updated: symbol={}, bid_before={:?}, ask_before={:?}, bid_after={:?}, ask_after={:?}, price_multiplier={}, qty_multiplier={}",
+                symbol,
+                best_bid_before,
+                best_ask_before,
+                best_bid_after,
+                best_ask_after,
+                price_multiplier,
+                qty_multiplier
+            );
         }
         
         // Then, process market maker orders for matching with existing user orders

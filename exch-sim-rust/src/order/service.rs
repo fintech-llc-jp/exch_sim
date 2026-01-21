@@ -549,6 +549,14 @@ impl OrderService {
                 order.raw_leaves_qty,
             );
 
+            let total_matches_before_filter = matching_orders.len();
+            let market_maker_matches: Vec<_> = matching_orders
+                .iter()
+                .filter(|(counter_order_entry, _)| {
+                    counter_order_entry.username == "MARKET_MAKER"
+                })
+                .collect();
+
             // Filter out market maker orders - market maker orders should only match with user orders
             // This prevents market maker orders from matching with each other, which could cause
             // incorrect execution prices (e.g., matching with old market maker orders at wrong prices)
@@ -558,6 +566,33 @@ impl OrderService {
                     counter_order_entry.username != "MARKET_MAKER"
                 })
                 .collect();
+
+            let total_matches_after_filter = matching_orders.len();
+
+            // Log filtering information for debugging
+            if !market_maker_matches.is_empty() {
+                tracing::warn!(
+                    "Market maker order filtering: symbol={}, side={:?}, price={}, total_matches={}, market_maker_matches={}, filtered_matches={}, filtered_prices={:?}",
+                    symbol,
+                    side,
+                    order.raw_price.unwrap_or(0),
+                    total_matches_before_filter,
+                    market_maker_matches.len(),
+                    total_matches_after_filter,
+                    market_maker_matches.iter().map(|(e, _)| e.price).collect::<Vec<_>>()
+                );
+            }
+
+            if !matching_orders.is_empty() {
+                tracing::info!(
+                    "Market maker order matched with user orders: symbol={}, side={:?}, price={}, matches={}, execution_prices={:?}",
+                    symbol,
+                    side,
+                    order.raw_price.unwrap_or(0),
+                    matching_orders.len(),
+                    matching_orders.iter().map(|(e, _)| e.price).collect::<Vec<_>>()
+                );
+            }
 
             for (counter_order_entry, exec_qty) in matching_orders {
                 // Create executions for both parties
@@ -569,6 +604,18 @@ impl OrderService {
                 };
 
                 let exec_price = counter_order_entry.price;
+
+                // Log execution details for debugging
+                tracing::info!(
+                    "Market maker execution: symbol={}, side={:?}, exec_price={}, exec_qty={}, counter_party={}, counter_party_side={:?}, market_maker_order_price={}",
+                    symbol,
+                    side,
+                    exec_price,
+                    exec_qty,
+                    counter_order_entry.username,
+                    counter_order_entry.side,
+                    order.raw_price.unwrap_or(0)
+                );
 
                 // Execution for the market maker order
                 let exec1 = Execution {
