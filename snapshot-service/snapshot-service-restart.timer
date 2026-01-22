@@ -1,0 +1,12 @@
+[Unit]
+Description=Restart Snapshot Service daily at 4:00 AM JST
+After=network.target
+
+[Timer]
+# 日本時間の午前4時に実行
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

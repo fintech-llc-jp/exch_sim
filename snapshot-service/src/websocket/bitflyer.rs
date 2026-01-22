@@ -1,14 +1,18 @@
 use crate::config::Config;
 use crate::market_board::MarketBoardManager;
 use anyhow::{Context, Result};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::PgPool;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 struct SubscribeRequest {
@@ -53,6 +57,41 @@ struct BoardData {
 }
 
 #[derive(Debug, Deserialize)]
+struct ChannelMessage {
+    #[serde(rename = "method")]
+    method: Option<String>,
+    params: ChannelMessageParams,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChannelMessageParams {
+    channel: String,
+    message: serde_json::Value, // Can be BoardData or Vec<ExecutionData>
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecutionsMessage {
+    #[serde(rename = "method")]
+    method: Option<String>,
+    params: ExecutionsParams,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecutionsParams {
+    channel: String,
+    message: Vec<ExecutionData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecutionData {
+    id: i64,
+    side: String,
+    price: f64,
+    size: f64,
+    exec_date: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct PriceLevelData {
     price: f64,
     size: f64,
@@ -61,6 +100,7 @@ struct PriceLevelData {
 pub struct BitflyerWebSocketClient {
     config: Config,
     board_manager: MarketBoardManager,
+    pool: Option<Arc<sqlx::PgPool>>,
     jsonrpc_id: AtomicU64,
     shutdown_tx: Option<mpsc::Sender<()>>,
 }
@@ -70,9 +110,15 @@ impl BitflyerWebSocketClient {
         Self {
             config,
             board_manager,
+            pool: None,
             jsonrpc_id: AtomicU64::new(1),
             shutdown_tx: None,
         }
+    }
+
+    pub fn with_pool(mut self, pool: Arc<sqlx::PgPool>) -> Self {
+        self.pool = Some(pool);
+        self
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -86,11 +132,12 @@ impl BitflyerWebSocketClient {
 
         let config = self.config.clone();
         let board_manager = self.board_manager.clone();
+        let pool = self.pool.clone();
         let mut reconnect_attempts = 0u32;
 
         tokio::spawn(async move {
             loop {
-                match Self::connect_and_run(&config, board_manager.clone()).await {
+                match Self::connect_and_run(&config, board_manager.clone(), pool.clone()).await {
                     Ok(_) => {
                         info!("Bitflyer WebSocket connection closed normally");
                         break;
@@ -129,7 +176,11 @@ impl BitflyerWebSocketClient {
         Ok(())
     }
 
-    async fn connect_and_run(config: &Config, board_manager: MarketBoardManager) -> Result<()> {
+    async fn connect_and_run(
+        config: &Config,
+        board_manager: MarketBoardManager,
+        pool: Option<Arc<sqlx::PgPool>>,
+    ) -> Result<()> {
         let url = &config.websocket.bitflyer.url;
         info!("Connecting to Bitflyer WebSocket: {}", url);
 
@@ -148,6 +199,9 @@ impl BitflyerWebSocketClient {
             "lightning_board_snapshot_FX_BTC_JPY",
             "lightning_board_BTC_JPY",
             "lightning_board_FX_BTC_JPY",
+            // Executions (trades) channels for machine learning
+            "lightning_executions_BTC_JPY",
+            "lightning_executions_FX_BTC_JPY",
         ];
 
         for channel in channels {
@@ -171,7 +225,7 @@ impl BitflyerWebSocketClient {
             match message {
                 Ok(Message::Text(text)) => {
                     tracing::debug!("Received Bitflyer message: {}", text);
-                    if let Err(e) = Self::handle_message(&text, &board_manager, &config).await {
+                    if let Err(e) = Self::handle_message(&text, &board_manager, &config, pool.as_ref()).await {
                         error!("Error handling Bitflyer message: {} - Message: {}", e, text);
                     }
                 }
@@ -194,11 +248,81 @@ impl BitflyerWebSocketClient {
         text: &str,
         board_manager: &MarketBoardManager,
         config: &Config,
+        pool: Option<&Arc<sqlx::PgPool>>,
     ) -> Result<()> {
         // Skip JSON-RPC responses
         if text.contains("\"jsonrpc\"") && text.contains("\"result\"") {
             tracing::debug!("Skipping JSON-RPC response: {}", text);
             return Ok(());
+        }
+        
+        // Try to parse as ChannelMessage (for executions via channelMessage method)
+        if let Ok(channel_msg) = serde_json::from_str::<ChannelMessage>(text) {
+            let channel = &channel_msg.params.channel;
+            if channel.starts_with("lightning_executions_") {
+                // Parse message as array of executions
+                if let Ok(executions) = serde_json::from_value::<Vec<ExecutionData>>(channel_msg.params.message.clone()) {
+                    let symbol = Self::extract_symbol_from_channel(channel)?;
+                    let target_symbol = Self::map_symbol(&symbol, config)?;
+                    
+                    for execution in executions {
+                        let side = execution.side.to_uppercase();
+                        info!(
+                            "Bitflyer Trade: {} - side: {}, price: {}, size: {}",
+                            target_symbol, side, execution.price, execution.size
+                        );
+                        
+                        // Save to executions table
+                        if let Some(pool_ref) = pool {
+                            if let Err(e) = Self::save_trade_to_db(
+                                pool_ref.as_ref(),
+                                &target_symbol,
+                                execution.price,
+                                execution.size,
+                                &side,
+                            ).await {
+                                error!("Failed to save Bitflyer trade to database: {:#}", e);
+                            }
+                        } else {
+                            warn!("PostgreSQL pool not available, skipping trade save");
+                        }
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        
+        // Try to parse as ExecutionsMessage (direct method format)
+        if let Ok(executions_msg) = serde_json::from_str::<ExecutionsMessage>(text) {
+            let channel = &executions_msg.params.channel;
+            if channel.starts_with("lightning_executions_") {
+                let symbol = Self::extract_symbol_from_channel(channel)?;
+                let target_symbol = Self::map_symbol(&symbol, config)?;
+                
+                for execution in executions_msg.params.message {
+                    let side = execution.side.to_uppercase();
+                    info!(
+                        "Bitflyer Trade: {} - side: {}, price: {}, size: {}",
+                        target_symbol, side, execution.price, execution.size
+                    );
+                    
+                    // Save to executions table
+                    if let Some(pool_ref) = pool {
+                        if let Err(e) = Self::save_trade_to_db(
+                            pool_ref.as_ref(),
+                            &target_symbol,
+                            execution.price,
+                            execution.size,
+                            &side,
+                        ).await {
+                            error!("Failed to save Bitflyer trade to database: {:#}", e);
+                        }
+                    } else {
+                        warn!("PostgreSQL pool not available, skipping trade save");
+                    }
+                }
+                return Ok(());
+            }
         }
         
         // Try to parse as BoardMessage
@@ -272,6 +396,92 @@ impl BitflyerWebSocketClient {
             "FX_BTC_JPY" => Ok(config.symbol_mapping.bitflyer.fx_btc_jpy.clone()),
             _ => Err(anyhow::anyhow!("Unknown symbol: {}", symbol)),
         }
+    }
+
+    async fn save_trade_to_db(
+        pool: &PgPool,
+        symbol: &str,
+        price: f64,
+        size: f64,
+        side: &str,
+    ) -> Result<()> {
+        // Generate UUIDs for exec_id and order_id (dummy for external trades)
+        let exec_id = Uuid::new_v4().to_string();
+        let order_id = Uuid::new_v4().to_string();
+        
+        // Convert to internal values using multipliers
+        // For B_FX_BTCJPY: price_multiplier=1, qty_multiplier=1000
+        let price_multiplier = 1i64;
+        let qty_multiplier = 1000i64;
+        let last_px = (price * price_multiplier as f64) as i64;
+        let last_qty = (size * qty_multiplier as f64) as i64;
+        
+        // Ensure minimum qty of 1
+        let last_qty = last_qty.max(1);
+        
+        let username = "EXTERNAL_FEED";
+        let counter_party_username = "EXTERNAL_FEED";
+        let exec_status = "FILLED";
+        let is_market_maker = false;
+        let created_at = Utc::now();
+
+        let result = sqlx::query(
+            r#"
+            INSERT INTO executions (
+                exec_id, order_id, username, symbol, exec_status,
+                last_px, last_qty, counter_party_username, created_at,
+                is_market_maker, side
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            "#,
+        )
+        .bind(&exec_id)
+        .bind(&order_id)
+        .bind(username)
+        .bind(symbol)
+        .bind(exec_status)
+        .bind(last_px)
+        .bind(last_qty)
+        .bind(counter_party_username)
+        .bind(created_at)
+        .bind(is_market_maker)
+        .bind(side)
+        .execute(pool)
+        .await;
+
+        match result {
+            Ok(_) => {
+                info!(
+                    "✅ Saved Bitflyer trade to executions table: symbol={}, side={}, price={}, size={}, exec_id={}",
+                    symbol, side, price, size, exec_id
+                );
+            }
+            Err(sqlx::Error::Database(db_err)) => {
+                // PostgreSQLのunique_violationエラー（重複挿入）を無視
+                // エラーコード 23505 = unique_violation
+                if db_err.code().as_deref() == Some("23505") {
+                    tracing::debug!("Execution already exists (duplicate exec_id): {}", exec_id);
+                    return Ok(());
+                } else {
+                    return Err(anyhow::anyhow!("Database error: Code: {:?}, Message: {}", 
+                        db_err.code(),
+                        db_err.message()
+                    ))
+                    .context(format!(
+                        "Failed to insert execution - exec_id={}, username={}, symbol={}, exec_status={}, last_px={}, last_qty={}",
+                        exec_id, username, symbol, exec_status, last_px, last_qty
+                    ));
+                }
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("SQLx error: {}", e))
+                    .context(format!(
+                        "Failed to insert execution - exec_id={}, username={}, symbol={}, exec_status={}, last_px={}, last_qty={}",
+                        exec_id, username, symbol, exec_status, last_px, last_qty
+                    ));
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn stop(&mut self) {

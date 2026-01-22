@@ -50,7 +50,8 @@ async fn main() -> Result<()> {
 
     // Initialize WebSocket clients
     let pool_arc = Arc::new(pool.clone());
-    let mut bitflyer_client = BitflyerWebSocketClient::new(config.clone(), board_manager.clone());
+    let mut bitflyer_client = BitflyerWebSocketClient::new(config.clone(), board_manager.clone())
+        .with_pool(pool_arc.clone());
     let mut gmo_client = GmoWebSocketClient::new(config.clone(), board_manager.clone(), pool_arc);
 
     // Start WebSocket clients
