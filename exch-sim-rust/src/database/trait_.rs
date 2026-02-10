@@ -14,6 +14,12 @@ pub trait DatabaseTrait: Send + Sync {
         symbol: Option<&str>,
     ) -> Result<Vec<Execution>>;
     async fn count_executions(&self, username: &str, symbol: Option<&str>) -> Result<i64>;
+    /// 指定ユーザー・注文ID（ClOrdID）の約定一覧。Order status API で filledQty/filledPrice 計算に使用。
+    async fn query_executions_by_username_and_order_id(
+        &self,
+        username: &str,
+        order_id: &str,
+    ) -> Result<Vec<Execution>>;
     async fn query_executions_by_symbol_all_users(
         &self,
         symbol: &str,

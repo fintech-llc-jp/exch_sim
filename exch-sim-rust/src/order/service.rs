@@ -1,7 +1,10 @@
 use crate::config::Config;
 use crate::database::DatabaseTrait;
 use crate::market_board::manager::MarketBoardManager;
-use crate::models::{ExecStatus, Execution, NewOrderRequest, OrdStatus, OrdType, Side, TimeInForce};
+use crate::models::{
+    ExecStatus, Execution, NewOrderRequest, OrdStatus, OrderStatusResponse, OrdType, Side,
+    TimeInForce,
+};
 use crate::order::order::Order;
 use crate::position::manager::PositionManager;
 use anyhow::Result;
@@ -892,6 +895,105 @@ impl OrderService {
             username: username.to_string(),
             total_orders: order_dtos.len(),
             orders: order_dtos,
+        })
+    }
+
+    /// Get order status by cl_ord_id for the authenticated user.
+    /// Returns NEW/PARTIALLY_FILLED if order is on board; FILLED/CANCELLED/EXPIRED from executions otherwise.
+    pub async fn get_order_status(
+        &self,
+        username: &str,
+        cl_ord_id: &str,
+    ) -> Result<OrderStatusResponse> {
+        let executions = self
+            .database
+            .query_executions_by_username_and_order_id(username, cl_ord_id)
+            .await?;
+
+        let symbols: Vec<String> = self.config.get_all_symbols();
+        let mut found_on_board: Option<(String, OrdStatus)> = None;
+
+        for symbol in &symbols {
+            let board = self
+                .market_board_manager
+                .get_or_create_board(symbol.clone())
+                .await;
+            let board_guard = board.read().await;
+            let user_orders = board_guard.get_user_orders(username);
+            if let Some(entry) = user_orders.into_iter().find(|o| o.cl_ord_id == cl_ord_id) {
+                found_on_board = Some((symbol.clone(), entry.ord_status));
+                break;
+            }
+        }
+
+        let (ord_status, symbol_for_multiplier) = if let Some((symbol, ord_status)) = found_on_board
+        {
+            let status_str = match ord_status {
+                OrdStatus::New => "NEW",
+                OrdStatus::PartiallyFilled => "PARTIALLY_FILLED",
+                OrdStatus::Filled => "FILLED",
+                OrdStatus::Canceled => "CANCELLED",
+                OrdStatus::Rejected => "EXPIRED",
+            };
+            (status_str.to_string(), symbol)
+        } else {
+            if executions.is_empty() {
+                return Err(anyhow::anyhow!("Order not found: {}", cl_ord_id));
+            }
+            let has_filled = executions.iter().any(|e| e.exec_status == ExecStatus::Filled);
+            let has_canceled = executions.iter().any(|e| e.exec_status == ExecStatus::Canceled);
+            let has_rejected = executions.iter().any(|e| e.exec_status == ExecStatus::Rejected);
+            let has_partial =
+                executions.iter().any(|e| e.exec_status == ExecStatus::PartiallyFilled);
+
+            let status_str = if has_filled {
+                "FILLED"
+            } else if has_canceled {
+                "CANCELLED"
+            } else if has_rejected && !has_partial {
+                "EXPIRED"
+            } else if has_partial {
+                "PARTIALLY_FILLED"
+            } else {
+                "EXPIRED"
+            };
+            let symbol_for_multiplier = executions
+                .first()
+                .map(|e| e.symbol.clone())
+                .unwrap_or_else(|| "G_BTCJPY".to_string());
+            (status_str.to_string(), symbol_for_multiplier)
+        };
+
+        let (filled_qty, filled_price) = {
+            let fill_execs: Vec<_> = executions
+                .iter()
+                .filter(|e| {
+                    e.exec_status == ExecStatus::Filled
+                        || e.exec_status == ExecStatus::PartiallyFilled
+                })
+                .collect();
+            let instrument = self.config.get_instrument(&symbol_for_multiplier);
+            let price_mult = instrument.map(|i| i.price_multiplier as f64).unwrap_or(1_000_000.0);
+            let qty_mult = instrument.map(|i| i.qty_multiplier as f64).unwrap_or(1_000_000.0);
+
+            let total_qty_raw: i64 = fill_execs.iter().map(|e| e.last_qty).sum();
+            let filled_qty_display = total_qty_raw as f64 / qty_mult;
+
+            let filled_price_display = if total_qty_raw == 0 {
+                0.0
+            } else {
+                let sum_px_qty: i64 = fill_execs.iter().map(|e| e.last_px * e.last_qty).sum();
+                let vwap_raw = sum_px_qty as f64 / total_qty_raw as f64;
+                vwap_raw / price_mult
+            };
+            (filled_qty_display, filled_price_display)
+        };
+
+        Ok(OrderStatusResponse {
+            cl_ord_id: cl_ord_id.to_string(),
+            ord_status,
+            filled_qty,
+            filled_price,
         })
     }
 }

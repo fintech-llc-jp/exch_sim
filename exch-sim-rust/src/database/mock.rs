@@ -25,6 +25,11 @@ pub trait MockDatabaseTrait: Send + Sync {
         symbol: Option<String>,
     ) -> Result<Vec<Execution>>;
     async fn count_executions(&self, username: &str, symbol: Option<String>) -> Result<i64>;
+    async fn query_executions_by_username_and_order_id(
+        &self,
+        username: &str,
+        order_id: &str,
+    ) -> Result<Vec<Execution>>;
     async fn query_executions_by_symbol_all_users(
         &self,
         symbol: &str,
@@ -86,6 +91,14 @@ impl DatabaseTrait for MockMockDatabaseTrait {
 
     async fn count_executions(&self, username: &str, symbol: Option<&str>) -> Result<i64> {
         MockDatabaseTrait::count_executions(self, username, symbol.map(|s| s.to_string())).await
+    }
+
+    async fn query_executions_by_username_and_order_id(
+        &self,
+        username: &str,
+        order_id: &str,
+    ) -> Result<Vec<Execution>> {
+        MockDatabaseTrait::query_executions_by_username_and_order_id(self, username, order_id).await
     }
 
     async fn query_executions_by_symbol_all_users(

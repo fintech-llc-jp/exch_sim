@@ -201,6 +201,45 @@ curl -X GET "http://localhost:8080/api/orders/list?status=NEW,PARTIALLY_FILLED,F
 - ✅ **約定状況表示**: 注文数量、未約定数量、約定済み数量を確認可能
 - ✅ **JWT認証必須**: ユーザー自身の注文のみ取得
 
+#### 注文ステータス取得（Rust版）
+**GET** `/api/orders/{clOrdId}/status`
+
+指定した注文ID（clOrdId）のステータスと約定数量・約定価格を取得します。板に載っている注文は NEW / PARTIALLY_FILLED、約定済み・キャンセル済みは executions から FILLED / CANCELLED / EXPIRED を返します。
+
+```bash
+# 存在する注文のステータス取得
+curl -X GET "http://localhost:8080/api/orders/your-cl-ord-id/status" \
+  -H "Authorization: Bearer <JWT_TOKEN>"
+```
+
+**Path Parameters:**
+- `clOrdId` (string, required): 注文ID（発注時に返却された clOrdID、または注文一覧の clOrdID）
+
+**Response (200 OK):**
+```json
+{
+  "clOrdId": "abc-123",
+  "ordStatus": "FILLED",
+  "filledQty": 0.001,
+  "filledPrice": 10700837.0
+}
+```
+
+**Response Fields:**
+- `clOrdId` (string): 注文ID
+- `ordStatus` (string): 注文ステータス（NEW / PARTIALLY_FILLED / FILLED / CANCELLED / EXPIRED）
+- `filledQty` (number): 約定済み数量の合計（表示用）
+- `filledPrice` (number): 約定価格（複数約定時は数量加重平均 VWAP、未約定時は 0）
+
+**Error (404 Not Found):** 注文が存在しない場合（板にも executions にも無い）
+```json
+{
+  "error": "Order not found: <clOrdId>"
+}
+```
+
+**注意:** 本APIは Rust 版で実装されています。Java 版では利用できません。
+
 #### 新規注文
 **POST** `/api/orders/new`
 

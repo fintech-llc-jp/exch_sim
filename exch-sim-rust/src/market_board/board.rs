@@ -824,6 +824,13 @@ impl MarketBoard {
             .filter(|entry| entry.username == username)
             .collect()
     }
+
+    /// Check if there are any user orders (non-market maker orders) on the board
+    pub fn has_user_orders(&self) -> bool {
+        self.order_map
+            .values()
+            .any(|entry| entry.username != MARKET_MAKER_USERNAME)
+    }
 }
 
 #[cfg(test)]

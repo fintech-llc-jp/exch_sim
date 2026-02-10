@@ -78,9 +78,27 @@ impl MarketBoardManager {
         }
         
         // Then, process market maker orders for matching with existing user orders
-        // This will trigger matching with existing user orders
+        // NOTE: update_external_market_data already added market maker orders to the board.
+        // process_market_maker_order will try to match with user orders, but it will also
+        // try to match with the market maker orders we just added, which we filter out.
+        // However, this creates unnecessary work. We should only process market maker orders
+        // if there are user orders that can match.
         let order_service_opt = self.order_service.read().await.clone();
         if let Some(order_service) = order_service_opt {
+            // Check if there are user orders (non-market maker orders) before processing
+            // We only need to process market maker orders if there are user orders to match with
+            let has_user_orders = {
+                let board_guard = board.read().await;
+                board_guard.has_user_orders()
+            };
+            
+            if !has_user_orders {
+                tracing::debug!(
+                    "Skipping market maker order processing: symbol={}, no user orders to match with",
+                    symbol
+                );
+                return;
+            }
             tracing::debug!(
                 "Processing market maker orders for snapshot: symbol={}, {} bids, {} asks",
                 symbol,
@@ -209,11 +227,23 @@ impl MarketBoardManager {
         if let Some(order_service) = order_service_opt {
             // First, clear existing market maker orders at price levels with qty=0
             // Use update_external_market_data_delta to handle qty=0 removals
-            
-            // Use update_external_market_data_delta to handle qty=0 removals
             {
                 let mut board_guard = board.write().await;
                 board_guard.update_external_market_data_delta(bids.clone(), asks.clone(), price_multiplier, qty_multiplier);
+            }
+            
+            // Check if there are user orders before processing market maker orders
+            let has_user_orders = {
+                let board_guard = board.read().await;
+                board_guard.has_user_orders()
+            };
+            
+            if !has_user_orders {
+                tracing::debug!(
+                    "Skipping market maker order processing for delta: symbol={}, no user orders to match with",
+                    symbol
+                );
+                return;
             }
             
             // Then process orders with qty>0 (this will trigger matching)

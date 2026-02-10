@@ -66,6 +66,7 @@ pub async fn create_app(state: AppState) -> Result<Router, anyhow::Error> {
         .route("/api/orders/new", post(orders::new_order))
         .route("/api/orders/cancel", post(orders::cancel_order))
         .route("/api/orders/list", get(orders::list_orders))
+        .route("/api/orders/:cl_ord_id/status", get(orders::get_order_status))
         .route("/api/market-board/:symbol", get(market_board::get_market_board))
         .route("/api/market/board/:symbol", get(market_board::get_market_board))
         .route("/api/positions/summary", get(positions::get_positions_summary))

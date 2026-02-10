@@ -50,6 +50,12 @@ pub struct ExecutionHistoryQuery {
     symbol: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ExecutionsByOrderQuery {
+    #[serde(rename = "clOrdID")]
+    pub cl_ord_id: String,
+}
+
 fn default_page() -> i32 {
     0
 }

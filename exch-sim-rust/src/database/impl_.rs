@@ -245,6 +245,62 @@ impl DatabaseTrait for DatabaseImpl {
         Ok(count)
     }
 
+    async fn query_executions_by_username_and_order_id(
+        &self,
+        username: &str,
+        order_id: &str,
+    ) -> Result<Vec<Execution>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                exec_id, order_id, username, symbol, exec_status,
+                last_px, last_qty, counter_party_username, created_at::timestamptz as created_at,
+                is_market_maker, side
+            FROM executions
+            WHERE username = $1 AND order_id = $2
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(username)
+        .bind(order_id)
+        .fetch_all(&*self.pool)
+        .await
+        .context("Failed to query executions by username and order_id")?;
+
+        use sqlx::Row;
+        let executions: Vec<Execution> = rows
+            .into_iter()
+            .map(|row| {
+                let order_id_val: String = row.get("order_id");
+                let exec_status_str: String = row.get("exec_status");
+                let exec_status = match exec_status_str.as_str() {
+                    "NEW" => crate::models::ExecStatus::New,
+                    "PARTIAL_FILL" | "PARTIALLY_FILLED" => crate::models::ExecStatus::PartiallyFilled,
+                    "FILLED" => crate::models::ExecStatus::Filled,
+                    "CANCELED" => crate::models::ExecStatus::Canceled,
+                    "REJECTED" => crate::models::ExecStatus::Rejected,
+                    _ => crate::models::ExecStatus::New,
+                };
+                Execution {
+                    exec_id: row.get("exec_id"),
+                    order_id: order_id_val.clone(),
+                    cl_ord_id: order_id_val,
+                    username: row.get("username"),
+                    symbol: row.get("symbol"),
+                    exec_status,
+                    last_px: row.get("last_px"),
+                    last_qty: row.get("last_qty"),
+                    counter_party_username: row.get("counter_party_username"),
+                    created_at: row.get("created_at"),
+                    is_market_maker: row.get("is_market_maker"),
+                    side: row.get("side"),
+                }
+            })
+            .collect();
+
+        Ok(executions)
+    }
+
     async fn query_executions_by_symbol_all_users(
         &self,
         symbol: &str,

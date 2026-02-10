@@ -1,8 +1,8 @@
 use crate::api::AppState;
 use crate::middleware::AuthState;
-use crate::models::{CancelOrderRequest, NewOrderRequest};
+use crate::models::{CancelOrderRequest, NewOrderRequest, OrderStatusResponse};
 use axum::{
-    extract::{Extension, Query},
+    extract::{Extension, Path, Query},
     http::StatusCode,
     response::Json,
 };
@@ -62,6 +62,39 @@ pub async fn cancel_order(
 pub struct OrderListQuery {
     pub symbol: Option<String>,
     pub status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetOrderStatusPath {
+    pub cl_ord_id: String,
+}
+
+pub async fn get_order_status(
+    Extension(state): Extension<AppState>,
+    Extension(auth_state): Extension<AuthState>,
+    Path(path): Path<GetOrderStatusPath>,
+) -> Result<Json<OrderStatusResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let username = &auth_state.username;
+
+    match state
+        .order_service
+        .get_order_status(username, &path.cl_ord_id)
+        .await
+    {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            let msg = e.to_string();
+            let status = if msg.contains("Order not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            Err((
+                status,
+                Json(ErrorResponse { error: msg }),
+            ))
+        }
+    }
 }
 
 pub async fn list_orders(

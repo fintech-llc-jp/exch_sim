@@ -202,6 +202,16 @@ pub struct OrderDto {
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
+/// Response for GET /api/orders/:cl_ord_id/status
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderStatusResponse {
+    pub cl_ord_id: String,
+    pub ord_status: String, // NEW | PARTIALLY_FILLED | FILLED | CANCELLED | EXPIRED
+    pub filled_qty: f64,
+    pub filled_price: f64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ExecutionResponse {
     pub exec_id: String,
