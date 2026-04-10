@@ -2,9 +2,14 @@
 
 # クイックテスト - デバッグ用
 #BASE_URL="https://exch-sim-953974838707.asia-northeast1.run.app"
+#BASE_URL="http://77.42.74.155:8080"
 BASE_URL="http://localhost:8080"
+
+#USERNAME="yukio01"
+#PASSWORD="yukio01"
 USERNAME="yukio004"
 PASSWORD="yukio004"
+
 JWT_CACHE_FILE="/tmp/quick_test_jwt_token"
 
 # JWT有効性チェック関数
@@ -165,6 +170,92 @@ case "$1" in
         \"tif\": \"GTC\"
       }" | jq '.'
     ;;
+  "cancel")
+    CL_ORD_ID=${2}
+    SYMBOL=${3:-"B_FX_BTCJPY"}
+    if [ -z "$CL_ORD_ID" ]; then
+      echo "❌ エラー: 注文IDが必要です"
+      echo "使用方法: $0 cancel <clOrdID> [SYMBOL]"
+      exit 1
+    fi
+    echo "🚫 注文キャンセル実行 (clOrdID: ${CL_ORD_ID}, symbol: ${SYMBOL})..."
+    curl -s -X POST "${BASE_URL}/api/orders/cancel" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" \
+      -d "{
+        \"clOrdID\": \"${CL_ORD_ID}\",
+        \"symbol\": \"${SYMBOL}\"
+      }" | jq '.'
+    ;;
+  "order-list")
+    SYMBOL=${2}
+    STATUS=${3:-"NEW"}
+    echo "📋 注文リスト取得 (symbol: ${SYMBOL}, status: ${STATUS})..."
+    if [ -n "$SYMBOL" ]; then
+      curl -s -X GET "${BASE_URL}/api/orders/list?symbol=${SYMBOL}&status=${STATUS}" \
+        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    else
+      curl -s -X GET "${BASE_URL}/api/orders/list?status=${STATUS}" \
+        -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
+    fi
+    ;;
+  "order-status")
+    CL_ORD_ID=${2}
+    if [ -z "$CL_ORD_ID" ]; then
+      echo "❌ エラー: 注文IDが必要です"
+      echo "使用方法: $0 order-status <clOrdID>"
+      echo "例: $0 order-status abc-123  （存在する注文ID）"
+      echo "例: $0 order-status not-found-id  （404確認用）"
+      exit 1
+    fi
+    echo "📌 注文ステータス取得 (clOrdID: ${CL_ORD_ID})..."
+    BODY=$(mktemp)
+    HTTP_CODE=$(curl -s -o "$BODY" -w "%{http_code}" -X GET "${BASE_URL}/api/orders/${CL_ORD_ID}/status" \
+      -H "Authorization: Bearer ${JWT_TOKEN}")
+    echo "HTTP Status: ${HTTP_CODE}"
+    cat "$BODY" | jq '.' 2>/dev/null || cat "$BODY"
+    rm -f "$BODY"
+    ;;
+  "limit-buy-and-cancel")
+    PRICE=${2:-"1000.0"}
+    SYMBOL=${3:-"B_FX_BTCJPY"}
+    echo "📈 指値買い注文実行 (価格: ${PRICE}, symbol: ${SYMBOL})..."
+    ORDER_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/orders/new" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" \
+      -d "{
+        \"symbol\": \"${SYMBOL}\",
+        \"price\": ${PRICE},
+        \"quantity\": 0.01,
+        \"side\": \"BUY\",
+        \"ordType\": \"LIMIT\",
+        \"tif\": \"GTC\"
+      }")
+    
+    echo "注文レスポンス:"
+    echo "$ORDER_RESPONSE" | jq '.'
+    
+    CL_ORD_ID=$(echo "$ORDER_RESPONSE" | jq -r '.cl_ord_id // .clOrdID // empty')
+    
+    if [ -z "$CL_ORD_ID" ] || [ "$CL_ORD_ID" = "null" ]; then
+      echo "❌ 注文IDが取得できませんでした"
+      exit 1
+    fi
+    
+    echo ""
+    echo "⏳ 2秒待機..."
+    sleep 2
+    
+    echo ""
+    echo "🚫 注文キャンセル実行 (clOrdID: ${CL_ORD_ID})..."
+    curl -s -X POST "${BASE_URL}/api/orders/cancel" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${JWT_TOKEN}" \
+      -d "{
+        \"clOrdID\": \"${CL_ORD_ID}\",
+        \"symbol\": \"${SYMBOL}\"
+      }" | jq '.'
+    ;;
   "history")
     PAGE=${2:-"0"}
     SIZE=${3:-"10"}
@@ -274,8 +365,17 @@ case "$1" in
       -H "Authorization: Bearer ${JWT_TOKEN}" | jq '.'
     ;;
   "trade-history")
+    # Handle both orders: trade-history 20 B_FX_BTCJPY or trade-history B_FX_BTCJPY 20
     LIMIT=${2:-"20"}
     SYMBOL=${3}
+    
+    # Check if LIMIT is a number, if not, swap with SYMBOL
+    if ! [[ "$LIMIT" =~ ^[0-9]+$ ]]; then
+      # LIMIT is not a number, so it's actually SYMBOL
+      SYMBOL="$LIMIT"
+      LIMIT=${3:-"20"}
+    fi
+    
     echo "📜 取引履歴取得 (limit: ${LIMIT}, symbol: ${SYMBOL})..."
     if [ -n "$SYMBOL" ]; then
       curl -s -X GET "${BASE_URL}/api/positions/trades?limit=${LIMIT}&symbol=${SYMBOL}" \
@@ -340,6 +440,10 @@ case "$1" in
     echo "  $0 board [SYMBOL]  - マーケットボード確認"
     echo "  $0 limit-buy [PRICE] - 指値買い注文"
     echo "  $0 limit-sell [PRICE] - 指値売り注文"
+    echo "  $0 cancel <clOrdID> [SYMBOL] - 注文キャンセル"
+    echo "  $0 order-list [SYMBOL] [STATUS] - 注文リスト取得"
+    echo "  $0 order-status <clOrdID> - 注文ステータス取得（Rust: GET /api/orders/:clOrdId/status）"
+    echo "  $0 limit-buy-and-cancel [PRICE] [SYMBOL] - 指値買い注文を出してキャンセル（テスト用）"
     echo "  $0 history [PAGE] [SIZE] [SYMBOL] - 約定履歴取得（FILLED/PARTIAL_FILLのみ）"
     echo "  $0 history-all [PAGE] [SIZE] [SYMBOL] - 全約定履歴取得（デバッグ用）"
     echo "  $0 all-history [PAGE] [SIZE] [SYMBOL] - 全体約定履歴取得（全ユーザー）"

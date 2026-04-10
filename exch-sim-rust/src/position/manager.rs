@@ -431,6 +431,55 @@ impl PositionManager {
     }
 
 
+    /// 新規ユーザーの初期JPY残高を設定する。
+    /// 既にJPYポジションが存在する場合は何もしない（冪等性保証）。
+    pub async fn initialize_cash_balance(&self, username: &str, amount: f64) -> Result<()> {
+        // 既にポジションがあれば何もしない
+        if self.get_position(username, CASH_SYMBOL).await?.is_some() {
+            return Ok(());
+        }
+
+        let mut cash_position = crate::position::position::Position::new(
+            username.to_string(),
+            CASH_SYMBOL.to_string(),
+        );
+        cash_position.add_buy_trade(amount, 1.0);
+
+        let cash_position_id = format!("{}_{}", username, CASH_SYMBOL.to_uppercase());
+        let position_db = crate::models::Position {
+            id: Some(cash_position_id),
+            username: cash_position.username.clone(),
+            symbol: cash_position.symbol.clone(),
+            unit: "JPY".to_string(),
+            total_buy_qty: cash_position.total_buy_qty,
+            total_buy_amount: cash_position.total_buy_amount,
+            total_sell_qty: cash_position.total_sell_qty,
+            total_sell_amount: cash_position.total_sell_amount,
+            net_qty: cash_position.net_qty,
+            average_buy_price: cash_position.average_buy_price,
+            average_sell_price: cash_position.average_sell_price,
+            realized_pnl: cash_position.realized_pnl,
+            last_updated: cash_position.last_updated,
+        };
+
+        self.database
+            .upsert_position(&position_db)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to initialize cash balance: {}", e))?;
+
+        self.positions_cache
+            .entry(username.to_string())
+            .or_insert_with(DashMap::new)
+            .insert(CASH_SYMBOL.to_string(), cash_position);
+
+        info!(
+            "Initialized cash balance for new user: {}, amount: {}",
+            username, amount
+        );
+
+        Ok(())
+    }
+
     async fn update_cash_balance(&self, username: &str, amount: f64) -> Result<()> {
         let mut cash_position = self.get_or_create_position(username, CASH_SYMBOL).await?;
 
@@ -485,3 +534,181 @@ impl PositionManager {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::test_helpers::{create_mock_database, setup_mock_database_with_defaults};
+    use crate::config::{
+        Config, ServerConfig, PostgresConfig, WebSocketConfig,
+        BitflyerWebSocketConfig, GmoWebSocketConfig, JwtConfig, InstrumentsConfig,
+    };
+    use mockall::predicate::*;
+    use std::collections::HashMap;
+
+    fn create_test_config() -> Config {
+        Config {
+            server: ServerConfig { port: 8080 },
+            postgres: PostgresConfig {
+                host: "localhost".to_string(),
+                port: 5432,
+                database: "test".to_string(),
+                user: "test".to_string(),
+                password: "test".to_string(),
+                max_connections: 5,
+            },
+            websocket: WebSocketConfig {
+                bitflyer: BitflyerWebSocketConfig {
+                    enabled: false,
+                    url: "ws://localhost".to_string(),
+                    reconnect_delay_ms: 1000,
+                    max_reconnect_attempts: 3,
+                },
+                gmo: GmoWebSocketConfig {
+                    enabled: false,
+                    url: "ws://localhost".to_string(),
+                    reconnect_delay_ms: 1000,
+                    max_reconnect_attempts: 3,
+                },
+            },
+            jwt: JwtConfig {
+                secret: "test_secret".to_string(),
+                expiration_seconds: 3600,
+            },
+            instruments: InstrumentsConfig {
+                instruments: HashMap::new(),
+            },
+        }
+    }
+
+    // ── initialize_cash_balance ──────────────────────────────────────────────
+
+    /// 新規ユーザーに 1,000,000 JPY が付与されること
+    #[tokio::test]
+    async fn test_initialize_cash_balance_sets_initial_balance() {
+        let mut mock = create_mock_database();
+        setup_mock_database_with_defaults(&mut mock);
+
+        // upsert_position が1回呼ばれることを期待
+        mock.expect_upsert_position()
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let manager = PositionManager::new(mock, create_test_config());
+
+        let result = manager
+            .initialize_cash_balance("newuser", 1_000_000.0)
+            .await;
+        assert!(result.is_ok(), "initialize_cash_balance should succeed");
+
+        // キャッシュ経由でポジションを確認
+        let cash = manager.get_position("newuser", "JPY").await.unwrap();
+        assert!(cash.is_some(), "JPY position should exist after initialization");
+        let cash = cash.unwrap();
+        assert_eq!(cash.username, "newuser");
+        assert_eq!(cash.symbol, "JPY");
+        // 初期残高 = total_buy_amount - total_sell_amount = 1,000,000
+        let balance = cash.total_buy_amount - cash.total_sell_amount;
+        assert!(
+            (balance - 1_000_000.0).abs() < 1e-9,
+            "Initial balance should be 1,000,000 JPY, got {}",
+            balance
+        );
+    }
+
+    /// 既にJPYポジションが存在する場合は upsert_position を呼ばず冪等に動作すること
+    #[tokio::test]
+    async fn test_initialize_cash_balance_idempotent_when_position_exists() {
+        let mut mock = create_mock_database();
+
+        // キャッシュにJPYポジションを事前に登録するため、query_position が
+        // JPY に対して既存ポジションを返すよう設定する
+        let existing_position = crate::models::Position {
+            id: Some("newuser_JPY".to_string()),
+            username: "newuser".to_string(),
+            symbol: "JPY".to_string(),
+            unit: "JPY".to_string(),
+            total_buy_qty: 1_000_000.0,
+            total_buy_amount: 1_000_000.0,
+            total_sell_qty: 0.0,
+            total_sell_amount: 0.0,
+            net_qty: 1_000_000.0,
+            average_buy_price: 1.0,
+            average_sell_price: 0.0,
+            realized_pnl: 0.0,
+            last_updated: chrono::Utc::now(),
+        };
+        mock.expect_query_position()
+            .with(eq("newuser"), eq("JPY"))
+            .returning(move |_, _| Ok(Some(existing_position.clone())));
+        mock.expect_query_position()
+            .returning(|_, _| Ok(None));
+
+        // upsert_position は呼ばれないこと
+        mock.expect_upsert_position()
+            .times(0);
+
+        let manager = PositionManager::new(mock, create_test_config());
+
+        let result = manager
+            .initialize_cash_balance("newuser", 1_000_000.0)
+            .await;
+        assert!(result.is_ok(), "initialize_cash_balance should succeed even if position exists");
+    }
+
+    /// DBエラー時に Err が返ること
+    #[tokio::test]
+    async fn test_initialize_cash_balance_returns_err_on_db_failure() {
+        let mut mock = create_mock_database();
+        setup_mock_database_with_defaults(&mut mock);
+
+        mock.expect_upsert_position()
+            .times(1)
+            .returning(|_| Err(anyhow::anyhow!("DB connection failed")));
+
+        let manager = PositionManager::new(mock, create_test_config());
+
+        let result = manager
+            .initialize_cash_balance("newuser", 1_000_000.0)
+            .await;
+        assert!(result.is_err(), "Should return Err when DB fails");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Failed to initialize cash balance"),
+            "Error message should describe the failure, got: {}",
+            err_msg
+        );
+    }
+
+    /// 異なる複数ユーザーへの初期化がそれぞれ独立して機能すること
+    #[tokio::test]
+    async fn test_initialize_cash_balance_multiple_users() {
+        let mut mock = create_mock_database();
+        setup_mock_database_with_defaults(&mut mock);
+
+        mock.expect_upsert_position()
+            .times(2)
+            .returning(|_| Ok(()));
+
+        let manager = PositionManager::new(mock, create_test_config());
+
+        manager
+            .initialize_cash_balance("user_a", 1_000_000.0)
+            .await
+            .unwrap();
+        manager
+            .initialize_cash_balance("user_b", 1_000_000.0)
+            .await
+            .unwrap();
+
+        let cash_a = manager.get_position("user_a", "JPY").await.unwrap().unwrap();
+        let cash_b = manager.get_position("user_b", "JPY").await.unwrap().unwrap();
+
+        assert_eq!(cash_a.username, "user_a");
+        assert_eq!(cash_b.username, "user_b");
+        // 残高が互いに独立していること
+        let balance_a = cash_a.total_buy_amount - cash_a.total_sell_amount;
+        let balance_b = cash_b.total_buy_amount - cash_b.total_sell_amount;
+        assert!((balance_a - 1_000_000.0).abs() < 1e-9);
+        assert!((balance_b - 1_000_000.0).abs() < 1e-9);
+    }
+}

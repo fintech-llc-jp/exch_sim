@@ -1,0 +1,28 @@
+# Cloudflare Workers用の設定ファイル
+# 使用方法: wrangler publish
+
+name = "exch-sim-proxy"
+main = "cloudflare-worker-example.js"
+compatibility_date = "2024-01-01"
+
+# 環境変数（本番環境のURLを設定）
+[env.production.vars]
+EXCH_SIM_API_URL = "https://your-exch-sim-domain.com"
+
+# 開発環境用
+[env.development.vars]
+EXCH_SIM_API_URL = "http://localhost:8080"
+
+# ルート（カスタムドメインを使用する場合）
+# routes = [
+#   { pattern = "api.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
+
+
+
+
+
+
+
+
+

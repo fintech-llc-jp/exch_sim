@@ -85,6 +85,20 @@ pub async fn signup(
             )
         })?;
 
+    // 新規ユーザーに 1,000,000 JPY の初期残高を付与する
+    state
+        .position_manager
+        .initialize_cash_balance(&request.username, 1_000_000.0)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("Failed to initialize cash balance: {}", e),
+                }),
+            )
+        })?;
+
     // Generate JWT token
     let token = jwt_service.generate_token(&request.username, &roles).map_err(|e| {
         (

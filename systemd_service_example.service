@@ -1,0 +1,36 @@
+[Unit]
+Description=Exchange Simulator Application
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/exch_sim
+
+# メモリ設定（512MBヒープ - 2CPU/4GB VPS用）
+Environment="JAVA_OPTS=-Xms128m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/log/exch-sim/"
+
+# メモリ制限を設定（OOM Killerを防ぐ）
+MemoryLimit=1G
+MemoryHigh=900M
+
+# リスタート設定
+Restart=always
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+ExecStart=/usr/bin/java $JAVA_OPTS \
+  -Dspring.datasource.url=jdbc:postgresql://localhost:5432/exch_sim \
+  -Dspring.datasource.username=exch_sim_user \
+  -Dspring.datasource.password=sr3110ysi \
+  -jar /opt/exch_sim/exch_sim.jar
+
+# ログディレクトリの作成
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=exch-sim
+
+[Install]
+WantedBy=multi-user.target
+

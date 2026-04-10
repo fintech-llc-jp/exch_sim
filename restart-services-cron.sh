@@ -1,5 +1,6 @@
 #!/bin/bash
-# 毎日午前4時にsnapshot-serviceとexch-sim-rustを再起動するスクリプト
+# 毎日午前4時（JST）にsnapshot-serviceとexch-sim-rustを再起動するスクリプト
+# システムタイムゾーンがUTCの場合、UTC 19:00 = JST 04:00
 
 # ログファイル
 LOG_FILE="/var/log/exch-sim-restart.log"

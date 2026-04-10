@@ -121,6 +121,7 @@ public interface ExecutionRepository extends JpaRepository<Execution, String> {
 
   /**
    * 古い実行記録を削除（データ保持期間を超えたもの）
+   *
    * @return 削除された件数
    */
   long deleteByCreatedAtBefore(LocalDateTime timestamp);

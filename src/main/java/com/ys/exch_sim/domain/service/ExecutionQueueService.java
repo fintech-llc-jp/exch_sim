@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -44,7 +43,9 @@ public class ExecutionQueueService {
     initializeExecutionHistoryAsync();
     long endTime = System.currentTimeMillis();
     log.info("========== EXECUTION_QUEUE_SERVICE @PostConstruct COMPLETE ==========");
-    log.info("✅ Execution queue service initialization started asynchronously in {} ms", (endTime - startTime));
+    log.info(
+        "✅ Execution queue service initialization started asynchronously in {} ms",
+        (endTime - startTime));
   }
 
   /** Async initialization of execution history from database */
@@ -80,9 +81,7 @@ public class ExecutionQueueService {
             log.info("⏭️ No recent executions found in database (last 24 hours)");
           }
         } catch (Exception e) {
-          log.warn(
-              "⚠️ DatabaseService failed to load execution history: {}",
-              e.getMessage());
+          log.warn("⚠️ DatabaseService failed to load execution history: {}", e.getMessage());
         }
       } else {
         log.info("⏭️ Database service not available, starting with empty execution history");
@@ -94,7 +93,9 @@ public class ExecutionQueueService {
           executionHistoryBySymbol.size(),
           userExecutionQueues.size());
       log.info("========== EXECUTION_QUEUE_SERVICE ASYNC COMPLETE ==========");
-      log.info("✅ Async execution history initialization completed in {} ms", (asyncEndTime - asyncStartTime));
+      log.info(
+          "✅ Async execution history initialization completed in {} ms",
+          (asyncEndTime - asyncStartTime));
     } catch (Exception e) {
       log.error("❌ Error initializing execution history", e);
     }
