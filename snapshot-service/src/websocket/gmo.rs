@@ -240,6 +240,13 @@ impl GmoWebSocketClient {
         } else if let Ok(trade_msg) = serde_json::from_str::<TradeMessage>(text) {
             // Try to parse as TradeMessage
             if trade_msg.channel == "trades" {
+                let gmo_side = trade_msg.side.to_uppercase();
+
+                // GMOはBUY/SELL両方送信するため、BUYのみ処理して重複を排除
+                if gmo_side != "BUY" {
+                    return Ok(());
+                }
+
                 let symbol = &trade_msg.symbol;
                 let target_symbol = Self::map_symbol(symbol, config)?;
 
@@ -247,12 +254,13 @@ impl GmoWebSocketClient {
                     trade_msg.price.parse::<f64>(),
                     trade_msg.size.parse::<f64>(),
                 ) {
-                    let side = trade_msg.side.to_uppercase();
+                    // mid-priceで売買起因を判定
+                    let side = Self::determine_side_from_mid(price, &target_symbol, board_manager).await;
                     info!(
-                        "GMO Trade: {} - side: {}, price: {}, size: {}",
+                        "GMO Trade: {} - determined_side: {}, price: {}, size: {}",
                         target_symbol, side, price, size
                     );
-                    
+
                     // Save to executions table
                     if let Err(e) = Self::save_trade_to_db(
                         pool.as_ref(),
@@ -374,6 +382,29 @@ impl GmoWebSocketClient {
         );
 
         Ok(())
+    }
+
+    /// 約定価格と現在の板のmid-priceを比較して売買起因を判定する
+    /// price >= mid → BUY（買い起因）、price < mid → SELL（売り起因）
+    async fn determine_side_from_mid(
+        price: f64,
+        symbol: &str,
+        board_manager: &MarketBoardManager,
+    ) -> String {
+        if let Some((bids, asks)) = board_manager.get_snapshot(symbol, 1).await {
+            if let (Some(best_bid), Some(best_ask)) = (bids.first(), asks.first()) {
+                let mid = (best_bid.price + best_ask.price) / 2.0;
+                tracing::debug!(
+                    "GMO side determination: symbol={}, price={}, best_bid={}, best_ask={}, mid={}, side={}",
+                    symbol, price, best_bid.price, best_ask.price, mid,
+                    if price >= mid { "BUY" } else { "SELL" }
+                );
+                return if price >= mid { "BUY".to_string() } else { "SELL".to_string() };
+            }
+        }
+        // 板データ未取得の場合はBUYをデフォルトとする
+        tracing::warn!("GMO side determination: no board data for {}, defaulting to BUY", symbol);
+        "BUY".to_string()
     }
 
     pub async fn stop(&mut self) {
