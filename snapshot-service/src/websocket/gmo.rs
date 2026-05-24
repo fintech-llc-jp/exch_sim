@@ -78,38 +78,33 @@ impl GmoWebSocketClient {
         let mut reconnect_attempts = 0u32;
 
         tokio::spawn(async move {
+            let base_delay_ms = config.websocket.gmo.reconnect_delay_ms;
+            let max_delay_ms = 60_000u64;
+
             loop {
-                match Self::connect_and_run(&config, board_manager.clone(), pool.clone()).await {
+                let result = Self::connect_and_run(&config, board_manager.clone(), pool.clone()).await;
+                let delay_ms = match result {
                     Ok(_) => {
-                        info!("GMO WebSocket connection closed normally");
-                        break;
+                        info!("GMO WebSocket connection closed normally, reconnecting...");
+                        reconnect_attempts = 0;
+                        base_delay_ms
                     }
                     Err(e) => {
                         reconnect_attempts += 1;
-                        if reconnect_attempts > config.websocket.gmo.max_reconnect_attempts {
-                            error!(
-                                "GMO WebSocket max reconnect attempts ({}) exceeded. Last error: {}",
-                                config.websocket.gmo.max_reconnect_attempts,
-                                e
-                            );
-                            break;
-                        }
-
+                        let d = (base_delay_ms * (1u64 << reconnect_attempts.min(10))).min(max_delay_ms);
                         warn!(
-                            "GMO WebSocket reconnection attempt {}/{} in {}ms - Error: {}",
-                            reconnect_attempts,
-                            config.websocket.gmo.max_reconnect_attempts,
-                            config.websocket.gmo.reconnect_delay_ms,
-                            e
+                            "GMO WebSocket reconnect attempt {} in {}ms - Error: {}",
+                            reconnect_attempts, d, e
                         );
+                        d
+                    }
+                };
 
-                        tokio::select! {
-                            _ = sleep(Duration::from_millis(config.websocket.gmo.reconnect_delay_ms)) => {}
-                            _ = shutdown_rx.recv() => {
-                                info!("GMO WebSocket shutdown requested");
-                                break;
-                            }
-                        }
+                tokio::select! {
+                    _ = sleep(Duration::from_millis(delay_ms)) => {}
+                    _ = shutdown_rx.recv() => {
+                        info!("GMO WebSocket shutdown requested");
+                        break;
                     }
                 }
             }
