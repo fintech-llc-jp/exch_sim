@@ -75,9 +75,9 @@ impl BitflyerWebSocketClient {
         let jsonrpc_id = self.jsonrpc_id.clone();
 
         tokio::spawn(async move {
-            let mut reconnect_attempts = 0;
-            let max_reconnect_attempts = config.websocket.bitflyer.max_reconnect_attempts;
-            let reconnect_delay = Duration::from_millis(config.websocket.bitflyer.reconnect_delay_ms);
+            let mut reconnect_attempts = 0u32;
+            let base_delay_ms = config.websocket.bitflyer.reconnect_delay_ms;
+            let max_delay_ms = 60_000u64; // cap backoff at 60 seconds
 
             loop {
                 tokio::select! {
@@ -94,12 +94,13 @@ impl BitflyerWebSocketClient {
                             Err(e) => {
                                 error!("Bitflyer WebSocket connection error: {}", e);
                                 reconnect_attempts += 1;
-                                if reconnect_attempts > max_reconnect_attempts {
-                                    error!("Max Bitflyer WebSocket reconnection attempts ({}) exceeded. Shutting down.", max_reconnect_attempts);
-                                    break;
-                                }
-                                warn!("Attempting to reconnect to Bitflyer WebSocket in {:?} (attempt {}/{})", reconnect_delay, reconnect_attempts, max_reconnect_attempts);
-                                sleep(reconnect_delay).await;
+                                // Exponential backoff: base * 2^(attempts-1), capped at max_delay_ms
+                                let delay_ms = (base_delay_ms * (1u64 << reconnect_attempts.min(10))).min(max_delay_ms);
+                                warn!(
+                                    "Bitflyer WebSocket reconnect attempt {} in {}ms - Error: {}",
+                                    reconnect_attempts, delay_ms, e
+                                );
+                                sleep(Duration::from_millis(delay_ms)).await;
                             }
                         }
                     }

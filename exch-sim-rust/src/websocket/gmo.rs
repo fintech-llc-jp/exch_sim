@@ -60,9 +60,9 @@ impl GmoWebSocketClient {
         let board_manager = self.board_manager.clone();
 
         tokio::spawn(async move {
-            let mut reconnect_attempts = 0;
-            let max_reconnect_attempts = config.websocket.gmo.max_reconnect_attempts;
-            let reconnect_delay = Duration::from_millis(config.websocket.gmo.reconnect_delay_ms);
+            let mut reconnect_attempts = 0u32;
+            let base_delay_ms = config.websocket.gmo.reconnect_delay_ms;
+            let max_delay_ms = 60_000u64;
 
             loop {
                 tokio::select! {
@@ -79,12 +79,12 @@ impl GmoWebSocketClient {
                             Err(e) => {
                                 error!("GMO WebSocket connection error: {}", e);
                                 reconnect_attempts += 1;
-                                if reconnect_attempts > max_reconnect_attempts {
-                                    error!("Max GMO WebSocket reconnection attempts ({}) exceeded. Shutting down.", max_reconnect_attempts);
-                                    break;
-                                }
-                                warn!("Attempting to reconnect to GMO WebSocket in {:?} (attempt {}/{})", reconnect_delay, reconnect_attempts, max_reconnect_attempts);
-                                sleep(reconnect_delay).await;
+                                let delay_ms = (base_delay_ms * (1u64 << reconnect_attempts.min(10))).min(max_delay_ms);
+                                warn!(
+                                    "GMO WebSocket reconnect attempt {} in {}ms - Error: {}",
+                                    reconnect_attempts, delay_ms, e
+                                );
+                                sleep(Duration::from_millis(delay_ms)).await;
                             }
                         }
                     }
